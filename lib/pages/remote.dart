@@ -40,7 +40,9 @@ Future<List<int>> boardTracks(AppState app, CatalogItem b) {
   if (hit != null && DateTime.now().difference(hit.$2) < const Duration(minutes: 10)) return hit.$1;
   final f = app.content.collection(b.platform, CatalogType.leaderboard, b.id, limit: 10).then((c) => [for (final t in c.tracks.take(10)) registerTrack(app, t)]);
   memo[k] = (f, DateTime.now());
-  f.then((_) {}, onError: (Object _) => memo.remove(k));
+  f.then((_) {}, onError: (Object _) {
+    memo.remove(k);
+  });
   return f;
 }
 

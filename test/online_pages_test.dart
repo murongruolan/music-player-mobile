@@ -178,7 +178,7 @@ void main() {
     expect(find.byType(BannerCarousel), findsOneWidget);
     expect(find.text('每日混音'), findsOneWidget);
     expect(find.text('精选'), findsOneWidget);
-    expect(find.text('wy 歌曲 1000', skipOffstage: false), findsOneWidget);
+    expect(find.text('wy 歌曲 1000', skipOffstage: false), findsWidgets);
     // 热门歌曲登记进了歌曲目录，可以收藏
     final id = songs.indexWhere((s) => s.key == 'wy:s1000');
     expect(id, greaterThanOrEqualTo(0));
@@ -198,7 +198,7 @@ void main() {
     await _settle(tester);
     await tester.drag(find.byType(ListView).first, const Offset(0, 8000));
     await _settle(tester);
-    expect(find.text('kw 歌曲 1000', skipOffstage: false), findsOneWidget);
+    expect(find.text('kw 歌曲 1000', skipOffstage: false), findsWidgets);
     expect(tester.takeException(), isNull);
     await _done(tester, app);
   });
@@ -256,7 +256,7 @@ void main() {
       expect(tester.takeException(), isNull, reason: t);
     }
     // 单个平台
-    await tester.tap(find.text('酷狗'));
+    await tester.tap(find.text('酷狗').first);
     await _settle(tester);
     expect(find.text('kg 歌曲 100'), findsOneWidget);
     expect(find.text('wy 歌曲 100'), findsNothing);

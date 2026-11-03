@@ -549,7 +549,6 @@ class _NowListen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pal = context.pal;
     final now = DateTime.now();
     final hr = now.hour;
     final slot = hr < 6

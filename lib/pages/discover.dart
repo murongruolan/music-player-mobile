@@ -8,7 +8,7 @@ import '../core/tokens.dart';
 import '../data/mock.dart';
 import '../data/mock.dart' as mock show banners;
 import '../data/models.dart';
-import '../platform/models.dart' show CatalogItem, CatalogType, PlaylistCategory;
+import '../platform/models.dart' show CatalogItem, PlaylistCategory;
 import '../platform/registry.dart';
 import '../shell/shell.dart';
 import '../ui/cover.dart';
