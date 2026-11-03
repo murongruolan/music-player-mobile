@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import '../api/registration_api.dart';
 import '../core/state.dart';
 import '../core/tokens.dart';
 import '../net/net.dart';
@@ -207,6 +208,11 @@ class _LoginPageState extends State<LoginPage> {
   Timer? cdt;
   final capKey = GlobalKey<CaptchaState>();
 
+  // 注册配置（真实后端）。演示 / 截图（net == null）时保持 null，走本地演示验证码。
+  RegistrationSettings? regCfg;
+  CaptchaData? cap;
+  bool _cfgLoaded = false;
+
   @override
   void initState() {
     super.initState();
@@ -216,9 +222,37 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_cfgLoaded) {
+      _cfgLoaded = true;
+      _loadCfg();
+    }
+  }
+
+  @override
   void dispose() {
     cdt?.cancel();
     super.dispose();
+  }
+
+  /// 拉注册设置与人机验证配置。验证码未启用时不再拦「请先完成人机验证」。
+  Future<void> _loadCfg() async {
+    final net = context.appRead.net;
+    if (net == null) return;
+    final reg = RegistrationApi(net.client);
+    try {
+      final s = await reg.settings();
+      final c = await reg.captcha();
+      if (!mounted) return;
+      setState(() {
+        regCfg = s;
+        cap = c;
+        if (c.none) capOk = true;
+      });
+    } on ApiException catch (_) {
+      // 配置拉不到：界面保持默认（含验证码位），提交时由服务端给出具体错误
+    }
   }
 
   void _err(Map<String, String> e) => setState(() {
@@ -236,21 +270,52 @@ class _LoginPageState extends State<LoginPage> {
     f();
   }
 
-  void _send() {
-    if (cd > 0) return;
-    if (!_isEmail.hasMatch(email.text)) return _err({'email': '先填写正确的邮箱'});
-    if (!capOk) {
-      capKey.currentState?.fail('请先完成人机验证');
-      return;
-    }
+  void _startCountdown() {
     setState(() => cd = 60);
-    toast('验证码已发送至 ${email.text.replaceFirstMapped(RegExp(r'^(.).*(@.*)$'), (m) => '${m[1]}***${m[2]}')}', 'mail');
     cdt?.cancel();
     cdt = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) return t.cancel();
       setState(() => cd--);
       if (cd <= 0) t.cancel();
     });
+  }
+
+  String get _maskedEmail => email.text.replaceFirstMapped(RegExp(r'^(.).*(@.*)$'), (m) => '${m[1]}***${m[2]}');
+
+  /// 注册页需要真实人机验证但客户端还没接 WebView 组件（captcha.la）时拦下来，说清原因。
+  bool get _blockedByRealCaptcha => cap != null && !cap!.none;
+
+  void _send() {
+    if (cd > 0) return;
+    if (!_isEmail.hasMatch(email.text)) return _err({'email': '先填写正确的邮箱'});
+    final net = context.appRead.net;
+    if (net == null) {
+      // 演示 / 截图：本地验证码 + 假倒计时
+      if (!capOk) {
+        capKey.currentState?.fail('请先完成人机验证');
+        return;
+      }
+      _startCountdown();
+      toast('验证码已发送至 $_maskedEmail', 'mail');
+      return;
+    }
+    if (_blockedByRealCaptcha) {
+      toast('此服务器已开启人机验证，当前版本暂未接入验证组件，请联系服务端临时关闭', 'info');
+      return;
+    }
+    _sendCode(net);
+  }
+
+  Future<void> _sendCode(Net net) async {
+    try {
+      // 人机验证未启用时 passToken 传空；启用的场景见 _blockedByRealCaptcha
+      await RegistrationApi(net.client).sendCode(email.text.trim(), '');
+      if (!mounted) return;
+      _startCountdown();
+      toast('验证码已发送至 $_maskedEmail', 'mail');
+    } on ApiException catch (e) {
+      if (mounted && !e.isCancelled) toast(e.userMessage, 'info');
+    }
   }
 
   Future<void> _login() async {
@@ -293,18 +358,70 @@ class _LoginPageState extends State<LoginPage> {
     final e = <String, String>{};
     if (!_isEmail.hasMatch(email.text)) e['email'] = '邮箱格式不正确';
     if (pwScore(rpwd.text) < 2 || rpwd.text.length < 8) e['rpwd'] = '密码至少 8 位，并包含数字或字母大小写';
-    if (!capOk) {
-      if (e.isNotEmpty) return _err(e);
-      capKey.currentState?.fail('请先完成人机验证');
-      return;
-    }
-    if (!RegExp(r'^\d{6}$').hasMatch(code.text)) e['code'] = '请输入 6 位邮箱验证码';
+    if (regCfg?.emailVerificationRequired != false && !RegExp(r'^\d{6}$').hasMatch(code.text)) e['code'] = '请输入 6 位邮箱验证码';
     if (e.isNotEmpty) return _err(e);
     if (!app.agreed) {
       toast('请先勾选同意协议', 'info');
       return;
     }
-    _busy(() => setState(() => done = true));
+    final net = app.net;
+    if (net == null) {
+      // 演示 / 截图
+      if (!capOk) {
+        capKey.currentState?.fail('请先完成人机验证');
+        return;
+      }
+      _busy(() => setState(() => done = true));
+      return;
+    }
+    if (_blockedByRealCaptcha) {
+      toast('此服务器已开启人机验证，当前版本暂未接入验证组件，请联系服务端临时关闭', 'info');
+      return;
+    }
+    _doRegister(net);
+  }
+
+  Future<void> _doRegister(Net net) async {
+    setState(() => busy = true);
+    try {
+      final data = await RegistrationApi(net.client).register(
+        email: email.text.trim(),
+        password: rpwd.text,
+        verificationCode: regCfg?.emailVerificationRequired == false ? '' : code.text.trim(),
+      );
+      // 注册即登录：保存令牌（会话由网络层持久化），成功后进主界面
+      await net.auth.signedIn(data);
+      if (!mounted) return;
+      setState(() {
+        busy = false;
+        done = true;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => busy = false);
+      if (!e.isCancelled) toast(e.userMessage, 'info');
+    }
+  }
+
+  /// 注册表单里的人机验证区块。
+  /// 演示 / 截图（net == null）：本地演示验证码；
+  /// 服务端未启用（type none）：不显示，passToken 传空即可；
+  /// captchala：WebView 组件待接入，显示说明卡（发送验证码 / 注册时也会拦下）。
+  Widget? _captchaArea() {
+    final net = context.appRead.net;
+    if (net == null) return Captcha(key: capKey, onPass: (v) => setState(() => capOk = v));
+    final c = cap;
+    if (c == null || c.none) return null;
+    final pal = context.pal;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: pal.warn.withValues(alpha: .08), borderRadius: BorderRadius.circular(16), border: Border.all(color: pal.warn.withValues(alpha: .35))),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Icon(ic('shield'), size: 16, color: pal.warn),
+        const SizedBox(width: 8),
+        Expanded(child: Text('此服务器已开启人机验证（captcha.la），移动端验证组件将在后续版本接入，当前暂无法注册。', style: ts(12, c: pal.t2, h: 1.5))),
+      ]),
+    );
   }
 
   @override
@@ -345,19 +462,38 @@ class _LoginPageState extends State<LoginPage> {
       ]);
     } else {
       final sc = pwScore(rpwd.text);
+      final needCode = regCfg?.emailVerificationRequired != false;
+      final regClosed = regCfg?.open == false;
+      final capW = _captchaArea();
       form = Column(key: const ValueKey('reg'), crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (regClosed) ...[
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: const Color(0x14FFFFFF), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0x1AFFFFFF))),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Icon(ic('info'), size: 16, color: const Color(0xB3FFFFFF)),
+              const SizedBox(width: 8),
+              Expanded(child: Text('当前服务器已关闭注册，稍后再来看看', style: ts(12.5, c: const Color(0xCCFFFFFF), h: 1.5))),
+            ]),
+          ),
+          const SizedBox(height: 12),
+        ],
         LField(controller: email, label: '邮箱', icon: 'mail', ok: _isEmail.hasMatch(email.text), error: err['email'], shake: err.containsKey('email') ? shake : 0, keyboard: TextInputType.emailAddress, onChanged: (_) => setState(() => err.remove('email'))),
         const SizedBox(height: 12),
         LField(controller: rpwd, label: '设置密码', icon: 'lock', password: true, error: err['rpwd'], shake: err.containsKey('rpwd') ? shake : 0, onChanged: (_) => setState(() => err.remove('rpwd'))),
         _PwMeter(sc),
-        const SizedBox(height: 12),
-        Captcha(key: capKey, onPass: (v) => setState(() => capOk = v)),
-        const SizedBox(height: 12),
-        LField(controller: code, label: '邮箱验证码', icon: 'key', keyboard: TextInputType.number, error: err['code'], shake: err.containsKey('code') ? shake : 0, suffix: cd > 0 ? '${cd}s' : '获取验证码', onSuffix: _send, onChanged: (_) => setState(() => err.remove('code'))),
+        if (capW != null) ...[
+          const SizedBox(height: 12),
+          capW,
+        ],
+        if (needCode) ...[
+          const SizedBox(height: 12),
+          LField(controller: code, label: '邮箱验证码', icon: 'key', keyboard: TextInputType.number, error: err['code'], shake: err.containsKey('code') ? shake : 0, suffix: cd > 0 ? '${cd}s' : '获取验证码', onSuffix: _send, onChanged: (_) => setState(() => err.remove('code'))),
+        ],
         const SizedBox(height: 12),
         Press(onTap: () => app.update(() => app.agreed = !app.agreed), child: Row(children: [_Check(app.agreed), const SizedBox(width: 8), Expanded(child: Text('我已阅读并同意《用户协议》与《隐私政策》', style: ts(12.5, c: const Color(0xB3FFFFFF))))])),
         const SizedBox(height: 16),
-        Btn('注册', block: true, busy: busy, onTap: _register),
+        Btn('注册', block: true, busy: busy, onTap: regClosed ? null : _register),
       ]);
     }
     return Scaffold(
