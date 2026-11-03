@@ -289,7 +289,7 @@ TencentLyricText? _parseQrcLines(String value) {
     if (tail.isNotEmpty) {
       final prev = words.isEmpty ? null : words.last;
       final int start = prev == null ? lineStart : max(lineStart, prev.start + max(prev.duration, 0));
-      words.add((text: tail, start: start, duration: max(0, lineEnd - start)));
+      words.add((text: tail, start: start, duration: max<int>(0, lineEnd - start)));
     }
     final visible = words.map((w) => w.text).join().trim();
     if (visible.isEmpty) continue;
