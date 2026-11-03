@@ -4,6 +4,11 @@ analyzer:
   errors:
     unused_import: warning
     dead_code: info
+  exclude:
+    - build/**
+    - android/**
+    - ios/**
+    - web/**
 
 linter:
   rules:
