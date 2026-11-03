@@ -7,6 +7,8 @@ import '../core/tokens.dart';
 import '../data/models.dart';
 
 class Cover extends StatelessWidget {
+  /// 封面图请求统一 UA：网易 / QQ 等图床按 UA 拦截 Dart 默认 UA（403）。
+  static const ua = 'Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36';
   final double hue;
   final int variant;
   final double size;
@@ -60,6 +62,9 @@ class Cover extends StatelessWidget {
     if (u == null) return child;
     final img = Image.network(
       u,
+      // 网易 / QQ 等图床按 UA 拦截：默认的 Dart/3.x UA 会被 403（封面全部落进渐变兜底），
+      // 必须带浏览器 UA（统一常量）。若某平台仍拒绝，errorBuilder 静默退回渐变。
+      headers: const {'User-Agent': Cover.ua},
       fit: BoxFit.cover,
       width: double.infinity,
       height: double.infinity,
