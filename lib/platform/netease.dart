@@ -8,7 +8,6 @@
 import 'dart:convert';
 
 import '../net/json.dart';
-import 'http.dart';
 import 'lyric_parse.dart';
 import 'models.dart';
 import 'netease_crypto.dart';

@@ -22,7 +22,7 @@ Uint8List _unpad(Uint8List data) {
   return p > 0 && p <= 16 && p <= data.length ? Uint8List.sublistView(data, 0, data.length - p) : data;
 }
 
-Uint8List _run(BlockCipherMode cipher, Uint8List input) {
+Uint8List _run(BlockCipher cipher, Uint8List input) {
   final out = Uint8List(input.length);
   for (var o = 0; o < input.length; o += 16) {
     cipher.processBlock(input, o, out, o);
