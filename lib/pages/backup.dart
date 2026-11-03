@@ -93,7 +93,8 @@ class _BackupPageState extends State<BackupPage> {
         final sub = switch (st.phase) {
           SyncPhase.error => st.error ?? '请稍后重试',
           _ when !app.isSponsor => '激活后设置与音乐库会自动同步到你的其它设备',
-          _ => '最后同步 ${_ago(st.lastSyncAt)}${app.cloud.engine!.running ? (st.realtime ? ' · 实时通知已连接' : ' · 每 5 分钟检查') : ''}',
+          // 原型状态卡：收藏 / 歌单计数 + 最后同步时间
+          _ => '收藏 ${app.liked.length} · 歌单 ${app.myPlaylists.length} · 最后同步 ${_ago(st.lastSyncAt)}${app.cloud.engine!.running ? (st.realtime ? ' · 实时通知已连接' : ' · 每 5 分钟检查') : ''}',
         };
         return SubPage(title: '备份与同步', children: [
           CardBox(
