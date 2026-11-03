@@ -9,7 +9,7 @@
 lib/audio/
   audio_engine.dart    引擎：just_audio 封装 + 音频焦点 + EQ 下发 + 通知刷新
   media_handler.dart   audio_service MediaSession：通知栏卡片与按钮（含自定义收藏）
-  track_resolver.dart  「曲目 → 可播 URI」接口；DemoTrackResolver 为测试桩
+  track_resolver.dart  「曲目 → 可播 URI」接口（实现：lib/source/music_resolver.dart）；DemoTrackResolver 为测试桩
   equalizer.dart       UI 10 段曲线 → 设备实际波段的映射（纯逻辑）
   formats.dart         格式支持矩阵与识别（纯逻辑）
 ```
@@ -23,8 +23,8 @@ UI（播放器/迷你条/SongRow）
 AppState（队列与播放态仍是唯一事实源）
    │  playSong(song)                    ▲ position / duration / playing / completed 回调
    ▼                                    │
-AudioEngine ── TrackResolver.resolve ──► URI（现在：DemoTrackResolver 测试桩；
-   │                                     将来：Kiro 的音源脚本运行时实现同一接口）
+AudioEngine ── TrackResolver.resolve ──► URI（MusicResolver：洛雪音源脚本在 QuickJS 里解析，
+   │                                     见 lib/source/；DemoTrackResolver 只留给单元测试）
    ├─ just_audio（Media3 / AVPlayer）
    ├─ audio_session（音频焦点：来电、他 App 播放 → 自动暂停恢复）
    └─ LyraMediaHandler（audio_service）──► 系统媒体通知（含收藏按钮）

@@ -242,7 +242,7 @@ class _RemoteCollectionPageState extends State<RemoteCollectionPage> {
                 app.play(q.first, name: listName, ids: q);
               }),
               const SizedBox(width: 10),
-              IBtn('download', size: 48, bg: pal.s2, onTap: () => toast('下载需要先接入音源解析', 'info')),
+              IBtn('download', size: 48, bg: pal.s2, onTap: () => toast('下载功能还在开发中', 'info')),
               if (widget.type == CatalogType.playlist) ...[
                 const SizedBox(width: 10),
                 IBtn(collected != null ? 'heartf' : 'heart', size: 48, bg: pal.s2, color: collected != null ? pal.accText : null, onTap: () {
@@ -334,7 +334,7 @@ class _RemoteCollectionPageState extends State<RemoteCollectionPage> {
                 toast(n > 0 ? '已收藏 $n 首到「我喜欢」' : '选中的歌都已收藏', 'heartf');
               }),
               ('plus', '加歌单', () => openAddToPlaylist(context, sel.first)),
-              ('download', '下载', () => toast('下载需要先接入音源解析', 'info')),
+              ('download', '下载', () => toast('下载功能还在开发中', 'info')),
             ])
               Opacity(opacity: sel.isEmpty ? .4 : 1, child: Press(onTap: sel.isEmpty ? null : f, child: Padding(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), child: Column(children: [Icon(ic(i), size: 20, color: pal.t1), Text(l, style: ts(10.5, c: pal.t2))])))),
           ]),

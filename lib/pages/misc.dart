@@ -163,7 +163,7 @@ class _DownloadPageState extends State<DownloadPage> {
     final pal = context.pal;
     final s = app.set;
     return SubPage(title: '下载管理', children: [
-      if (app.online) const EmptyState('download', '暂无下载任务', desc: '下载需要先接入音源解析，接入后可以在歌曲的「···」里下载。'),
+      if (app.online) const EmptyState('download', '暂无下载任务', desc: '下载功能还在开发中，完成后可以在歌曲的「···」里下载。'),
       if (!app.online) Padding(padding: const EdgeInsets.fromLTRB(Tk.pad, 0, 0, 6), child: Text('正在下载 · 2', style: ts(12.5, w: FontWeight.w600, c: pal.t3))),
       if (!app.online)
       for (final (id, p, t) in const [(13, .62, '12.4 / 20.1 MB'), (20, .18, '6.0 / 33.6 MB')])
