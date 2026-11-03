@@ -17,6 +17,10 @@ class Song {
 
   /// 没有正在播放的歌时给预览 / 占位用（设置页的背景、歌词预览等）。
   static const placeholder = Song(-1, 'Lyra', '', '', 0, '', 260, 2);
+
+  /// 复制并覆盖部分字段（真实播放时用引擎返回的实际时长替换 mock 时长）。
+  /// key / cover 必须跟随复制（真实歌曲的标识与封面不能丢）。
+  Song copyWith({int? dur}) => Song(id, title, artist, album, dur ?? this.dur, quality, hue, variant, key: key, cover: cover);
 }
 
 class Playlist {

@@ -1,9 +1,13 @@
 import 'dart:async';
 // Lyra（暂名）· Flutter 移动端（mock 数据版）
 // 入口：AppScope（全局状态）→ MaterialApp（主题随设置实时切换）→ 鉴权流程 / 主界面。
+import 'package:audio_service/audio_service.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'audio/audio_engine.dart';
+import 'audio/media_handler.dart';
+import 'audio/track_resolver.dart';
 import 'auth/auth.dart';
 import 'core/shots.dart';
 import 'core/state.dart';
@@ -23,7 +27,24 @@ Future<void> main() async {
   // 截图模式不连后端，页面全部用 mock 数据
   final net = shot != null ? null : await Net.create();
   net?.session.onEnd.where((r) => r == SessionEnd.expired).listen((_) => toast('登录已失效，请重新登录', 'lock'));
-  final app = AppState(net: net)..notice = toast;
+  // 音频引擎：截图模式不创建（无平台通道，保持模拟时钟），正式运行才有真实播放 + 通知栏
+  AudioEngine? engine;
+  if (shot == null) {
+    final handler = LyraMediaHandler();
+    await AudioService.init(
+      builder: () => handler,
+      config: const AudioServiceConfig(
+        androidNotificationChannelId: 'app.lyra.mobile.playback',
+        androidNotificationChannelName: '正在播放',
+        androidNotificationOngoing: true,
+        androidStopForegroundOnPause: true,
+      ),
+    );
+    engine = AudioEngine(resolver: DemoTrackResolver());
+    await engine.init(handler);
+    engine.onError = (msg) => toast(msg, 'info');
+  }
+  final app = AppState(net: net, engine: engine)..notice = toast;
   await app.cloud.init(); // 读本地听歌统计
   await app.telemetry.init(); // 读上次没发完的埋点
   app.restoreSession();
