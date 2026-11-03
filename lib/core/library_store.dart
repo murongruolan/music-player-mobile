@@ -103,8 +103,18 @@ class LibraryStore implements LibraryBinding {
       kind: p.kind,
       updatedAt: p.updatedAt,
       createdAt: p.createdAt,
-      cover: p.cover,
+      cover: _displayCover(p.cover, ids),
     );
+  }
+
+  /// 歌单显示用的封面：歌单自己的封面，没有就用第一首有封面的歌。
+  String? _displayCover(String? own, List<int> ids) {
+    if (own != null && own.isNotEmpty) return own;
+    for (final id in ids) {
+      final c = _tracks[id]?.cover;
+      if (c != null && c.isNotEmpty) return c;
+    }
+    return null;
   }
 
   CloudPlaylist _toCloud(Playlist p) {
@@ -113,7 +123,8 @@ class LibraryStore implements LibraryBinding {
       id: p.key!,
       name: p.title,
       description: raw?.description ?? '',
-      cover: p.cover,
+      // 只同步歌单自己的封面，不把「第一首歌的封面」写回云端
+      cover: raw?.cover,
       kind: p.kind,
       platform: p.platform,
       externalId: p.externalId,
@@ -182,7 +193,7 @@ class LibraryStore implements LibraryBinding {
   }
 
   void _replace(int i, Playlist p, List<int> ids) {
-    _app.myPlaylists[i] = Playlist(p.id, p.title, count: ids.length, hue: p.hue, variant: p.variant, mine: true, tag: p.tag, ids: ids, key: p.key, platform: p.platform, externalId: p.externalId, kind: p.kind, updatedAt: DateTime.now().toUtc(), createdAt: p.createdAt, cover: p.cover);
+    _app.myPlaylists[i] = Playlist(p.id, p.title, count: ids.length, hue: p.hue, variant: p.variant, mine: true, tag: p.tag, ids: ids, key: p.key, platform: p.platform, externalId: p.externalId, kind: p.kind, updatedAt: DateTime.now().toUtc(), createdAt: p.createdAt, cover: _displayCover(_plRaw[p.id]?.cover, ids));
     _changed();
   }
 

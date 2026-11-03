@@ -85,7 +85,7 @@ class _OnlineDiscoverState extends State<_OnlineDiscover> {
                     ('sun', '每日混音', () => app.update(() => app.tab = 2)),
                     ('wave', '私人电台', () {
                       final ids = [...d.hot]..shuffle();
-                      if (ids.isNotEmpty) app.play(ids.first, list: 'all', name: '私人电台');
+                      if (ids.isNotEmpty) app.play(ids.first, name: '私人电台', ids: ids);
                     }),
                     ('mic', '听歌识曲', () => pushFull(context, const ScanPage(match: true))),
                     ('chart', '排行榜', () => app.update(() => app.homeTab = '榜单')),
@@ -202,7 +202,7 @@ class _OnlineTabs extends StatelessWidget {
           CardBox(
             padding: const EdgeInsets.symmetric(vertical: 6),
             child: Column(children: [
-              for (final (i, id) in hot.take(5).indexed) SongRow(songs[id], num: i, list: 'all', listName: d.hotBoard?.title ?? '热门榜单', swipe: false, tail: HeartBtn(id)),
+              for (final (i, id) in hot.take(5).indexed) SongRow(songs[id], num: i, list: 'all', listName: d.hotBoard?.title ?? '热门榜单', swipe: false, tail: HeartBtn(id), queue: hot),
             ]),
           ),
         ],
@@ -405,7 +405,7 @@ class _OnlinePlatRec extends StatelessWidget {
             if (ids.isEmpty) return const SizedBox.shrink();
             return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Sec('新鲜上架', more: '全部', onMore: () => openCatalog(context, b)),
-              for (final id in ids.take(4)) SongRow(songs[id], list: 'all', listName: b.title, swipe: false, tail: HeartBtn(id)),
+              for (final id in ids.take(4)) SongRow(songs[id], list: 'all', listName: b.title, swipe: false, tail: HeartBtn(id), queue: ids),
             ]);
           },
         );
@@ -517,7 +517,7 @@ class _NewSongsState extends State<_NewSongs> {
                     Builder(builder: (_) {
                       final s = songs[ids[pg * 3 + r]];
                       return Press(
-                        onTap: () => app.play(s.id, list: 'all', name: b.title),
+                        onTap: () => app.play(s.id, name: b.title, ids: ids),
                         child: SizedBox(
                           height: 60,
                           child: Row(children: [

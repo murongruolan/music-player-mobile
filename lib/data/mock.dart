@@ -67,7 +67,11 @@ const _lyrics = [
   ['天亮之前 我们不说再见', 'Before daybreak, we don’t say goodbye'],
   ['只把灯 留给下一次遇见', 'We only leave the light on for the next time we meet'],
 ];
-final lyrics = [
+final lyrics = [..._mockLyrics];
+
+/// 设置页里的歌词预览固定用演示歌词（联网模式下 [lyrics] 是当前歌曲的真实歌词，行数不定）。
+final previewLyrics = List<LyricLine>.unmodifiable(_mockLyrics);
+final _mockLyrics = [
   for (var i = 0; i < _lyrics.length; i++)
     LyricLine(4 + i * 5.2, 5.2, _lyrics[i][0], _lyrics[i][1], i < 6 ? '主歌' : i < 10 ? '副歌' : i < 12 ? '桥段' : '副歌'),
 ];

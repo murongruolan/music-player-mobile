@@ -98,11 +98,19 @@ class _PlaylistPageState extends State<PlaylistPage> {
           Padding(
             padding: const EdgeInsets.fromLTRB(Tk.pad, 18, Tk.pad, 0),
             child: Row(children: [
-              Expanded(child: Btn('播放全部', icon: 'play', onTap: () => app.playAll(widget.id == 100 ? 'like' : 'all', name: listName))),
+              Expanded(child: Btn('播放全部', icon: 'play', onTap: () {
+                if (!online) return app.playAll(widget.id == 100 ? 'like' : 'all', name: listName);
+                if (ids.isNotEmpty) app.play(ids.first, name: listName, ids: ids);
+              })),
               const SizedBox(width: 10),
-              IBtn('shuffle', size: 48, bg: pal.s2, onTap: () => app.playAll(widget.id == 100 ? 'like' : 'all', shuffle: true, name: listName)),
+              IBtn('shuffle', size: 48, bg: pal.s2, onTap: () {
+                if (!online) return app.playAll(widget.id == 100 ? 'like' : 'all', shuffle: true, name: listName);
+                if (ids.isEmpty) return;
+                final q = [...ids]..shuffle();
+                app.play(q.first, name: listName, ids: q);
+              }),
               const SizedBox(width: 10),
-              IBtn('download', size: 48, bg: pal.s2, onTap: () => online ? toast('下载需要先接入音源解析', 'info') : toast('已加入下载队列 · ${pl.count} 首', 'download')),
+              IBtn('download', size: 48, bg: pal.s2, onTap: () => online ? toast('下载功能还在开发中', 'info') : toast('已加入下载队列 · ${pl.count} 首', 'download')),
               const SizedBox(width: 10),
               if (online && widget.id != 100)
                 IBtn('trash', size: 48, bg: pal.s2, onTap: () => showLDialog(context, icon: 'trash', iconColor: pal.danger, title: '删除歌单「${pl.title}」？', body: '歌单里的歌不会从「我喜欢」中移除。', actions: [
@@ -151,7 +159,7 @@ class _PlaylistPageState extends State<PlaylistPage> {
                     ]),
                   ),
                 )
-              : SongRow(songs[id], key: ValueKey(id), list: widget.id == 100 ? 'like' : 'all', listName: listName, heart: widget.id == 100),
+              : SongRow(songs[id], key: ValueKey(id), list: widget.id == 100 ? 'like' : 'all', listName: listName, heart: widget.id == 100, queue: online ? ids : null),
       ],
     );
   }
@@ -236,7 +244,7 @@ class _ArtistPageState extends State<ArtistPage> {
         child: ShaderMask(
           shaderCallback: (r) => const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.black, Colors.black, Colors.transparent], stops: [0, .55, 1]).createShader(r),
           blendMode: BlendMode.dstIn,
-          child: Transform.scale(scale: 1 + math.max(0, -y) / 380, child: Cover(hue: s.hue, variant: 1, size: 0, radius: 0)),
+          child: Transform.scale(scale: 1 + math.max(0, -y) / 380, child: Cover(hue: s.hue, variant: 1, size: 0, radius: 0, url: app.online ? mine.where((x) => x.cover != null).firstOrNull?.cover ?? s.cover : null)),
         ),
       ),
       children: [
@@ -248,7 +256,10 @@ class _ArtistPageState extends State<ArtistPage> {
             Text(app.online ? '音乐库里 ${mine.length} 首' : '12.4 万关注 · 本月 38 万次聆听', style: ts(13, c: pal.t2)),
             const SizedBox(height: 16),
             Row(children: [
-              Btn('播放热门', icon: 'play', onTap: () => app.playAll('all', name: '${s.artist} · 热门')),
+              Btn('播放热门', icon: 'play', onTap: () {
+                if (!app.online) return app.playAll('all', name: '${s.artist} · 热门');
+                if (mine.isNotEmpty) app.play(mine.first.id, name: s.artist, ids: [for (final x in mine) x.id]);
+              }),
               const SizedBox(width: 10),
               Btn.sec('歌手电台', icon: 'wave', onTap: () {
                 app.playAll('hot', shuffle: true, name: '${s.artist} 电台');
@@ -258,7 +269,7 @@ class _ArtistPageState extends State<ArtistPage> {
           ]),
         ),
         Sec(app.online ? '音乐库里的歌' : '热门歌曲'),
-        for (final (i, x) in mine.indexed) SongRow(x, num: i, list: 'all', listName: '${s.artist} · 热门'),
+        for (final (i, x) in mine.indexed) SongRow(x, num: i, list: 'all', listName: '${s.artist} · 热门', queue: app.online ? [for (final y in mine) y.id] : null),
         if (!app.online) const Sec('专辑'),
         if (!app.online) HScroll(height: 186, gap: 26, children: [for (final (i, id) in [s.id, (s.id + 8) % 24, (s.id + 16) % 24].indexed) AlbumCard(songs[id], onTap: () => push(context, PlaylistPage(id: i, chartName: songs[id].album)))]),
       ],

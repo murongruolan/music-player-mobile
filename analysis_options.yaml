@@ -9,6 +9,7 @@ analyzer:
     - android/**
     - ios/**
     - web/**
+    - third_party/**
 
 linter:
   rules:
