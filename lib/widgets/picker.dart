@@ -154,9 +154,15 @@ class _PickerPanelState extends State<_PickerPanel> {
                   SizedBox(
                     width: w,
                     child: Press(
-                      onTap: () {
+                      onTap: () async {
                         haptic(context);
+                        if (p.id == app.plat) return Navigator.of(context).pop(); // 点当前平台：仅收起面板
                         app.switchPlatform(p.id);
+                        // 与下方音源行同款手感：让选中态动画播一下再收起，不用手动点空白关闭
+                        await Future.delayed(const Duration(milliseconds: 280));
+                        if (!context.mounted) return;
+                        Navigator.of(context).pop();
+                        toast('平台：${p.name}', 'grid');
                       },
                       child: Column(children: [
                         const SizedBox(height: 4),
