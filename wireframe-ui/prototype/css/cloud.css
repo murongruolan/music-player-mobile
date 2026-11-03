@@ -1,0 +1,201 @@
+/* v4.1 · 音乐云盘（WebDAV）。只用 tokens.css 里的令牌，深浅色自动适配。 */
+
+/* 服务商徽标 */
+.dv-pb{display:inline-flex;align-items:center;justify-content:center;flex:none;border-radius:30%;color:#fff;font-weight:750;box-shadow:inset 0 0 0 1px rgba(255,255,255,.14)}
+
+/* 空状态 */
+.dv-hero{text-align:center;padding:18px 36px 6px}
+.dv-hero-art{position:relative;width:132px;height:110px;margin:6px auto 18px;display:flex;align-items:center;justify-content:center}
+.dv-hero-art>svg{width:64px;height:64px;color:var(--accent-text);stroke-width:1.6;position:relative;z-index:1;filter:drop-shadow(0 8px 20px var(--accent-glow))}
+.dv-hero-art i{position:absolute;border-radius:50%;border:1px solid var(--line-strong);animation:dvRing 3.2s var(--ease-out) infinite}
+.dv-hero-art i:nth-child(1){inset:30px 40px}
+.dv-hero-art i:nth-child(2){inset:14px 22px;animation-delay:.6s}
+.dv-hero-art i:nth-child(3){inset:-2px 4px;animation-delay:1.2s}
+@keyframes dvRing{0%{transform:scale(.8);opacity:0}30%{opacity:1}100%{transform:scale(1.15);opacity:0}}
+.dv-hero h2{font-size:21px;font-weight:750}
+.dv-hero p{font-size:13.5px;color:var(--t2);line-height:1.6;margin-top:8px}
+.dv-why{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:18px}
+.dv-why div{background:var(--s1);border:1px solid var(--line);border-radius:var(--r-md);padding:12px 10px}
+.dv-why span{display:flex;width:30px;height:30px;border-radius:10px;background:var(--accent-soft);color:var(--accent-text);align-items:center;justify-content:center;margin-bottom:8px}
+.dv-why span svg{width:17px;height:17px}
+.dv-why b{display:block;font-size:13px} .dv-why small{display:block;font-size:11px;color:var(--t3);line-height:1.45;margin-top:3px}
+
+/* 服务商选择 */
+.dv-prov{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.dv-prov button{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:12px;border-radius:var(--r-md);background:var(--s1);border:1px solid var(--line);text-align:left;transition:transform var(--d-fast) var(--ease-std)}
+.dv-prov button:active{transform:scale(.97)}
+.dv-prov button b{font-size:13.5px} .dv-prov button small{font-size:10.5px;color:var(--t3);line-height:1.4}
+.dv-prov.list{grid-template-columns:1fr;gap:8px}
+.dv-prov.list button{flex-direction:row;align-items:center;gap:12px;padding:12px 14px}
+.dv-prov.list button div{flex:1;min-width:0} .dv-prov.list button small{font-size:12px;display:block;margin-top:2px}
+.dv-prov.list button>svg{width:18px;height:18px;color:var(--t3)}
+.dv-prov.list button.on{border-color:color-mix(in srgb,var(--accent) 45%,transparent);background:var(--accent-soft)}
+
+/* 步骤条 */
+.dv-steps{display:flex;align-items:center;gap:10px;padding:2px var(--pad) 14px;font-size:12.5px;color:var(--t3)}
+.dv-steps b{font-weight:600} .dv-steps b.on{color:var(--accent-text)}
+.dv-steps i{flex:1;height:2px;border-radius:1px;background:var(--s3)} .dv-steps i.on{background:var(--accent)}
+
+/* 表单 */
+.dv-form label{display:block;font-size:12px;font-weight:600;color:var(--t3);margin:14px 2px 6px}
+.dv-form label:first-child{margin-top:0}
+.dv-form .fld input{flex:1;min-width:0;background:none;border:0;color:var(--t1);font:inherit;font-size:15px;outline:none}
+.dv-form .fld.err{border-color:color-mix(in srgb,var(--danger) 60%,transparent)}
+.dv-form .fld>svg:last-child{color:var(--t3)}
+.dv-sel{display:flex;align-items:center;gap:2px;font-size:13px;color:var(--accent-text)} .dv-sel svg{width:16px;height:16px}
+.dv-adv{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--t2);padding:14px 2px 10px}
+.dv-adv svg{width:16px;height:16px}
+.dv-foot{display:flex;gap:10px;margin-top:16px}
+.dv-foot .btn{flex:1} .dv-foot .btn.pri{flex:1.3}
+.btn.dim{opacity:.5}
+
+/* 测试结果 */
+.dv-test{display:flex;gap:12px;margin:14px var(--pad) 0;padding:14px;border-radius:var(--r-md);background:var(--s1);border:1px solid var(--line);animation:popIn 420ms var(--ease-spring)}
+.dv-test>svg{width:22px;height:22px;flex:none;margin-top:1px}
+.dv-test b{display:block;font-size:14.5px} .dv-test small{display:block;font-size:12.5px;color:var(--t2);line-height:1.55;margin-top:3px}
+.dv-test .chip{margin-top:10px;height:30px;font-size:12.5px}
+.dv-test ul{list-style:none;margin-top:8px;display:grid;gap:4px} .dv-test li{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--t2)} .dv-test li svg{width:14px;height:14px;color:var(--ok)}
+.dv-test.ok{border-color:color-mix(in srgb,var(--ok) 35%,transparent)} .dv-test.ok>svg{color:var(--ok)}
+.dv-test.bad{border-color:color-mix(in srgb,var(--danger) 35%,transparent)} .dv-test.bad>svg{color:var(--danger)}
+.dv-test.warn{border-color:color-mix(in srgb,var(--warn) 35%,transparent)} .dv-test.warn>svg{color:var(--warn)}
+.dv-test.ing{align-items:center}
+
+/* 当前服务器卡 */
+.dv-srv{display:flex;align-items:center;gap:12px;padding:14px;margin-bottom:12px}
+.dv-srv-ic{position:relative}
+.dv-srv-ic i{position:absolute;right:-3px;top:-3px;width:11px;height:11px;border-radius:6px;background:var(--ok);border:2px solid var(--s1);animation:pdot 1.6s infinite}
+.dv-srv.off .dv-srv-ic i{background:var(--danger);animation:none}
+.dv-srv-tx{flex:1;min-width:0}
+.dv-srv-tx b{display:flex;align-items:center;gap:2px;font-size:15.5px}
+.dv-chev svg{width:16px;height:16px;color:var(--t3)}
+.dv-srv-tx small{display:block;font-size:12px;color:var(--t2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dv-srv.off .dv-srv-tx>small{color:var(--danger)}
+.dv-cap{height:4px;border-radius:2px;background:var(--s3);margin-top:8px;overflow:hidden}
+.dv-cap i{display:block;height:100%;border-radius:2px;background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 60%,#fff))}
+.dv-capt{font-size:11px!important;color:var(--t3)!important;margin-top:4px!important}
+.dv-offbar{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:var(--r-md);background:color-mix(in srgb,var(--danger) 12%,var(--s1));border:1px solid color-mix(in srgb,var(--danger) 30%,transparent);margin-bottom:12px;animation:popIn 420ms var(--ease-spring)}
+.dv-offbar>svg{width:20px;height:20px;color:var(--danger);flex:none}
+.dv-offbar div{flex:1;min-width:0} .dv-offbar b{display:block;font-size:14px} .dv-offbar small{display:block;font-size:12px;color:var(--t2);line-height:1.5;margin-top:2px}
+
+/* 音乐页：索引 / 扫描 */
+.dv-idx{padding:14px 16px}
+.dv-idx-n{display:grid;grid-template-columns:repeat(3,1fr)}
+.dv-idx-n div+div{border-left:1px solid var(--line);padding-left:14px}
+.dv-idx-n b{font:750 22px var(--font-num)} .dv-idx-n small{font-size:12px;color:var(--t3);margin-left:3px}
+.dv-idx-f{display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+.dv-idx-f small{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--t3)} .dv-idx-f small svg{width:14px;height:14px}
+.dv-scan{padding:14px 16px;border-color:color-mix(in srgb,var(--accent) 30%,transparent)}
+.dv-scan-h{display:flex;align-items:center;gap:10px} .dv-scan-h b{flex:1;font-size:14px}
+.dv-scan-h .chip{height:28px;font-size:12px}
+.dv-scan>small{display:block;font-size:11.5px;color:var(--t3);margin-top:8px;line-height:1.5}
+.dv-bar{height:6px;border-radius:3px;background:var(--s3);margin-top:12px;overflow:hidden}
+.dv-bar i{display:block;height:100%;border-radius:3px;background:var(--accent);transition:width 400ms var(--ease-out);position:relative;overflow:hidden}
+.dv-bar i::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.45),transparent);animation:dvShine 1.2s linear infinite}
+@keyframes dvShine{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+.dv-views{padding:14px var(--pad) 6px}
+.dv-acts{display:flex;align-items:center;gap:8px;padding:6px var(--pad) 6px}
+.dv-acts .chip{margin-left:auto}
+.dv-acts.center{justify-content:center;gap:12px;padding:16px var(--pad) 8px}
+.dv-acts .ib.big{width:48px;height:48px;border-radius:24px;background:var(--s2)}
+.dv-ft{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:5px;font:700 10px var(--font-num);letter-spacing:.02em;background:var(--s2);color:var(--t2);margin-right:8px;flex:none}
+.dv-ft.lossless{background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok)}
+.dv-ft.hr{background:var(--accent-soft);color:var(--accent-text)}
+.row .dv-ft{margin-right:2px}
+
+/* 专辑网格 */
+.dv-albums{display:grid;grid-template-columns:1fr 1fr;gap:16px 14px;padding:8px var(--pad) 0}
+.dv-alb{animation:fadeUp 420ms var(--ease-out) both;animation-delay:var(--d)}
+.dv-alb .cv{width:100%;aspect-ratio:1;border-radius:var(--r-md);position:relative;box-shadow:var(--shadow-1)}
+.dv-alb b{display:block;font-size:13.5px;margin-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dv-alb small{display:block;font-size:12px;color:var(--t3);margin-top:2px}
+.dv-hr{position:absolute;left:8px;top:8px;height:20px;padding:0 7px;border-radius:6px;background:rgba(0,0,0,.5);backdrop-filter:blur(8px);color:#F4D28A;font:700 10.5px var(--font-num);display:flex;align-items:center}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+/* 文件浏览 */
+.dv-crumb{display:flex;align-items:center;gap:2px;overflow-x:auto;padding:4px var(--pad) 8px;scrollbar-width:none}
+.dv-crumb::-webkit-scrollbar{display:none}
+.dv-crumb button{display:flex;align-items:center;gap:5px;height:30px;padding:0 10px;border-radius:15px;font-size:13px;color:var(--t2);white-space:nowrap;flex:none}
+.dv-crumb button svg{width:15px;height:15px}
+.dv-crumb button.on{background:var(--s2);color:var(--t1);font-weight:650}
+.dv-crumb span svg{width:14px;height:14px;color:var(--t4)}
+.dv-crumb.sheet{padding-top:0}
+.dv-tools{display:flex;align-items:center;gap:8px;padding:0 10px 10px var(--pad)}
+.dv-tools small{flex:1;font-size:12px;color:var(--t3)}
+.dv-tools .chip{height:30px;font-size:12px}
+.dv-list{overflow:hidden}
+.dv-row{display:flex;align-items:center;gap:12px;min-height:60px;padding:8px 6px 8px 14px;position:relative}
+.dv-row+.dv-row::before{content:"";position:absolute;top:0;left:62px;right:0;height:1px;background:var(--line)}
+.dv-row:active{background:var(--s2)}
+.dv-fi{width:36px;height:36px;border-radius:10px;background:color-mix(in srgb,var(--info) 16%,transparent);color:var(--info);display:flex;align-items:center;justify-content:center;flex:none}
+.dv-fi svg{width:19px;height:19px}
+.dv-row .dv-cv{width:36px;height:36px;border-radius:8px;flex:none}
+.dv-tx{flex:1;min-width:0}
+.dv-tx b{display:block;font-size:14.5px;font-weight:550;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dv-tx small{display:flex;align-items:center;font-size:11.5px;color:var(--t3);margin-top:3px;white-space:nowrap;overflow:hidden}
+.dv-tx small span{overflow:hidden;text-overflow:ellipsis}
+.dv-go{color:var(--t3);padding-right:8px;display:flex} .dv-go svg{width:18px;height:18px}
+.dv-side{display:flex;gap:2px;color:var(--t3)} .dv-side i{display:flex} .dv-side svg{width:14px;height:14px}
+.dv-row.off{opacity:.5}
+.dv-row.off .dv-fi{background:var(--s2);color:var(--t3)}
+.dv-other{display:flex;align-items:center;gap:8px;margin:10px var(--pad) 0;font-size:12px;color:var(--t3)}
+.dv-other svg{width:15px;height:15px;flex:none}
+.dv-emptydir{padding:36px 0;text-align:center;font-size:13px;color:var(--t3)}
+
+/* 备份 */
+.dv-bk-st{display:flex;align-items:center;gap:12px;padding:14px;margin-bottom:14px}
+.dv-bk-ic{width:42px;height:42px;border-radius:13px;background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok);display:flex;align-items:center;justify-content:center;flex:none}
+.dv-bk-ic svg{width:21px;height:21px}
+.dv-bk-st b{display:block;font-size:14.5px} .dv-bk-st small{display:block;font-size:12px;color:var(--t2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dv-bk-st .dv-bar{margin-top:8px}
+.dv-mode{display:grid;gap:8px;margin-top:12px}
+.dv-mode button{display:flex;align-items:flex-start;gap:10px;padding:12px;border-radius:var(--r-md);background:var(--s2);border:1px solid transparent;text-align:left}
+.dv-mode button i{width:18px;height:18px;border-radius:9px;border:2px solid var(--t3);flex:none;margin-top:1px;transition:border var(--d-base)}
+.dv-mode button.on{border-color:color-mix(in srgb,var(--accent) 45%,transparent);background:var(--accent-soft)}
+.dv-mode button.on i{border:5px solid var(--accent)}
+.dv-mode b{display:block;font-size:14px} .dv-mode small{display:block;font-size:12px;color:var(--t2);line-height:1.5;margin-top:2px}
+.fd-s svg{width:14px;height:14px;vertical-align:-2px;color:var(--ok)}
+
+/* 服务器设置 */
+.dv-srvd{display:flex;align-items:center;gap:14px;padding:16px;margin-bottom:14px}
+.dv-srvd b{display:block;font-size:17px} .dv-srvd>div>small{display:block;font-size:12.5px;color:var(--t2);margin-top:2px}
+.dv-pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.dv-pills span{display:inline-flex;align-items:center;gap:3px;height:22px;padding:0 8px;border-radius:11px;background:var(--s2);font-size:11px;font-weight:600;color:var(--t2)}
+.dv-pills span svg{width:12px;height:12px}
+.dv-pills span.ok{background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok)}
+.dv-pills span.hr{background:var(--accent-soft);color:var(--accent-text)}
+.dv-pills.center{justify-content:center}
+
+/* 专辑详情 */
+.dv-ah{text-align:center;padding:4px var(--pad) 0}
+.dv-ah .cv{width:196px;height:196px;border-radius:24px;margin:0 auto 16px;box-shadow:var(--shadow-2)}
+.dv-ah h2{font-size:22px;font-weight:800} .dv-ah>span{display:block;font-size:14px;color:var(--t2);margin-top:4px}
+.dv-path{display:flex!important;align-items:center;justify-content:center;gap:5px;font-size:11.5px;color:var(--t3);margin-top:10px}
+.dv-path svg{width:13px;height:13px;flex:none}
+.dv-dur{font:600 12px var(--font-num);color:var(--t3);margin-right:2px}
+
+/* 文件面板 / 文件信息 */
+.dv-fh{display:flex;gap:12px;align-items:center;padding:4px var(--pad) 14px}
+.dv-fh .cv{border-radius:12px;flex:none}
+.dv-fh b{display:block;font-size:16px} .dv-fh small{display:block;font-size:12.5px;color:var(--t2);margin-top:2px}
+.dv-fh .dv-path{justify-content:flex-start;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dv-info{padding:4px 14px}
+.dv-info div{display:flex;gap:12px;padding:10px 0;font-size:13px}
+.dv-info div+div{border-top:1px solid var(--line)}
+.dv-info span{width:76px;flex:none;color:var(--t3)}
+.dv-info b{flex:1;min-width:0;font-weight:550;word-break:break-all}
+.dv-info em{font-style:normal;font-size:11px;font-weight:600;color:var(--accent-text);background:var(--accent-soft);padding:1px 6px;border-radius:5px;white-space:nowrap}
+
+/* 播放链路 */
+.dv-chain{position:relative;padding-left:18px}
+.dv-chain::before{content:"";position:absolute;left:5px;top:8px;bottom:8px;width:2px;background:var(--line-strong)}
+.dv-ch{position:relative;padding:8px 0 10px}
+.dv-ch>i{position:absolute;left:-18px;top:12px;width:12px;height:12px;border-radius:6px;background:var(--ok);box-shadow:0 0 0 3px color-mix(in srgb,var(--ok) 20%,transparent)}
+.dv-ch.warn>i{background:var(--warn);box-shadow:0 0 0 3px color-mix(in srgb,var(--warn) 20%,transparent)}
+.dv-ch small{display:block;font:600 11px var(--font-num);color:var(--t3)}
+.dv-ch b{display:block;font-size:13.5px;margin-top:2px;word-break:break-all}
+.dv-ch span{display:block;font-size:12px;color:var(--t2);margin-top:2px}
+
+/* 音乐库 · 本地 → 云盘入口 */
+.dv-libcard{display:flex;align-items:center;gap:12px;padding:12px 14px;margin-top:12px}
+.dv-libcard b{display:block;font-size:14.5px} .dv-libcard small{display:block;font-size:12px;color:var(--t3);margin-top:2px}
+.dv-libcard.add{border-style:dashed}
