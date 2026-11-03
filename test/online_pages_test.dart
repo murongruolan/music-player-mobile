@@ -18,6 +18,10 @@ import 'package:lyra/shell/shell.dart';
 import 'package:lyra/sync/cloud_models.dart';
 import 'package:lyra/ui/kit.dart';
 import 'package:lyra/widgets/sheets.dart';
+import 'package:lyra/pages/remote.dart';
+import 'package:lyra/pages/search.dart';
+import 'package:lyra/platform/models.dart' show CatalogType;
+import 'support/fake_platform.dart';
 
 http.Response ok(Object? data) => http.Response(jsonEncode({'code': 0, 'message': 'ok', 'requestId': 'r', 'data': data}), 200, headers: {'content-type': 'application/json; charset=utf-8'});
 
@@ -36,7 +40,7 @@ Future<AppState> _boot(WidgetTester tester, {bool withLibrary = true}) async {
         }),
   );
   await net.session.save(AuthTokens(accessToken: 'a', refreshToken: 'r', expiresAt: DateTime.now().add(const Duration(hours: 2))));
-  final app = AppState(net: net)
+  final app = AppState(net: net, content: fakeHub())
     ..authed = true
     ..autoPopups = false;
   if (withLibrary) {
@@ -156,5 +160,73 @@ void main() {
     expect(app.library.read().playlists.firstWhere((x) => x.id == p.key).tracks.single.id, songs[id].key);
     await _done(tester, app);
   });
-}
 
+  testWidgets('联网模式：发现页显示平台内容（此刻热门 / 推荐歌单 / 排行榜）', (tester) async {
+    final app = await _boot(tester);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('此刻热门'), findsOneWidget);
+    expect(find.text('wy 歌曲 1000'), findsOneWidget);
+    // 热门歌曲登记进了歌曲目录，可以收藏
+    final id = songs.indexWhere((s) => s.key == 'wy:s1000');
+    expect(id, greaterThanOrEqualTo(0));
+    app.toggleLike(id);
+    expect(app.library.read().favorites.any((t) => t.id == 'wy:s1000'), isTrue);
+    // 切平台
+    app.switchPlatform('kuwo');
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('kw 歌曲 1000'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await _done(tester, app);
+  });
+
+  testWidgets('联网模式：平台详情 / 歌单广场 / 排行榜，收藏平台歌单', (tester) async {
+    final app = await _boot(tester);
+    final pages = <Widget>[
+      const RemoteCollectionPage(platform: 'tx', type: CatalogType.playlist, id: 'p9', title: '歌单'),
+      const RemoteCollectionPage(platform: 'kg', type: CatalogType.leaderboard, id: 'b1'),
+      const RemoteCollectionPage(platform: 'wy', type: CatalogType.artist, id: 'a1'),
+      const PlaylistSquarePage(platform: 'wy'),
+      const LeaderboardsPage(platform: 'mg'),
+    ];
+    for (final p in pages) {
+      push(_ctx(tester), p);
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(tester.takeException(), isNull, reason: p.runtimeType.toString());
+      if (p is RemoteCollectionPage && p.id == 'p9') {
+        expect(find.text('tx 详情 p9'), findsWidgets);
+        expect(find.text('tx 歌曲 1000'), findsOneWidget);
+        await tester.tap(find.byWidgetPredicate((w) => w is IBtn && w.icon == 'heart' && w.size == 48));
+        await tester.pump(const Duration(milliseconds: 300));
+        final c = app.library.collectedOf('tx', 'p9');
+        expect(c, isNotNull);
+        expect(app.library.read().playlists.firstWhere((x) => x.externalId == 'p9').kind, 'collected');
+      }
+      if (p is PlaylistSquarePage) {
+        expect(find.text('华语'), findsOneWidget);
+        await tester.tap(find.text('华语'));
+        await tester.pump(const Duration(milliseconds: 600));
+        expect(tester.takeException(), isNull);
+      }
+      contentNav.currentState!.pop();
+      await tester.pump(const Duration(milliseconds: 600));
+    }
+    await _done(tester, app);
+  });
+
+  testWidgets('联网模式：搜索走平台接口，失败回退网易', (tester) async {
+    final app = await _boot(tester);
+    app.update(() => app.tab = 1);
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(find.text('热搜一'), findsOneWidget);
+    await tester.tap(find.text('热搜一'));
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(find.text('wy 歌曲 100'), findsOneWidget);
+    // 切类型
+    await tester.tap(find.text('歌单').last);
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(find.text('wy playlist 0'), findsOneWidget);
+    expect(find.byType(SearchPage), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await _done(tester, app);
+  });
+}

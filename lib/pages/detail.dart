@@ -6,6 +6,8 @@ import '../core/state.dart';
 import '../core/tokens.dart';
 import '../data/mock.dart';
 import '../data/models.dart';
+import '../platform/models.dart' show CatalogType;
+import '../platform/registry.dart';
 import '../shell/shell.dart';
 import '../ui/cover.dart';
 import '../ui/icons.dart';
@@ -14,6 +16,7 @@ import '../widgets/sheets.dart';
 import 'backup.dart' show SponsorGate, toastApiError;
 import 'common.dart';
 import 'discover.dart';
+import 'remote.dart';
 
 class PlaylistPage extends StatefulWidget {
   final int id;
@@ -42,6 +45,10 @@ class _PlaylistPageState extends State<PlaylistPage> {
       return SubPage(title: '歌单', children: [const EmptyState('queue', '歌单不存在', desc: '它可能已被删除，或在其它设备上被移除。')]);
     }
     final Playlist base = found;
+    // 收藏的平台歌单只同步了平台 + 歌单 id：直接打开平台详情拉歌曲
+    if (online && base.kind == 'collected' && base.externalId != null && base.platform != null && app.content.supports(base.platform!)) {
+      return RemoteCollectionPage(platform: PlatformHub.codeOf(base.platform!), type: CatalogType.playlist, id: base.externalId!, title: base.title, cover: base.cover);
+    }
     final pl = widget.chartName == null || online ? base : Playlist(base.id, widget.chartName!, by: '${app.platform.name} 官方', count: 30, playCount: base.playCount, hue: base.hue, variant: 2);
     var ids = widget.id == 100
         ? app.liked.where((i) => i < songs.length).toList()
