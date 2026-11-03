@@ -7,13 +7,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'audio/audio_engine.dart';
 import 'audio/media_handler.dart';
-import 'audio/track_resolver.dart';
 import 'auth/auth.dart';
 import 'core/shots.dart';
 import 'core/state.dart';
 import 'core/tokens.dart';
 import 'net/net.dart';
 import 'shell/shell.dart';
+import 'source/music_resolver.dart';
+import 'ui/cover_tint.dart';
 import 'ui/kit.dart';
 import 'widgets/sheets.dart';
 
@@ -29,6 +30,7 @@ Future<void> main() async {
   net?.session.onEnd.where((r) => r == SessionEnd.expired).listen((_) => toast('登录已失效，请重新登录', 'lock'));
   // 音频引擎：截图模式不创建（无平台通道，保持模拟时钟），正式运行才有真实播放 + 通知栏
   AudioEngine? engine;
+  final resolver = MusicResolver();
   if (shot == null) {
     final handler = LyraMediaHandler();
     await AudioService.init(
@@ -40,11 +42,13 @@ Future<void> main() async {
         androidStopForegroundOnPause: true,
       ),
     );
-    engine = AudioEngine(resolver: DemoTrackResolver());
+    // 播放地址由导入的洛雪音源脚本解析（lib/source/）
+    engine = AudioEngine(resolver: resolver);
     await engine.init(handler);
-    engine.onError = (msg) => toast(msg, 'info');
   }
   final app = AppState(net: net, engine: engine)..notice = toast;
+  resolver.app = app;
+  CoverTint.onReady = app.notify; // 封面取色完成后播放器背景重绘
   await app.cloud.init(); // 读本地听歌统计
   await app.telemetry.init(); // 读上次没发完的埋点
   app.restoreSession();

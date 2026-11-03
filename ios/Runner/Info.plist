@@ -4,6 +4,9 @@
 <dict>
 	<key>NSAppTransportSecurity</key>
 	<dict>
+		<!-- 音源脚本请求的接口和返回的播放地址来自任意域名，很多只有 http。不要再加 NSAllowsArbitraryLoadsForMedia：有它时 iOS 会忽略这一项 -->
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
 		<key>NSExceptionDomains</key>
 		<dict>
 			<key>kugou.com</key>

@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../core/state.dart';
 import '../core/tokens.dart';
+import '../ui/cover_tint.dart';
 
 class _Fx {
   static final rnd = () {
@@ -45,14 +46,14 @@ class _ParticleViewState extends State<ParticleView> with SingleTickerProviderSt
     final app = context.app;
     final pal = context.pal;
     if (!widget.animate) {
-      return RepaintBoundary(child: CustomPaint(painter: _PPainter(widget.preset, 3, .4, .32, 20, false, app.song.hue, pal.acc, .5), size: Size.infinite));
+      return RepaintBoundary(child: CustomPaint(painter: _PPainter(widget.preset, 3, .4, .32, 20, false, songHue(app.song), pal.acc, .5), size: Size.infinite));
     }
     final view = AnimatedBuilder(
       animation: c,
       builder: (_, __) {
         final t = c.lastElapsedDuration == null ? 0.0 : c.lastElapsedDuration!.inMicroseconds / 1e6;
         if (!dragging && widget.interactive && !app.set.reduceMotion) yaw += .05 / 60;
-        return CustomPaint(painter: _PPainter(widget.preset, t, yaw, pitch, app.pos.value, app.playing, app.song.hue, pal.acc, widget.interactive ? widget.cyFrac : .5), size: Size.infinite);
+        return CustomPaint(painter: _PPainter(widget.preset, t, yaw, pitch, app.pos.value, app.playing, songHue(app.song), pal.acc, widget.interactive ? widget.cyFrac : .5), size: Size.infinite);
       },
     );
     if (!widget.interactive) return view;

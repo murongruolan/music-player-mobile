@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 默认只允许 https；酷狗 / 酷我 / 咪咕的部分公开接口和图床只有 http（桌面端同样如此），只对这些域名放行明文 -->
+<!--
+  明文 http：音源脚本（用户自行导入）请求的接口和返回的播放地址来自任意域名，很多只有 http
+  （桌面端、洛雪移动端同样放行），所以整体允许明文。Lyra 自己的后端和账号接口只走 https。
+-->
 <network-security-config>
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">kugou.com</domain>
-        <domain includeSubdomains="true">kgimg.com</domain>
-        <domain includeSubdomains="true">kuwo.cn</domain>
-        <domain includeSubdomains="true">kwcdn.kuwo.cn</domain>
-        <domain includeSubdomains="true">migu.cn</domain>
-        <domain includeSubdomains="true">music.126.net</domain>
-    </domain-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
 </network-security-config>

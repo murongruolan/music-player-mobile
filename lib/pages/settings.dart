@@ -3,12 +3,15 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:http/http.dart' as http;
 import '../core/script_store.dart';
 import '../core/state.dart';
 import '../core/tokens.dart';
 import '../data/mock.dart';
 import '../data/models.dart';
+import '../source/lx_runtime.dart';
+import '../sync/cloud_models.dart';
 import '../player/lyrics.dart';
 import '../player/player.dart';
 import '../player/skins.dart';
@@ -298,7 +301,7 @@ class SysLyricsPage extends StatelessWidget {
                   child: Row(children: [
                     AppIcon(app.appIcon, size: 26),
                     const SizedBox(width: 10),
-                    Expanded(child: Text(lyrics[6].text, style: ts(15, w: FontWeight.w700, c: Colors.white))),
+                    Expanded(child: Text(previewLyrics[6].text, style: ts(15, w: FontWeight.w700, c: Colors.white))),
                     Icon(ic(s.floatLock ? 'lock' : 'drag'), color: Colors.white70, size: 18),
                   ]),
                 ),
@@ -535,7 +538,8 @@ class SourcesPage extends StatelessWidget {
               child: app.online
                   ? Item(
                       label: '${sc.name}  v${sc.ver}',
-                      sub: '${sc.qualities.isEmpty ? '音质以运行结果为准' : sc.qualities.join(' · ')} · 未测速',
+                      sub: _scriptSub(app, sc),
+                      trailing: app.sources.activeId == sc.id ? const Badge2('当前', acc: true) : null,
                       onTap: () => _scriptDetail(context, sc.id),
                     )
                   : Item(
@@ -546,9 +550,9 @@ class SourcesPage extends StatelessWidget {
             ),
         ]),
       if (app.online)
-        _note(pal, 'clock', app.scripts.isEmpty
-            ? '还没有导入音源脚本。导入后会保存在本机，赞助用户可在「备份与同步 → 分项同步 → 音源脚本」里和桌面端互通。脚本运行时（解析播放地址）正在接入。'
-            : '已导入 ${app.scripts.length} 个脚本。脚本运行时（解析播放地址、测速）正在接入，目前只保存和同步脚本本身。'),
+        _note(pal, app.scripts.isEmpty ? 'info' : 'check', app.scripts.isEmpty
+            ? '还没有导入音源脚本，导入后才能播放。脚本保存在本机，赞助用户可在「备份与同步 → 分项同步 → 音源脚本」里和桌面端互通。'
+            : '已导入 ${app.scripts.length} 个脚本。播放时先用「当前」音源，解析不出来再依次尝试其它脚本；原平台都不行时按「智能换源」设置找其它平台的同名歌。'),
       Group(children: [Item(icon: 'plus', color: 'blue', label: '导入解析脚本', sub: '从文件、链接或剪贴板导入', onTap: () => openImportSource(context))]),
     ]);
   }
@@ -573,7 +577,7 @@ void openImportSource(BuildContext context) {
           }),
           Item(icon: 'folder', color: 'orange', label: '从文件导入', sub: '选择本地 .js 文件', onTap: () {
             Navigator.of(c).pop();
-            if (context.appRead.online) return toast('请用「从链接导入」或「粘贴内容」导入，文件选择稍后接入', 'info');
+            if (context.appRead.online) return _pickScriptFile(context);
             toast('已打开文件选择器', 'folder');
           }),
           Item(icon: 'paste', color: 'violet', label: '粘贴内容', sub: '直接粘贴脚本代码', onTap: () {
@@ -693,21 +697,78 @@ Future<void> _fetchScript(BuildContext context, String url) async {
   }
 }
 
-void _verifyReal(BuildContext context, String raw, {String? sourceUrl}) {
+Future<void> _pickScriptFile(BuildContext context) async {
+  XFile? f;
+  try {
+    // 不按扩展名过滤：不少文件管理器把 .js 标成 application/octet-stream，筛了反而选不到
+    f = await openFile();
+  } catch (_) {
+    return toast('打不开文件选择器', 'info');
+  }
+  if (f == null) return;
+  try {
+    final size = await f.length();
+    if (size > ScriptStore.maxBytes) return toast('文件超过 2 MB，不像是音源脚本', 'info');
+    final raw = utf8.decode(await f.readAsBytes(), allowMalformed: true);
+    if (!context.mounted) return;
+    await _verifyReal(context, raw);
+  } catch (_) {
+    toast('读取文件失败', 'info');
+  }
+}
+
+String _platNames(Map<String, LxCapability> caps) => [
+      for (final e in caps.entries)
+        if (e.value.actions.contains('musicUrl')) const {'wy': '网易云', 'tx': 'QQ', 'kg': '酷狗', 'kw': '酷我', 'mg': '咪咕'}[e.key] ?? e.key,
+    ].join(' · ');
+
+String _qualityNames(Map<String, LxCapability> caps) {
+  final all = <String>{for (final c in caps.values) ...c.qualities};
+  return [for (final q in const ['128k', '320k', 'flac', 'flac24bit', 'hires', 'atmos', 'atmos_plus', 'master']) if (all.contains(q)) q].join(' · ');
+}
+
+String _scriptSub(AppState app, Script sc) {
+  final err = app.sources.initErrorOf(sc.id);
+  if (err != null) return '初始化失败：$err';
+  final caps = app.sources.capsOf(sc.id);
+  if (caps == null) return '${sc.qualities.isEmpty ? '音质以运行结果为准' : sc.qualities.join(' · ')} · 还没运行过';
+  return '${_platNames(caps)}${sc.qualities.isEmpty ? '' : ' · ${sc.qualities.join(' · ')}'}';
+}
+
+/// 导入前先在沙箱里跑一次脚本：能完成初始化（lx.send('inited')）才导入，并显示它声明的平台和音质。
+Future<void> _verifyReal(BuildContext context, String raw, {String? sourceUrl}) async {
   final app = context.appRead;
   final pal = context.pal;
   final m = ParsedScript.parse(raw);
   if (m == null) return toast('这不像是洛雪音源脚本（没有找到 JavaScript 代码）', 'info');
-  final plats = m.platforms.isEmpty ? '未声明（以运行结果为准）' : m.platforms.map((p) => platformBy(p).name).join(' · ');
+  toast('正在校验脚本…', 'shield');
+  Map<String, LxCapability> caps;
+  try {
+    caps = await app.sources.manager.probe(CloudSource(id: 'probe', name: m.name, rawScript: raw, description: m.description, version: m.version, author: m.author, homepage: m.homepage));
+  } catch (e) {
+    if (!context.mounted) return;
+    showLDialog(context, icon: 'info', iconColor: pal.danger, title: '脚本校验失败', body: '「${m.name}」没有完成初始化：$e\n\n请确认这是洛雪（LX Music）格式的自定义源脚本。', actions: [('知道了', BtnKind.pri, null)]);
+    return;
+  }
+  if (!context.mounted) return;
+  final plats = _platNames(caps);
   showLDialog(context, icon: 'code', title: '导入这个音源脚本？', content: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    for (final (k, v) in [('名称', m.name), ('版本', m.version.isEmpty ? '-' : m.version), ('作者', m.author.isEmpty ? '-' : m.author), ('平台', plats), ('大小', '${(raw.length / 1024).toStringAsFixed(1)} KB')])
+    for (final (k, v) in [
+      ('名称', m.name),
+      ('版本', m.version.isEmpty ? '-' : m.version),
+      ('作者', m.author.isEmpty ? '-' : m.author),
+      ('平台', plats.isEmpty ? '没有声明可播放的平台' : plats),
+      ('音质', _qualityNames(caps).isEmpty ? '-' : _qualityNames(caps)),
+      ('大小', '${(raw.length / 1024).toStringAsFixed(1)} KB'),
+    ])
       Padding(padding: const EdgeInsets.only(bottom: 6), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [SizedBox(width: 44, child: Text(k, style: ts(13, c: pal.t3))), Expanded(child: Text(v, style: ts(13, w: FontWeight.w600, c: pal.t1)))])),
     if (m.description.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text(m.description, style: ts(12.5, c: pal.t2, h: 1.5))),
-    Padding(padding: const EdgeInsets.only(top: 8), child: Text('脚本由你自行提供并对其合法性负责。', style: ts(11.5, c: pal.t3))),
+    Padding(padding: const EdgeInsets.only(top: 8), child: Text('脚本在沙箱里运行，只能发网络请求，拿不到你的账号信息。脚本由你自行提供并对其合法性负责。', style: ts(11.5, c: pal.t3, h: 1.5))),
   ]), actions: [
     ('取消', BtnKind.sec, null),
     ('导入', BtnKind.pri, () {
-      app.sources.add(raw, m, sourceUrl: sourceUrl);
+      final s = app.sources.add(raw, m, sourceUrl: sourceUrl);
+      app.sources.rememberCaps(s.id, caps);
       toast('已导入「${m.name}」· 共 ${app.scripts.length} 个脚本', 'code');
     }),
   ]);
@@ -717,19 +778,37 @@ void _scriptDetail(BuildContext context, String id) {
   final app = context.appRead;
   final s = app.sources.byId(id);
   if (s == null) return;
-  showLSheet(context, title: s.name, sub: s.version.isEmpty ? null : 'v${s.version}', builder: (c) => Column(children: [
-        Group(children: [
-          if (s.author.isNotEmpty) Item(icon: 'user', color: 'blue', label: '作者', val: s.author, chev: false),
-          if (s.description.isNotEmpty) Item(icon: 'info', color: 'gray', label: s.description, chev: false),
-          if (s.sourceUrl != null) Item(icon: 'link', color: 'teal', label: '来源', sub: s.sourceUrl, chev: false),
-          Item(icon: 'code', color: 'violet', label: '大小', val: '${(s.rawScript.length / 1024).toStringAsFixed(1)} KB', chev: false),
-        ]),
-        Group(children: [
-          Item(icon: 'trash', color: 'red', label: '删除这个脚本', danger: true, chev: false, onTap: () {
+  showLSheet(context, title: s.name, sub: s.version.isEmpty ? null : 'v${s.version}', builder: (c) {
+    final caps = c.app.sources.capsOf(id);
+    final err = c.app.sources.initErrorOf(id);
+    final active = c.app.sources.activeId == id;
+    return Column(children: [
+      Group(children: [
+        if (s.author.isNotEmpty) Item(icon: 'user', color: 'blue', label: '作者', val: s.author, chev: false),
+        if (s.description.isNotEmpty) Item(icon: 'info', color: 'gray', label: s.description, chev: false),
+        if (s.sourceUrl != null) Item(icon: 'link', color: 'teal', label: '来源', sub: s.sourceUrl, chev: false),
+        Item(icon: 'code', color: 'violet', label: '大小', val: '${(s.rawScript.length / 1024).toStringAsFixed(1)} KB', chev: false),
+      ]),
+      Group(title: '能力', children: [
+        if (err != null) Item(icon: 'info', color: 'red', label: '初始化失败', sub: err, chev: false),
+        if (caps == null && err == null) const Item(icon: 'clock', color: 'gray', label: '还没运行过', sub: '第一次播放时会启动这个脚本', chev: false),
+        if (caps != null)
+          for (final e in caps.entries)
+            Item(icon: 'vinyl', color: 'green', label: e.value.name, sub: '${const {'wy': '网易云音乐', 'tx': 'QQ音乐', 'kg': '酷狗音乐', 'kw': '酷我音乐', 'mg': '咪咕音乐', 'local': '本地'}[e.key] ?? e.key} · ${e.value.qualities.isEmpty ? e.value.actions.join(' / ') : e.value.qualities.join(' · ')}', chev: false),
+      ]),
+      Group(children: [
+        if (!active)
+          Item(icon: 'check', color: 'blue', label: '设为当前音源', sub: '播放时优先使用', onTap: () {
             Navigator.of(c).pop();
-            app.sources.remove(id);
-            toast('已删除「${s.name}」', 'trash');
+            app.sources.setActive(id);
+            toast('已切换到「${s.name}」', 'check');
           }),
-        ]),
-      ]));
+        Item(icon: 'trash', color: 'red', label: '删除这个脚本', danger: true, chev: false, onTap: () {
+          Navigator.of(c).pop();
+          app.sources.remove(id);
+          toast('已删除「${s.name}」', 'trash');
+        }),
+      ]),
+    ]);
+  });
 }

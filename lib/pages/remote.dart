@@ -235,9 +235,12 @@ class _RemoteCollectionPageState extends State<RemoteCollectionPage> {
           Padding(
             padding: const EdgeInsets.fromLTRB(Tk.pad, 18, Tk.pad, 0),
             child: Row(children: [
-              Expanded(child: Btn('播放全部', icon: 'play', onTap: ids.isEmpty ? null : () => app.play(ids.first, list: 'all', name: listName))),
+              Expanded(child: Btn('播放全部', icon: 'play', onTap: ids.isEmpty ? null : () => app.play(ids.first, name: listName, ids: ids))),
               const SizedBox(width: 10),
-              IBtn('shuffle', size: 48, bg: pal.s2, onTap: ids.isEmpty ? null : () => app.play(ids[math.Random().nextInt(ids.length)], list: 'all', name: listName)),
+              IBtn('shuffle', size: 48, bg: pal.s2, onTap: ids.isEmpty ? null : () {
+                final q = [...ids]..shuffle();
+                app.play(q.first, name: listName, ids: q);
+              }),
               const SizedBox(width: 10),
               IBtn('download', size: 48, bg: pal.s2, onTap: () => toast('下载需要先接入音源解析', 'info')),
               if (widget.type == CatalogType.playlist) ...[
@@ -272,7 +275,7 @@ class _RemoteCollectionPageState extends State<RemoteCollectionPage> {
           EmptyState('info', '没有加载出来', desc: error, action: Btn.sec('重试', icon: 'refresh', small: true, onTap: _load)),
         if (h != null && ids.isEmpty && !hasMore) EmptyState('music', '这里还没有歌', desc: '${plat.name}没有返回歌曲，可能需要登录平台账号或该内容已下架。'),
         for (final (i, id) in shown.indexed)
-          multi ? _pickRow(context, id) : SongRow(songs[id], key: ValueKey(id), num: widget.type == CatalogType.leaderboard && sort == '默认' ? i : null, list: 'all', listName: listName),
+          multi ? _pickRow(context, id) : SongRow(songs[id], key: ValueKey(id), num: widget.type == CatalogType.leaderboard && sort == '默认' ? i : null, list: 'all', listName: listName, queue: shown),
         if (h != null && hasMore) AutoLoad(key: ValueKey('more$page$error'), onLoad: _load, busy: busy, error: error),
       ],
     );

@@ -10,6 +10,7 @@ import '../core/tokens.dart';
 import '../data/mock.dart';
 import '../data/models.dart';
 import '../ui/cover.dart';
+import '../ui/cover_tint.dart';
 import '../ui/icons.dart';
 import '../ui/kit.dart';
 import '../main.dart' show overlayStyle;
@@ -736,14 +737,14 @@ class _StandbySkinState extends State<StandbySkin> {
             child: Ticker2(builder: (c, t) {
               if (app.playing && !app.set.reduceMotion) _phase += (t - _lastT).clamp(0.0, .1);
               _lastT = t;
-              return CustomPaint(painter: WaveGlowPainter(s.hue, _phase, app.playing ? app.beat() : 0));
+              return CustomPaint(painter: WaveGlowPainter(songHue(s), _phase, app.playing ? app.beat() : 0));
             }),
           ),
         ),
         Positioned.fill(
           child: Padding(
             padding: EdgeInsets.fromLTRB(size.width * .1, 0, size.width * .1, short * .22),
-            child: Center(child: _StandbyLyric(size: short * .1, hue: s.hue)),
+            child: Center(child: _StandbyLyric(size: short * .1, hue: songHue(s))),
           ),
         ),
         // 底部一行：封面 · 歌名 · 控制 · 收藏
@@ -909,7 +910,7 @@ class CassetteSkin extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 22),
           child: AspectRatio(
             aspectRatio: 1.58,
-            child: Ticker2(builder: (c, t) => ValueListenableBuilder<double>(valueListenable: app.pos, builder: (_, p, __) => CustomPaint(painter: _TapePainter(p / s.dur, app.playing ? t : -1, app.song.hue), child: _TapeLabel(s)))),
+            child: Ticker2(builder: (c, t) => ValueListenableBuilder<double>(valueListenable: app.pos, builder: (_, p, __) => CustomPaint(painter: _TapePainter(p / s.dur, app.playing ? t : -1, songHue(app.song)), child: _TapeLabel(s)))),
           ),
         ),
         const SizedBox(height: 26),
@@ -1695,7 +1696,7 @@ class SkinThumb extends StatelessWidget {
         return Container(color: const Color(0xFF0B0C12), child: CustomPaint(painter: _PulsePainter(.6, .7, pal.acc), child: Center(child: ClipOval(child: Cover.song(s, size: 46, radius: 23)))));
       case 'standby':
         return Stack(children: [
-          Positioned.fill(child: CustomPaint(painter: WaveGlowPainter(s.hue, 1.3, 0))),
+          Positioned.fill(child: CustomPaint(painter: WaveGlowPainter(songHue(s), 1.3, 0))),
           Center(child: Text(lyrics[6].text.split(' ').first, style: const TextStyle(fontFamily: 'serif', fontFamilyFallback: ['Songti SC', 'Noto Serif CJK SC'], fontSize: 16, fontWeight: FontWeight.w700, color: Color(0xFFF2F7FF)))),
           Positioned(left: 8, right: 8, bottom: 8, child: Row(children: [Cover.song(s, size: 16, radius: 3), const Spacer(), const Icon(Icons.pause_rounded, size: 16, color: Colors.white70)])),
         ]);
@@ -1707,7 +1708,7 @@ class SkinThumb extends StatelessWidget {
         return Stack(children: [Positioned.fill(child: Cover.song(s, size: 0, radius: 0)), Container(decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Color(0xCC000000)]))), Positioned(left: 8, bottom: 8, right: 8, child: Text(lyrics[6].text, style: ts(12, w: FontWeight.w900, c: Colors.white)))]);
       default: // spring
         return Stack(children: [
-          Positioned.fill(child: CustomPaint(painter: _FlowThumb(coverColors(s.hue)))),
+          Positioned.fill(child: CustomPaint(painter: _FlowThumb(songColors(s)))),
           Center(child: Column(mainAxisSize: MainAxisSize.min, children: [Cover.song(s, size: 62, radius: 8, shadow: true), const SizedBox(height: 6), Container(width: 60, height: 4, decoration: BoxDecoration(color: Colors.white70, borderRadius: BorderRadius.circular(2)))])),
         ]);
     }

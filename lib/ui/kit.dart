@@ -1055,7 +1055,10 @@ class SongRow extends StatefulWidget {
   final Widget? tail;
   final double h;
   final TextSpan Function(String text, TextStyle style)? hl;
-  const SongRow(this.song, {super.key, this.num, this.list = 'all', this.listName, this.heart = false, this.swipe = true, this.ctx = '', this.tail, this.showCover = true, this.h = Tk.rowH, this.hl});
+
+  /// 点歌时的播放队列（平台歌单、榜单、搜索结果等）；不给时按 [list] 取。
+  final List<int>? queue;
+  const SongRow(this.song, {super.key, this.num, this.list = 'all', this.listName, this.heart = false, this.swipe = true, this.ctx = '', this.tail, this.showCover = true, this.h = Tk.rowH, this.hl, this.queue});
   @override
   State<SongRow> createState() => _SongRowState();
 }
@@ -1091,7 +1094,7 @@ class _SongRowState extends State<SongRow> with SingleTickerProviderStateMixin {
           c.animateTo(0, curve: Tk.out);
           return;
         }
-        app.play(s.id, list: widget.list, name: widget.listName);
+        app.play(s.id, list: widget.list, name: widget.listName, ids: widget.queue);
       },
       child: Container(
         height: widget.h,

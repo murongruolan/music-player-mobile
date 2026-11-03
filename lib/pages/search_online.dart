@@ -403,7 +403,7 @@ class _OnlineResultsState extends State<_OnlineResults> {
         ),
       Sec('单曲', more: '全部', onMore: () => widget.onType('歌曲')),
       if (songsB.songs.isEmpty) _status(songsB, SearchType.song, '单曲'),
-      for (final id in songsB.songs.take(4)) SongRow(songs[id], list: 'all', listName: '搜索「${widget.q}」', hl: hl),
+      for (final id in songsB.songs.take(4)) SongRow(songs[id], list: 'all', listName: '搜索「${widget.q}」', hl: hl, queue: songsB.songs),
       if (albums.items.isNotEmpty) ...[
         Sec('专辑', more: '全部', onMore: () => widget.onType('专辑')),
         HScroll(height: 186, gap: 26, children: [for (final a in albums.items.take(6)) _AlbumCard(a, hl)]),
@@ -456,7 +456,7 @@ class _OnlineResultsState extends State<_OnlineResults> {
           Padding(
             padding: const EdgeInsets.fromLTRB(Tk.pad, 10, Tk.pad, 6),
             child: Row(children: [
-              Btn('播放全部', icon: 'play', small: true, onTap: ids.isEmpty ? null : () => app.play(ids.first, list: 'all', name: '搜索「$q」')),
+              Btn('播放全部', icon: 'play', small: true, onTap: ids.isEmpty ? null : () => app.play(ids.first, name: '搜索「$q」', ids: ids)),
               const SizedBox(width: 8),
               LChip('综合排序', icon: 'sort', onTap: () => toast('按平台的默认相关度排序', 'sort')),
               const SizedBox(width: 8),
@@ -470,7 +470,7 @@ class _OnlineResultsState extends State<_OnlineResults> {
           ],
           if (b.songs.isEmpty) _status(b, t, '歌曲'),
           if (b.songs.isNotEmpty && ids.isEmpty) Hint('已加载的结果里没有无损音质的歌', padding: const EdgeInsets.fromLTRB(Tk.pad, 12, Tk.pad, 0)),
-          for (final id in ids) SongRow(songs[id], key: ValueKey('s$id'), list: 'all', listName: '搜索「$q」', hl: hl),
+          for (final id in ids) SongRow(songs[id], key: ValueKey('s$id'), list: 'all', listName: '搜索「$q」', hl: hl, queue: ids),
         ]);
       case SearchType.playlist:
         out.addAll([if (b.items.isEmpty) _status(b, t, '歌单'), for (final c in b.items) CatalogRow(c, key: ValueKey('c${c.platform}${c.id}'), hl: hl)]);

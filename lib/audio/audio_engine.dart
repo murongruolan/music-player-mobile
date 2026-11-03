@@ -32,6 +32,7 @@ class AudioEngine {
 
   Song? _current;
   bool _loaded = false;
+  int _seq = 0;
   bool _eqOn = false;
   List<double> _eqCurve = List.filled(10, 0);
 
@@ -76,7 +77,20 @@ class AudioEngine {
   /// 加载并（可选）播放一首。解析不到地址 / 格式不支持 / 加载失败都会走 [onError]，
   /// 不抛异常——调用方（AppState）不该为播放失败写 try-catch。
   Future<void> playSong(Song song, {required bool autoplay, required bool loopOne}) async {
-    final uri = await _resolver.resolve(song);
+    // 解析要几百毫秒到几秒；期间用户可能已经切到别的歌，旧的结果直接丢掉
+    final seq = ++_seq;
+    if (_loaded) {
+      _loaded = false;
+      unawaited(_player.stop());
+    }
+    Uri? uri;
+    try {
+      uri = await _resolver.resolve(song);
+    } catch (e) {
+      if (seq == _seq) onError?.call('${song.title}：${_short(e)}');
+      return;
+    }
+    if (seq != _seq) return;
     if (uri == null) {
       onError?.call('无法解析播放地址：${song.title}');
       return;
@@ -88,6 +102,7 @@ class AudioEngine {
     _current = song;
     try {
       await _player.setAudioSource(AudioSource.uri(uri));
+      if (seq != _seq) return;
       _loaded = true;
       await _player.setLoopMode(loopOne ? LoopMode.one : LoopMode.off);
       await applyEq(_eqOn, _eqCurve); // 换源后重新套用 EQ 曲线
@@ -113,6 +128,7 @@ class AudioEngine {
 
   /// 卸载当前音源（退出登录 / 清空队列等场景）。
   Future<void> unload() async {
+    _seq++;
     _loaded = false;
     _current = null;
     await _player.stop();

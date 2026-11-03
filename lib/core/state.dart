@@ -12,6 +12,7 @@ import '../platform/registry.dart';
 import 'announcements.dart';
 import 'cloud.dart';
 import 'library_store.dart';
+import 'lyric_store.dart';
 import 'script_store.dart';
 import 'telemetry.dart';
 import 'tokens.dart';
@@ -94,6 +95,9 @@ class AppState extends ChangeNotifier {
   /// 本机音乐库（联网模式）：我喜欢、歌单、搜索历史，持久化并参与云同步。
   late final library = LibraryStore(this, net?.prefs);
 
+  /// 当前歌曲的真实歌词（联网模式）。
+  late final lyricStore = LyricStore(this);
+
   /// 导入的音源脚本（联网模式），持久化并可经 lx_sources 云同步。
   late final sources = ScriptStore(this, net?.prefs);
 
@@ -172,7 +176,12 @@ class AppState extends ChangeNotifier {
       if (playing != p) update(() => playing = p); // 通知栏 / 线控改的状态同步回 UI
     };
     e.onCompleted = () => _step(1); // 单曲循环由引擎 LoopMode.one 自循环，不会走到这
-    e.onError = (msg) => onEngineError?.call(msg);
+    e.onError = (msg) {
+      // 解析 / 加载失败：界面回到暂停态并提示原因
+      if (playing) update(() => playing = false);
+      notice?.call(msg, 'info');
+      onEngineError?.call(msg);
+    };
     e.onMediaAction = (a) {
       // 通知栏按钮 / 耳机线控 / 蓝牙控制统一路由
       switch (a) {
@@ -206,6 +215,7 @@ class AppState extends ChangeNotifier {
 
   /// 加载当前曲目到引擎（engineActive 时才调）。
   void _enginePlayCurrent() {
+    if (online) lyricStore.load(cur);
     unawaited(engine!.playSong(songs[cur], autoplay: playing, loopOne: mode == 'one').then((_) => _engineAfterLoad()));
   }
 
@@ -219,6 +229,7 @@ class AppState extends ChangeNotifier {
   /// 全局 `songs` 变成真实歌曲目录（见 [LibraryStore]）。
   void _enterRealMode() {
     songs.clear();
+    lyrics.clear();
     queue = [];
     queueName = '';
     cur = -1;
@@ -248,10 +259,10 @@ class AppState extends ChangeNotifier {
 
   /// 能不能真正播放。联网模式下音源解析（脚本运行时 / 平台取流）还没接入，先拦下来并提示，
   /// 不再用计时器假装在播放。
-  bool get canPlay => !online;
+  bool get canPlay => !online || (engine != null && sources.sources.isNotEmpty);
   bool _blockPlay() {
     if (canPlay) return false;
-    notice?.call('暂时还不能播放：音源解析尚未接入', 'info');
+    notice?.call(engine == null ? '当前环境不支持播放' : '还没有导入音源脚本：在「设置 → 平台与解析脚本」导入后就能播放', 'info');
     return true;
   }
 
@@ -349,9 +360,13 @@ class AppState extends ChangeNotifier {
     pos.value = p;
   }
 
-  void play(int id, {String? list, String? name}) {
+  /// [ids]：明确的播放队列（平台歌单 / 榜单 / 搜索结果）；不给时按 [list] 取。
+  void play(int id, {String? list, String? name, List<int>? ids}) {
     if (_blockPlay()) return;
-    if (list != null) {
+    if (ids != null) {
+      queue = [...ids];
+      if (name != null) queueName = name;
+    } else if (list != null) {
       queue = listOf(list);
       if (name != null) queueName = name;
     }

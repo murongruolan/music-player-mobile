@@ -47,7 +47,8 @@ class LyraMediaHandler extends BaseAudioHandler {
       artist: song.artist,
       album: song.album,
       duration: duration,
-      // 封面：mock 曲目没有真实封面，缺省显示 App 图标；接入真实封面后补 artUri。
+      // 封面：真实歌曲带平台封面地址；mock 曲目没有，缺省显示 App 图标
+      artUri: song.cover == null ? null : Uri.tryParse(song.cover!.replaceFirst(RegExp(r'^http://(?=[^/]*(126\.net|gtimg\.cn|qq\.com|qpic\.cn))'), 'https://')),
     ));
 
     final controls = <MediaControl>[

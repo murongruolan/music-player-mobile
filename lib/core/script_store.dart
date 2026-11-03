@@ -1,13 +1,16 @@
 // 音源脚本（洛雪 lx 自定义源）的本机存储：导入、解析头部信息、删除、持久化、lx_sources 云同步。
 //
 // 脚本头部是 JSDoc 注释：@name / @description / @version / @author / @homepage。
-// 支持的平台和音质只有运行脚本（lx.send('inited', {sources})）才能确定；运行时还没接入，
-// 这里先从源码里按 `kw: {` / `"tx":` 之类的写法粗略识别，界面上标注「以运行结果为准」。
+// 支持的平台和音质以运行脚本（lx.send('inited', {sources})）的结果为准（[SourceManager]，lib/source/）；
+// 还没运行过的脚本先从源码里按 `kw: {` / `"tx":` 之类的写法粗略识别。
 import 'dart:async';
 import 'dart:convert';
 import '../data/models.dart';
 import '../net/storage.dart';
 import '../sync/cloud_models.dart';
+import '../source/lx_runtime.dart';
+import '../source/lx_track.dart';
+import '../source/source_manager.dart';
 import '../sync/docs.dart';
 import 'state.dart';
 
@@ -55,10 +58,63 @@ class ScriptStore implements SourcesBinding {
   /// 本机修改后通知同步（lx_sources 是手动同步文档，这里只是标记变化）。
   void Function()? onLocalChange;
 
-  static const _k = 'sources.v1';
+  static const _k = 'sources.v1', _kCaps = 'sources.caps.v1';
   static const maxBytes = 2 * 1024 * 1024;
 
+  /// 脚本运行实例与播放地址解析。
+  late final SourceManager manager = SourceManager()..onChanged = _capsChanged;
+
+  /// 上次运行得到的能力（脚本 id → 平台 → 能力），持久化，启动时不用先跑脚本就能显示。
+  final _caps = <String, Map<String, LxCapability>>{};
+
   ScriptStore(this._app, this._prefs);
+
+  String? get activeId => _activeId;
+  Map<String, LxCapability>? capsOf(String id) => manager.capabilities[id] ?? _caps[id];
+  String? initErrorOf(String id) => manager.initErrors[id];
+
+  /// 播放时尝试的顺序：手动选中的脚本（app.script）→ 当前音源 → 其它。
+  List<CloudSource> forPlayback() {
+    final out = <CloudSource>[];
+    void add(String? id) {
+      final s = id == null ? null : byId(id);
+      if (s != null && !out.contains(s)) out.add(s);
+    }
+
+    if (_app.script != 'auto') add(_app.script);
+    add(_activeId);
+    for (final s in _sources) {
+      add(s.id);
+    }
+    return out;
+  }
+
+  void setActive(String id) {
+    if (byId(id) == null) return;
+    _activeId = id;
+    for (var i = 0; i < _sources.length; i++) {
+      final s = _sources[i];
+      if (s.isActive != (s.id == id)) _sources[i] = CloudSource(id: s.id, name: s.name, rawScript: s.rawScript, description: s.description, version: s.version, author: s.author, homepage: s.homepage, sourceUrl: s.sourceUrl, isActive: s.id == id, addedAt: s.addedAt, raw: s.raw);
+    }
+    _changed();
+  }
+
+  /// 记下校验时得到的能力（导入前已经跑过一次脚本）。
+  void rememberCaps(String id, Map<String, LxCapability> caps) {
+    _caps[id] = caps;
+    _refreshApp();
+    unawaited(_saveCaps());
+  }
+
+  void _capsChanged() {
+    _caps.addAll(manager.capabilities);
+    _refreshApp();
+    unawaited(_saveCaps());
+  }
+
+  Future<void> _saveCaps() async {
+    await _prefs?.write(_kCaps, jsonEncode({for (final e in _caps.entries) e.key: {for (final c in e.value.entries) c.key: c.value.toJson()}}));
+  }
 
   List<CloudSource> get sources => List.unmodifiable(_sources);
   CloudSource? byId(String id) => _sources.where((s) => s.id == id).firstOrNull;
@@ -90,6 +146,9 @@ class ScriptStore implements SourcesBinding {
   }
 
   void remove(String id) {
+    manager.stop(id);
+    _caps.remove(id);
+    unawaited(_saveCaps());
     _sources.removeWhere((s) => s.id == id);
     if (_activeId == id) _activeId = _sources.firstOrNull?.id;
     _changed();
@@ -125,6 +184,13 @@ class ScriptStore implements SourcesBinding {
       ..addAll([
         for (final s in _sources)
           () {
+            final caps = capsOf(s.id);
+            if (caps != null) {
+              final plats = [for (final e in caps.entries) if (_codeToPlat[e.key] != null && e.value.actions.contains('musicUrl')) _codeToPlat[e.key]!];
+              final qs = <String>{for (final c in caps.values) for (final q in c.qualities) appQualityOf(q)};
+              const order = ['128k', 'HQ', 'SQ', 'Hi-Res', 'Dolby', 'Atmos'];
+              return Script(s.id, s.name, s.version.isEmpty ? '-' : s.version, plats, [for (final q in order) if (qs.contains(q)) q], 0, 0);
+            }
             final m = ParsedScript.parse(s.rawScript);
             final plats = (m == null || m.platforms.isEmpty) ? _codeToPlat.values.toList() : m.platforms;
             return Script(s.id, s.name, s.version.isEmpty ? '-' : s.version, plats, m?.qualities ?? const [], 0, 0);
@@ -140,6 +206,17 @@ class ScriptStore implements SourcesBinding {
   }
 
   Future<void> load() async {
+    try {
+      final c = await _prefs?.read(_kCaps);
+      if (c != null) {
+        for (final e in (jsonDecode(c) as Map).entries) {
+          _caps['${e.key}'] = {
+            for (final p in (e.value as Map).entries)
+              '${p.key}': LxCapability('${(p.value as Map)['name'] ?? p.key}', [for (final a in (p.value as Map)['actions'] as List? ?? const []) '$a'], [for (final q in (p.value as Map)['qualities'] as List? ?? const []) '$q']),
+          };
+        }
+      }
+    } catch (_) {}
     final raw = await _prefs?.read(_k);
     if (raw == null) return;
     try {
@@ -157,6 +234,9 @@ class ScriptStore implements SourcesBinding {
   }
 
   Future<void> reset() async {
+    manager.dispose();
+    _caps.clear();
+    await _prefs?.delete(_kCaps);
     _sources.clear();
     _activeId = null;
     _refreshApp();

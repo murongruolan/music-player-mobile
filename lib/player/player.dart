@@ -10,6 +10,7 @@ import '../data/mock.dart';
 import '../data/models.dart';
 import '../pages/settings.dart';
 import '../ui/cover.dart';
+import '../ui/cover_tint.dart';
 import '../ui/icons.dart';
 import '../ui/kit.dart';
 import '../widgets/sheets.dart';
@@ -163,7 +164,7 @@ class _PlayerBackgroundState extends State<PlayerBackground> with SingleTickerPr
         animation: c,
         builder: (_, __) => ValueListenableBuilder<double>(
           valueListenable: app.pos,
-          builder: (_, p, __) => CustomPaint(painter: _FlowPainter(coverColors(s.hue), still ? 0 : c.value, widget.beat && app.playing ? app.beat() : 0)),
+          builder: (_, p, __) => CustomPaint(painter: _FlowPainter(songColors(s), still ? 0 : c.value, widget.beat && app.playing ? app.beat() : 0)),
         ),
       );
     }

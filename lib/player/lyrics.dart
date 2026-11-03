@@ -303,17 +303,17 @@ class LyricPreview extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        dim(lyrics[5].text),
+        dim(previewLyrics[5].text),
         SizedBox(height: s.lgap),
         if (s.roma) Text('ye hang de xing tu', style: ts(12, c: const Color(0x99FFFFFF))),
         ShaderMask(
           blendMode: BlendMode.srcIn,
           shaderCallback: (r) => const LinearGradient(colors: [Colors.white, Colors.white, Color(0x61FFFFFF), Color(0x61FFFFFF)], stops: [0, .55, .55, 1]).createShader(r),
-          child: Text(lyrics[6].text, style: main.copyWith(shadows: s.glow ? const [Shadow(color: Color(0x99FFFFFF), blurRadius: 12)] : null)),
+          child: Text(previewLyrics[6].text, style: main.copyWith(shadows: s.glow ? const [Shadow(color: Color(0x99FFFFFF), blurRadius: 12)] : null)),
         ),
-        if (s.trans) Text(lyrics[6].trans, style: ts(s.ltfs, c: const Color(0xB3FFFFFF))),
+        if (s.trans) Text(previewLyrics[6].trans, style: ts(s.ltfs, c: const Color(0xB3FFFFFF))),
         SizedBox(height: s.lgap),
-        dim(lyrics[7].text),
+        dim(previewLyrics[7].text),
       ]),
     );
   }

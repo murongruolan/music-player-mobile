@@ -32,6 +32,11 @@ dependencies:
   archive: ^4.0.0
   # 公告 Markdown 解析（官方 dart-lang/markdown，渲染自己做）
   markdown: ^7.2.0
+  # 洛雪音源脚本运行时：QuickJS（quickjs-ng）的 dart:ffi 绑定，构建时由 Dart build hooks 从 C 源码编译，
+  # Android / iOS / 桌面（含 flutter test 的宿主机）都能跑
+  flutter_qjs: ^0.4.0
+  # 从文件导入音源脚本（flutter.dev 官方插件，系统文件选择器）
+  file_selector: ^1.0.3
 
 dev_dependencies:
   flutter_test:

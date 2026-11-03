@@ -1,8 +1,7 @@
 // 曲目播放地址解析。引擎只认「一个能播的 URI」，从曲目到 URI 的映射由实现方负责。
 //
-// 最终实现是 Kiro 负责的音源脚本 / 平台链路（lx 脚本在沙箱里解析出直链）。
-// 在那之前 [DemoTrackResolver] 用公开测试音频顶上，让播放链路可以真实联调：
-//   TODO(kiro): 音源脚本运行时就绪后，替换 AppState 注入的 resolver 实现。
+// 正式实现是 lib/source/music_resolver.dart（洛雪音源脚本在 QuickJS 里解析出直链），main.dart 注入。
+// [DemoTrackResolver] 用公开测试音频，只留给引擎的单元测试。
 
 import '../data/models.dart';
 
