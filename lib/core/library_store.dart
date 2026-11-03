@@ -48,6 +48,9 @@ class LibraryStore implements LibraryBinding {
 
   CloudTrack? trackOf(int id) => _tracks[id];
 
+  /// 按歌曲 key（`<平台>:<平台歌曲 id>`）反查它在目录里的 id；没注册过返回 null。
+  int? idOfKey(String key) => _byKey[key];
+
   static double _hue(String k) => (k.hashCode.abs() % 360).toDouble();
 
   static String _quality(CloudTrack t) {

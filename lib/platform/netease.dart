@@ -77,7 +77,16 @@ class NeteasePlatform extends MusicPlatform {
     }
 
     Json data;
-    if (type == SearchType.artist || type == SearchType.album) {
+    if (type == SearchType.artist) {
+      // 艺术家搜索走明文 /web 接口：eapi cloudsearch/pc 的 artist 结果不带头像
+      // （实测 picUrl / img1v1Url 全空，搜索页最佳匹配与艺术家 tab 全是渐变占位），
+      // 明文接口的 artists 带 picUrl；失败时再退 eapi。
+      try {
+        data = await web();
+      } catch (_) {
+        data = await cloud();
+      }
+    } else if (type == SearchType.album) {
       data = await cloud();
     } else if (type == SearchType.playlist) {
       // 桌面端歌单走明文接口；失败时退到 eapi cloudsearch
@@ -349,10 +358,49 @@ class NeteasePlatform extends MusicPlatform {
 
   // ---------------------------------------------------------------- 音质补全
 
-  /// 逐首请求 `/api/song/music/detail/get` 补全音质档位和大小（桌面端 enrichNeteaseTracks）。失败的保持原样。
-  Future<List<PTrack>> enrichTracks(List<PTrack> tracks) {
-    if (!fetchQualityDetails) return Future.value(tracks);
-    return Future.wait(tracks.map((t) async {
+  /// 逐首请求 `/api/song/music/detail/get` 补全音质档位和大小（桌面端 enrichNeteaseTracks）。
+  /// 另外：搜索的精简结果（eapi simpleSongData 与明文 /web 的 album）都不带专辑图，
+  /// 对没有封面的歌批量走 v3/song/detail 补 al.picUrl——列表与播放器的真实封面靠它；
+  /// 详情请求失败时保持原样（渐变兜底）。失败的保持原样。
+  Future<List<PTrack>> enrichTracks(List<PTrack> tracks) async {
+    final covers = <int, String>{};
+    final missing = <int>[];
+    for (final t in tracks) {
+      if (t.cover != null) continue;
+      final id = int.tryParse('${t.identity['id'] ?? t.nativeId}');
+      if (id != null) missing.add(id);
+    }
+    if (missing.isNotEmpty) {
+      try {
+        for (final d in await _songDetails(missing)) {
+          final url = _image(asJson(d['al'] ?? d['album'])['picUrl']);
+          final id = _num(d['id']).toInt();
+          if (url != null && id > 0) covers[id] = url;
+        }
+      } catch (_) {}
+    }
+    PTrack applyCovers(PTrack t) {
+      final id = int.tryParse('${t.identity['id'] ?? t.nativeId}');
+      final cover = id != null ? (t.cover ?? covers[id]) : t.cover;
+      if (cover == t.cover) return t;
+      return PTrack(
+        platform: t.platform,
+        nativeId: t.nativeId,
+        title: t.title,
+        artist: t.artist,
+        album: t.album,
+        duration: t.duration,
+        cover: cover,
+        qualities: t.qualities,
+        identity: t.identity,
+        qualityDetails: t.qualityDetails,
+        mvId: t.mvId,
+      );
+    }
+
+    final done = tracks.map(applyCovers).toList();
+    if (!fetchQualityDetails) return done;
+    return Future.wait(done.map((t) async {
       final id = '${t.identity['id'] ?? t.nativeId}';
       if (!RegExp(r'^\d+$').hasMatch(id)) return t;
       try {
