@@ -195,10 +195,7 @@ class AccountPage extends StatelessWidget {
               ('取消', BtnKind.sec, null),
               ('退出', BtnKind.danger, () {
                 popToRoot();
-                app.update(() {
-                  app.authed = false;
-                  app.authPage = 'login';
-                });
+                app.signOut();
               }),
             ])),
       ]),

@@ -82,10 +82,25 @@ class AppState extends ChangeNotifier {
   /// 网络层。测试 / 截图不传（为 null），页面里通过 [api] 取用。
   final Net? net;
   StreamSubscription<SessionEnd>? _sessionSub;
+  StreamSubscription<Json?>? _userSub;
   Net get api => net ?? (throw StateError('AppState 没有注入 Net'));
+
+  /// 是否连着真实后端（false = mock 演示模式：测试、截图）。
+  bool get online => net != null;
+
+  /// 当前登录的 Lyra 账号；未登录或 mock 模式下为 null。
+  Account? account;
+
+  /// 赞助用户才能用云同步 / 云备份 / 云端统计。mock 模式下视为已赞助，方便演示。
+  bool get isSponsor => net == null || (account?.isSponsor ?? false);
 
   AppState({this.net}) {
     _sessionSub = net?.session.onEnd.listen(sessionEnded);
+    _userSub = net?.session.onUser.listen((u) {
+      if (u == null) return;
+      account = Account.fromJson(u);
+      notifyListeners();
+    });
     for (final p in platforms) {
       scriptOrder[p.id] = scripts.where((s) => s.platforms.contains(p.id)).map((s) => s.id).toList();
     }
@@ -303,9 +318,43 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ---------- Lyra 账号会话 ----------
+  /// 启动时本地有令牌：直接进主界面（用缓存的账号信息），后台刷新一次令牌。
+  /// 刷新令牌失效 → [sessionEnded] 回登录页；断网 → 保持离线登录状态。
+  void restoreSession() {
+    final n = net;
+    if (n == null || !n.session.isLoggedIn) return;
+    account = n.auth.cached;
+    authed = true;
+    agreed = seenDisclaimer = true;
+    if (authPage == 'disclaimer') authPage = 'login';
+    notifyListeners();
+    unawaited(n.auth.resume());
+  }
+
+  /// 登录 / 注册成功。
+  void signedIn(Account a) {
+    account = a;
+    authed = true;
+    notifyListeners();
+  }
+
+  /// 退出登录：通知服务端作废刷新令牌，本地清掉会话（经 [sessionEnded] 回登录页）。
+  Future<void> signOut() async {
+    final n = net;
+    if (n == null) {
+      authed = false;
+      authPage = 'login';
+      notifyListeners();
+      return;
+    }
+    await n.auth.logout();
+  }
+
   /// 会话结束（主动退出或令牌失效）→ 回到登录页。失效提示由 main.dart 弹出。
   void sessionEnded(SessionEnd reason) {
-    if (!authed) return;
+    account = null;
+    if (!authed) return notifyListeners();
     authed = false;
     authPage = 'login';
     notifyListeners();
@@ -314,6 +363,7 @@ class AppState extends ChangeNotifier {
   @override
   void dispose() {
     _sessionSub?.cancel();
+    _userSub?.cancel();
     _clock?.cancel();
     pos.dispose();
     super.dispose();
