@@ -8,6 +8,7 @@ import '../data/models.dart';
 import '../net/net.dart';
 import 'announcements.dart';
 import 'cloud.dart';
+import 'telemetry.dart';
 import 'tokens.dart';
 
 class Settings {
@@ -81,6 +82,9 @@ class AppState extends ChangeNotifier {
 
   /// 云同步 / 云备份 / 听歌统计。
   late final cloud = Cloud(this);
+
+  /// 埋点（演示模式不上报）。
+  late final telemetry = Telemetry(net);
   int get unread => anns.unread;
   bool isRead(Announcement a) => anns.isRead(a);
 
@@ -387,6 +391,7 @@ class AppState extends ChangeNotifier {
     _userSub?.cancel();
     anns.dispose();
     cloud.dispose();
+    telemetry.dispose();
     _clock?.cancel();
     pos.dispose();
     super.dispose();

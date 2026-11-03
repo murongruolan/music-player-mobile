@@ -24,7 +24,9 @@ Future<void> main() async {
   net?.session.onEnd.where((r) => r == SessionEnd.expired).listen((_) => toast('登录已失效，请重新登录', 'lock'));
   final app = AppState(net: net);
   await app.cloud.init(); // 读本地听歌统计
+  await app.telemetry.init(); // 读上次没发完的埋点
   app.restoreSession();
+  app.telemetry.track('app_launch', {'source': 'normal', 'loggedIn': app.authed});
   if (shot != null) applyShotState(app, shot);
   runApp(LyraApp(state: app, shot: shot));
 }
