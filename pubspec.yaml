@@ -13,6 +13,8 @@ dependencies:
   http: ^1.2.2
   # 令牌 / 设备 ID 存系统钥匙串（iOS Keychain、Android Keystore 加密）
   flutter_secure_storage: ^11.2.0
+  # 非敏感的本地数据（公告已读、同步版本号、听歌统计、埋点队列）；钥匙串不适合放大块数据
+  shared_preferences: ^2.3.0
 
 dev_dependencies:
   flutter_test:

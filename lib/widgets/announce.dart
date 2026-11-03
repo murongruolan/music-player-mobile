@@ -7,12 +7,12 @@
 // - 不可关闭公告（closable = false）：没有 ✕，返回键无效，「全部已读」也带不走它，
 //   必须翻到这一条、停留 3 秒后点「我已知晓」单独确认。只要还有没确认的，弹窗就不会关闭。
 //
-// 接口对接：把 mock 的 `announcements` 换成接口返回，已读状态（AppState.readAnn）上报 / 持久化即可。
+// 数据与上报见 core/announcements.dart：弹窗里看过可关闭的上报 dismiss，公告页点开上报 read，「我已知晓」上报 confirm。
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../api/announcement_api.dart';
 import '../core/state.dart';
 import '../core/tokens.dart';
-import '../data/mock.dart';
 import '../data/models.dart';
 import '../ui/icons.dart';
 import '../ui/kit.dart';
@@ -22,7 +22,7 @@ bool _showing = false;
 /// 弹出所有未读的弹窗公告；没有就什么都不做。
 Future<void> showAnnouncementPopups(BuildContext context) async {
   final app = context.appRead;
-  final items = announcements.where((a) => a.popup && !app.isRead(a)).toList();
+  final items = app.anns.popups;
   if (items.isEmpty || _showing) return;
   _showing = true;
   final pal = context.pal;
@@ -86,12 +86,15 @@ class _AnnPopupState extends State<_AnnPopup> {
     super.dispose();
   }
 
+  /// 可关闭的公告看过即已读：弹窗里上报 dismiss，公告页点开上报 read。
+  AnnouncementAction get _seen => widget.single ? AnnouncementAction.read : AnnouncementAction.dismiss;
+
   /// 翻到某一条：可关闭的看到即已读；不可关闭的开始 3 秒阅读倒计时。
   void _enter() {
     if (!mounted) return;
     _t?.cancel();
     if (cur.closable) {
-      if (!app.isRead(cur)) app.update(() => app.readAnn.add(cur.id));
+      app.anns.mark(cur, _seen);
       setState(() => cd = 0);
     } else if (!app.isRead(cur)) {
       setState(() => cd = 3);
@@ -116,18 +119,16 @@ class _AnnPopupState extends State<_AnnPopup> {
   void _close() => Navigator.of(context).pop();
 
   void _ack() {
-    app.update(() => app.readAnn.add(cur.id));
+    app.anns.mark(cur, AnnouncementAction.confirm);
     final next = items.indexWhere((a) => !app.isRead(a));
     if (next < 0) return _close();
     _go(next);
   }
 
   void _readAll() {
-    app.update(() {
-      for (final a in items) {
-        if (a.closable) app.readAnn.add(a.id);
-      }
-    });
+    for (final a in items) {
+      if (a.closable) app.anns.mark(a, _seen);
+    }
     final locked = _locked;
     if (locked.isEmpty) return _close();
     toast('还有 ${locked.length} 条公告需要单独确认', 'lock');

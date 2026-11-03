@@ -17,32 +17,37 @@ export 'api_error.dart';
 export 'auth_service.dart';
 export 'json.dart';
 export 'session.dart' show AuthTokens, Session, SessionEnd;
+export 'storage.dart' show KvStore;
 
 class Net {
+  /// 钥匙串：令牌、设备 ID、接口地址。
   final KvStore store;
+
+  /// 普通本地存储：公告已读、同步状态、听歌统计、埋点队列等非敏感数据。
+  final KvStore prefs;
   final ApiConfig config;
   final Session session;
   final DeviceInfo device;
   final ApiClient client;
   final AuthService auth;
 
-  Net._(this.store, this.config, this.session, this.device, this.client) : auth = AuthService(client);
+  Net._(this.store, this.prefs, this.config, this.session, this.device, this.client) : auth = AuthService(client);
 
   /// 正式运行：令牌存系统钥匙串，启动时恢复会话和自定义接口地址。
-  static Future<Net> create() => build(SecureKvStore());
+  static Future<Net> create() => build(SecureKvStore(), prefs: PrefsKvStore());
 
   /// 测试 / 截图：内存存储。[httpClient] 传 MockClient 可模拟后端。
   static Future<Net> memory({http.Client? httpClient, Clock? now, Sleeper? sleep, String? baseUrl}) =>
       build(MemoryKvStore(), httpClient: httpClient, now: now, sleep: sleep, baseUrl: baseUrl);
 
-  static Future<Net> build(KvStore store, {http.Client? httpClient, Clock? now, Sleeper? sleep, String? baseUrl, RateLimiter? limiter}) async {
+  static Future<Net> build(KvStore store, {KvStore? prefs, http.Client? httpClient, Clock? now, Sleeper? sleep, String? baseUrl, RateLimiter? limiter}) async {
     final config = ApiConfig(store, baseUrl: baseUrl);
     await config.load();
     final session = Session(store);
     await session.restore();
     final device = await DeviceInfo.load(store, appVersion: ApiConfig.appVersion);
     final client = ApiClient(config: config, session: session, device: device, httpClient: httpClient, now: now, sleep: sleep, limiter: limiter);
-    return Net._(store, config, session, device, client);
+    return Net._(store, prefs ?? MemoryKvStore(), config, session, device, client);
   }
 
   void dispose() {

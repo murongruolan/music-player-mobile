@@ -1,6 +1,9 @@
-// 本地键值存储：令牌、设备 ID、服务器地址。
-// 正式运行用系统钥匙串（iOS Keychain / Android Keystore 加密存储）；测试和截图用内存版。
+// 本地键值存储。
+// - SecureKvStore：系统钥匙串（iOS Keychain / Android Keystore 加密存储），放令牌、设备 ID、服务器地址。
+// - PrefsKvStore：shared_preferences，放非敏感、可能较大的数据（公告已读、同步状态、听歌统计、埋点队列）。
+// - MemoryKvStore：测试和截图。
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 abstract class KvStore {
   Future<String?> read(String key);
@@ -52,6 +55,33 @@ class SecureKvStore implements KvStore {
   Future<void> delete(String key) async {
     try {
       await _s.delete(key: key);
+    } catch (_) {}
+  }
+}
+
+class PrefsKvStore implements KvStore {
+  final _p = SharedPreferencesAsync();
+
+  @override
+  Future<String?> read(String key) async {
+    try {
+      return await _p.getString(key);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Future<void> write(String key, String value) async {
+    try {
+      await _p.setString(key, value);
+    } catch (_) {}
+  }
+
+  @override
+  Future<void> delete(String key) async {
+    try {
+      await _p.remove(key);
     } catch (_) {}
   }
 }

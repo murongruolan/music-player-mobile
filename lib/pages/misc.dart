@@ -1,5 +1,6 @@
 // 其它二级页：公告 · 平台账号 · 下载管理 · 账号中心 · 登录设备 · 备份与同步 · 音乐云盘（WebDAV）· 关于与更新。
 import 'package:flutter/material.dart';
+import '../api/announcement_api.dart';
 import '../auth/auth.dart';
 import '../core/state.dart';
 import '../core/tokens.dart';
@@ -15,21 +16,44 @@ import 'common.dart';
 import 'scan.dart';
 import 'settings.dart';
 
-class AnnouncementsPage extends StatelessWidget {
+class AnnouncementsPage extends StatefulWidget {
   const AnnouncementsPage({super.key});
+  @override
+  State<AnnouncementsPage> createState() => _AnnouncementsPageState();
+}
+
+class _AnnouncementsPageState extends State<AnnouncementsPage> {
+  @override
+  void initState() {
+    super.initState();
+    // 进页面拉一次（启动时已经拉过，这里拿最新的）
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.appRead.anns.load();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = context.app;
     final pal = context.pal;
-    final locked = announcements.where((a) => !a.closable && !app.isRead(a)).length;
+    final list = app.anns.items;
+    final locked = list.where((a) => !a.closable && !app.isRead(a)).length;
     return SubPage(
       title: '公告',
       actions: [
-        IBtn('refresh', onTap: () {
-          // 演示：把弹窗公告重置为未读，再弹一次
-          app.update(() => app.readAnn.removeWhere((id) => announcements.any((a) => a.id == id && a.popup)));
-          showAnnouncementPopups(context);
-        }),
+        if (app.anns.loading)
+          const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)))
+        else
+          IBtn('refresh', onTap: () async {
+            if (!app.online) {
+              // 演示：把弹窗公告重置为未读，再弹一次
+              app.update(() => app.anns.read.removeWhere((id) => list.any((a) => a.id == id && a.popup)));
+              showAnnouncementPopups(context);
+              return;
+            }
+            await app.anns.load();
+            if (context.mounted) showAnnouncementPopups(context);
+          }),
       ],
       children: [
         Padding(
@@ -38,16 +62,19 @@ class AnnouncementsPage extends StatelessWidget {
             Expanded(child: Text(app.unread > 0 ? '${app.unread} 条未读' : '全部已读', style: ts(13, c: pal.t2))),
             if (app.unread > 0)
               Btn.sec('全部标为已读', small: true, onTap: () {
-                app.update(() {
-                  for (final a in announcements) {
-                    if (a.closable) app.readAnn.add(a.id);
-                  }
-                });
+                for (final a in list) {
+                  if (a.closable) app.anns.mark(a, AnnouncementAction.read);
+                }
                 if (locked > 0) toast('有 $locked 条公告需要点开单独确认', 'lock');
               }),
           ]),
         ),
-        for (final (i, a) in announcements.indexed)
+        if (list.isEmpty && !app.anns.loading)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 60),
+            child: Column(children: [Icon(ic('bell'), size: 40, color: pal.t4), const SizedBox(height: 10), Text('暂无公告', style: ts(14, c: pal.t3))]),
+          ),
+        for (final (i, a) in list.indexed)
           Rise(
             i,
             Padding(
@@ -72,7 +99,9 @@ class AnnouncementsPage extends StatelessWidget {
               ),
             ),
           ),
-        const Hint('普通公告只在这里显示；带「弹窗」的会在进入 App 时弹出，带「需确认」的必须单独点「我已知晓」。右上角可重新演示弹窗。'),
+        Hint(app.online
+            ? '重要和置顶公告会在进入 App 时弹出，带「需确认」的必须单独点「我已知晓」。'
+            : '普通公告只在这里显示；带「弹窗」的会在进入 App 时弹出，带「需确认」的必须单独点「我已知晓」。右上角可重新演示弹窗。'),
       ],
     );
   }

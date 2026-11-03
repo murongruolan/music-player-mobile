@@ -41,7 +41,9 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    Future.delayed(const Duration(milliseconds: 700), () {
+    Future.delayed(const Duration(milliseconds: 700), () async {
+      if (!mounted) return;
+      await context.appRead.anns.load(); // 演示模式下直接返回
       if (mounted && context.appRead.autoPopups) showAnnouncementPopups(context);
     });
     Future.delayed(const Duration(milliseconds: 1200), () {
