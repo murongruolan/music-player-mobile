@@ -3,9 +3,6 @@ name: Icons
 # 重新生成启动器图标（图标画法改了之后手动触发），产物 icons 解压后覆盖到工程根目录。
 on:
   workflow_dispatch:
-  push:
-    branches: ['chore/app-icon']
-    paths: ['test/tool/render_icons_test.dart', 'lib/ui/brand.dart', '.github/workflows/icons.yml']
 
 jobs:
   render:
