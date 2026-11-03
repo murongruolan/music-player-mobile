@@ -26,6 +26,12 @@ dependencies:
   audio_service: ^0.18.19
   # 音频焦点：来电、其他 App 播放时正确暂停与恢复。
   audio_session: ^0.2.4
+  # 平台接口签名 / 加密（网易 weapi·eapi、QQ zzcSign、酷狗签名、酷我 AES）与歌词解码（酷狗 KRC zlib）
+  crypto: ^3.0.3
+  pointycastle: ^4.0.0
+  archive: ^4.0.0
+  # 公告 Markdown 解析（官方 dart-lang/markdown，渲染自己做）
+  markdown: ^7.2.0
 
 dev_dependencies:
   flutter_test:

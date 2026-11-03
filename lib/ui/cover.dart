@@ -1,5 +1,5 @@
-// 封面：按色相 + 变体生成渐变（原型 coverStyle 的 Canvas 版）。接口对接后可换成网络图片，
-// 但保留本组件作为占位 / 加载失败的兜底。
+// 封面：按色相 + 变体生成渐变（原型 coverStyle 的 Canvas 版）。有封面地址时在渐变上叠网络图片，
+// 渐变同时是加载中 / 加载失败的兜底。
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -14,11 +14,21 @@ class Cover extends StatelessWidget {
   final double radius;
   final Widget? child;
   final bool shadow;
-  const Cover({super.key, required this.hue, this.variant = 0, this.size = 48, this.width, this.height, this.radius = 10, this.child, this.shadow = false});
+
+  /// 封面图片地址（http / https）。
+  final String? url;
+  const Cover({super.key, required this.hue, this.variant = 0, this.size = 48, this.width, this.height, this.radius = 10, this.child, this.shadow = false, this.url});
   factory Cover.song(Song s, {double size = 48, double radius = 10, bool shadow = false, Widget? child}) =>
-      Cover(hue: s.hue, variant: s.variant, size: size, radius: radius, shadow: shadow, child: child);
+      Cover(hue: s.hue, variant: s.variant, size: size, radius: radius, shadow: shadow, url: s.cover, child: child);
   factory Cover.pl(Playlist p, {double size = 140, double radius = 16, Widget? child}) =>
-      Cover(hue: p.hue, variant: p.variant, size: size, radius: radius, child: child);
+      Cover(hue: p.hue, variant: p.variant, size: size, radius: radius, url: p.cover, child: child);
+
+  /// 按显示尺寸解码，避免大图占内存。
+  int? _cacheW(BuildContext context) {
+    final w = width ?? size;
+    if (w <= 0 || !w.isFinite) return null;
+    return (w * MediaQuery.devicePixelRatioOf(context)).round();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -38,12 +48,43 @@ class Cover extends StatelessWidget {
               borderRadius: BorderRadius.circular(radius),
               border: Border.all(color: const Color(0x14FFFFFF)),
             ),
-            child: child,
+            child: _image(context),
           ),
         ),
       ),
     );
   }
+
+  Widget? _image(BuildContext context) {
+    final u = coverUrl(url);
+    if (u == null) return child;
+    final img = Image.network(
+      u,
+      fit: BoxFit.cover,
+      width: double.infinity,
+      height: double.infinity,
+      cacheWidth: _cacheW(context),
+      gaplessPlayback: true,
+      frameBuilder: (_, ch, frame, sync) => sync ? ch : AnimatedOpacity(opacity: frame == null ? 0 : 1, duration: const Duration(milliseconds: 260), child: ch),
+      errorBuilder: (_, __, ___) => const SizedBox.expand(),
+    );
+    if (child == null) return img;
+    return Stack(fit: StackFit.expand, children: [img, child!]);
+  }
+}
+
+/// 规范封面地址：只接受 http(s)；支持 https 的图床（网易 / QQ）把 http 升级成 https，
+/// 其余 http 图床（酷狗 / 酷我 / 咪咕）由 network_security_config 单独放行。
+String? coverUrl(String? u) {
+  if (u == null) return null;
+  u = u.trim();
+  if (u.startsWith('//')) u = 'https:$u';
+  if (!(u.startsWith('http://') || u.startsWith('https://'))) return null;
+  if (u.startsWith('http://')) {
+    final host = Uri.tryParse(u)?.host ?? '';
+    if (host.endsWith('126.net') || host.endsWith('gtimg.cn') || host.endsWith('qq.com') || host.endsWith('qpic.cn')) u = 'https://${u.substring(7)}';
+  }
+  return u;
 }
 
 Offset _dirPts(Size s, double deg, bool start) {

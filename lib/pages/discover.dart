@@ -7,6 +7,7 @@ import '../core/state.dart';
 import '../core/tokens.dart';
 import '../data/mock.dart';
 import '../data/models.dart';
+import '../platform/registry.dart';
 import '../shell/shell.dart';
 import '../ui/cover.dart';
 import '../ui/icons.dart';
@@ -16,8 +17,8 @@ import '../widgets/sheets.dart';
 import 'common.dart';
 import 'detail.dart';
 import 'misc.dart';
+import 'remote.dart';
 import 'scan.dart';
-import 'settings.dart';
 
 class PlatFeat {
   final int lv, like, mine, fav;
@@ -946,20 +947,48 @@ class MvCard extends StatelessWidget {
 Widget platBadgeOf(Platform p, [double s = 22]) => PlatBadge(p, size: s);
 IconData icOf(String n) => ic(n);
 
-// ============ 联网模式：平台内容接入前的发现页 ============
-// 推荐歌单、榜单、每日推荐、新歌等都来自各音乐平台的接口，平台直连还没有接入，
-// 这里不再展示 mock 内容，只放真实数据（我的音乐库、听歌统计）和说明。
-class _OnlineDiscover extends StatelessWidget {
+// ============ 联网模式：各平台公开内容（未登录可用） ============
+// 对齐桌面端 publicPlatform：此刻热门（第一个榜单的前 10 首）· 推荐歌单 12 个 · 排行榜 9 个；
+// 下面是真实的本机数据（我的歌单、听歌统计）。
+class _OnlineDiscover extends StatefulWidget {
   const _OnlineDiscover();
+  @override
+  State<_OnlineDiscover> createState() => _OnlineDiscoverState();
+}
+
+typedef _Feed = ({DiscoverFeed feed, List<int> hot});
+
+class _OnlineDiscoverState extends State<_OnlineDiscover> {
+  String? plat;
+  late Future<_Feed> f;
+
+  Future<_Feed> _fetch(AppState app) => app.content.discover(app.plat).then((d) => (feed: d, hot: [for (final t in d.hot) registerTrack(app, t)]));
+
+  Future<void> _refresh() async {
+    final app = context.appRead;
+    app.content.invalidate(app.plat);
+    final nf = _fetch(app);
+    setState(() => f = nf);
+    try {
+      await nf;
+    } catch (_) {}
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = context.app;
     final pal = context.pal;
+    if (plat != app.plat) {
+      plat = app.plat;
+      f = _fetch(app);
+    }
+    final code = PlatformHub.codeOf(app.plat);
     final pls = app.myPlaylists;
     final week = app.cloud.stats.summary(7);
     return TabPage(
       title: '发现',
       controller: tabScroll[0],
+      onRefresh: _refresh,
       actions: [
         IBtn('scan', onTap: () => pushFull(context, const ScanPage())),
         IBtn('bell', dot: app.unread > 0, onTap: () => push(context, const AnnouncementsPage())),
@@ -967,40 +996,57 @@ class _OnlineDiscover extends StatelessWidget {
         Avatar(avatarText(app), onTap: () => app.update(() => app.tab = 4)),
       ],
       children: [
-        const Padding(padding: EdgeInsets.fromLTRB(Tk.pad, 2, Tk.pad, 12), child: SourceBar()),
+        const Padding(padding: EdgeInsets.fromLTRB(Tk.pad, 2, Tk.pad, 4), child: SourceBar()),
         Rise(
           0,
-          CardBox(
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Container(width: 42, height: 42, decoration: BoxDecoration(color: pal.accSoft, borderRadius: BorderRadius.circular(13)), child: Icon(ic('compass'), color: pal.accText)),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('${app.platform.name}内容接入中', style: ts(15, w: FontWeight.w700, c: pal.t1)),
-                  const SizedBox(height: 4),
-                  Text('推荐歌单、榜单、每日推荐和新歌需要连接各音乐平台，这部分正在开发。你在桌面端的收藏和歌单可以通过云同步出现在「音乐库」。', style: ts(12.5, c: pal.t2, h: 1.55)),
-                ]),
-              ),
-            ]),
-          ),
-        ),
-        Rise(
-          1,
           QuickGrid([
+            ('grid', '歌单广场', () => push(context, PlaylistSquarePage(platform: code))),
+            ('chart', '排行榜', () => push(context, LeaderboardsPage(platform: code))),
             ('library', '音乐库', () => app.update(() => app.tab = 3)),
-            ('chart', '听歌统计', () => push(context, const StatsPage())),
-            ('refresh', '备份与同步', () => push(context, const BackupPage())),
-            ('globe', '音源脚本', () => push(context, const SourcesPage())),
+            ('clock', '听歌统计', () => push(context, const StatsPage())),
           ]),
+        ),
+        FutureBuilder<_Feed>(
+          key: ValueKey('feed$plat'),
+          future: f,
+          builder: (c, s) {
+            if (s.connectionState != ConnectionState.done) return const Padding(padding: EdgeInsets.only(top: 22), child: ListSkeleton(rows: 5));
+            if (s.hasError) {
+              return EmptyState('wifi', '${app.platform.name}的内容没有加载出来', desc: '${platformError(s.error!)}\n可以下拉刷新，或在上方换一个平台。', action: Btn.sec('重试', icon: 'refresh', small: true, onTap: _refresh));
+            }
+            final d = s.data!.feed, hot = s.data!.hot;
+            final board = d.hotBoard;
+            return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              if (hot.isNotEmpty) ...[
+                Sec('此刻热门', more: board == null ? null : '完整榜单', onMore: board == null ? null : () => openCatalog(context, board)),
+                if (board != null) Hint('${board.title} · ${app.platform.name}', padding: const EdgeInsets.fromLTRB(Tk.pad, 0, Tk.pad, 6)),
+                CardBox(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Column(children: [
+                    for (final (i, id) in hot.indexed) SongRow(songs[id], num: i, list: 'all', listName: board?.title ?? '此刻热门', swipe: false, tail: HeartBtn(id)),
+                  ]),
+                ),
+              ],
+              if (d.playlists.isNotEmpty) ...[
+                Sec('推荐歌单', more: '歌单广场', onMore: () => push(context, PlaylistSquarePage(platform: code))),
+                HScroll(height: 196, children: [for (final x in d.playlists) PlCard(cardOf(x), onTap: () => openCatalog(context, x))]),
+              ],
+              if (d.boards.isNotEmpty) ...[
+                Sec('排行榜', more: '全部', onMore: () => push(context, LeaderboardsPage(platform: code))),
+                HScroll(height: 160, gap: 12, children: [for (final b in d.boards) BoardCard(b)]),
+              ],
+              if (d.errors.isNotEmpty) Hint('部分内容没有加载出来：${d.errors.join('；')}', padding: const EdgeInsets.fromLTRB(Tk.pad, 12, Tk.pad, 0)),
+            ]);
+          },
         ),
         Sec('我的歌单', more: pls.isEmpty ? null : '全部', onMore: () => app.update(() {
               app.tab = 3;
               app.libSeg = '歌单';
             })),
         if (pls.isEmpty)
-          const Hint('还没有歌单。可以在「音乐库 → 歌单」新建，或开启云同步拉取桌面端的歌单。', padding: EdgeInsets.symmetric(horizontal: Tk.pad))
+          const Hint('还没有歌单。可以在「音乐库 → 歌单」新建、收藏平台歌单，或开启云同步拉取桌面端的歌单。', padding: EdgeInsets.symmetric(horizontal: Tk.pad))
         else
-          HScroll(height: 196, children: [for (final p in pls.take(10)) PlCard(p, sub: '${p.ids.isEmpty ? p.count : p.ids.length} 首', onTap: () => push(context, PlaylistPage(id: p.id)))]),
+          HScroll(height: 196, children: [for (final p in pls.take(10)) PlCard(p, sub: '${p.kind == 'collected' ? p.count : p.ids.length} 首', onTap: () => push(context, PlaylistPage(id: p.id)))]),
         Sec('本周', more: '统计', onMore: () => push(context, const StatsPage())),
         CardBox(
           onTap: () => push(context, const StatsPage()),
