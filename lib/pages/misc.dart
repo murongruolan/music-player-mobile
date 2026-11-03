@@ -1,4 +1,4 @@
-// 其它二级页：公告 · 平台账号 · 下载管理 · 账号中心 · 登录设备 · 备份与同步 · 音乐云盘（WebDAV）· 关于与更新。
+// 其它二级页：公告 · 平台账号 · 下载管理 · 账号中心 · 登录设备 · 音乐云盘（WebDAV）· 关于与更新。备份与同步在 backup.dart。
 import 'package:flutter/material.dart';
 import '../api/announcement_api.dart';
 import '../auth/auth.dart';
@@ -15,6 +15,8 @@ import '../widgets/sheets.dart';
 import 'common.dart';
 import 'scan.dart';
 import 'settings.dart';
+
+export 'backup.dart' show BackupPage;
 
 class AnnouncementsPage extends StatefulWidget {
   const AnnouncementsPage({super.key});
@@ -265,41 +267,6 @@ class DevicesPage extends StatelessWidget {
           ),
       ]),
     ]);
-  }
-}
-
-class BackupPage extends StatelessWidget {
-  const BackupPage({super.key});
-  @override
-  Widget build(BuildContext context) {
-    final app = context.app;
-    final pal = context.pal;
-    return SubPage(title: '备份与同步', children: [
-      CardBox(
-        margin: const EdgeInsets.fromLTRB(Tk.pad, 0, Tk.pad, 14),
-        child: Row(children: [
-          Container(width: 48, height: 48, decoration: BoxDecoration(color: pal.ok.withValues(alpha: .14), borderRadius: BorderRadius.circular(16)), child: Icon(ic('cloud'), color: pal.ok)),
-          const SizedBox(width: 14),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('云同步正常', style: ts(15, w: FontWeight.w700, c: pal.t1)), Text('收藏 ${app.liked.length} · 歌单 ${app.myPlaylists.length} · 最后同步 刚刚', style: ts(12.5, c: pal.t2))])),
-        ]),
-      ),
-      Group(title: '账号云同步', children: [
-        Item(icon: 'refresh', color: 'green', label: '多端实时同步', sub: '收藏、歌单、播放进度', sw: app.set.cloudSync, onSw: (v) => app.update(() => app.set.cloudSync = v)),
-        Item(icon: 'cloud', color: 'blue', label: '立即备份到账号', onTap: () => toast('备份完成 · 1.2 MB', 'cloud')),
-        Item(icon: 'history', color: 'gray', label: '历史备份', val: '12 份', onTap: () => _history(context)),
-      ]),
-      Press(onTap: () => push(context, const CloudPage()), child: noteBox(context, 'cloud', 'WebDAV 已移到「我的 → 音乐云盘」，可以直接播放 NAS 上的音乐，也可以备份收藏和歌单。')),
-    ]);
-  }
-
-  void _history(BuildContext context) {
-    showLSheet(context, title: '历史备份', sub: '12 份', builder: (c) => Column(children: [
-          for (var i = 0; i < 6; i++)
-            Item(icon: 'history', color: 'gray', label: '2026-11-${(2 - i ~/ 3).toString().padLeft(2, '0')} ${['09:12', '03:00', '21:40'][i % 3]}', sub: '${(1.2 - i * .02).toStringAsFixed(2)} MB · 收藏 ${128 - i} · 歌单 4', onTap: () {
-              Navigator.of(c).pop();
-              showLDialog(context, icon: 'history', title: '恢复这份备份？', body: '恢复前会先自动备份当前数据', actions: [('取消', BtnKind.sec, null), ('恢复', BtnKind.pri, () => toast('已恢复', 'check'))]);
-            }),
-        ]));
   }
 }
 

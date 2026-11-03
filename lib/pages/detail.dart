@@ -11,6 +11,7 @@ import '../ui/cover.dart';
 import '../ui/icons.dart';
 import '../ui/kit.dart';
 import '../widgets/sheets.dart';
+import 'backup.dart' show SponsorGate, toastApiError;
 import 'common.dart';
 import 'discover.dart';
 
@@ -224,8 +225,134 @@ class StatsPage extends StatefulWidget {
 
 class _StatsPageState extends State<StatsPage> {
   String range = '近 7 天';
+  bool busy = false;
+
+  int get _days => range == '近 7 天' ? 7 : range == '近 30 天' ? 30 : 90;
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => context.app.online ? _real(context) : _demo(context);
+
+  /// 本机记录 + 与云端合并后的真实统计。
+  Widget _real(BuildContext context) {
+    final app = context.app;
+    final pal = context.pal;
+    final st = app.cloud.stats;
+    final sum = st.summary(_days);
+    final cards = [('聆听时长', sum.ms / 3600000, 1, '小时'), ('播放次数', sum.plays.toDouble(), 0, '次'), ('不同歌曲', sum.songs.toDouble(), 0, '首'), ('不同歌手', sum.artists.toDouble(), 0, '位')];
+    final mins = st.dailyMinutes(7);
+    final maxMin = mins.fold<int>(1, math.max);
+    final today = DateTime.now();
+    final foot = st.dailyPlays(90);
+    final maxFoot = foot.fold<int>(1, math.max);
+    final top = st.topArtists(_days);
+    return SubPage(title: '听歌统计', children: [
+      Seg(const ['近 7 天', '近 30 天', '近 90 天'], range, (v) => setState(() => range = v)),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(Tk.pad, 16, Tk.pad, 0),
+        child: GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 10,
+          crossAxisSpacing: 10,
+          childAspectRatio: 1.45,
+          children: [
+            for (final (l, v, d, u) in cards)
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(color: pal.s1, borderRadius: BorderRadius.circular(20), border: Border.all(color: pal.line)),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(l, style: ts(12, c: pal.t2)),
+                  const SizedBox(height: 6),
+                  Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [CountUp(v, key: ValueKey('$range$l$v'), decimals: d, style: ts(28, w: FontWeight.w800, c: pal.t1, num: true)), const SizedBox(width: 3), Text(u, style: ts(13, c: pal.t3))]),
+                ]),
+              ),
+          ],
+        ),
+      ),
+      if (sum.plays == 0) const Hint('还没有听歌记录。一首歌听满 30 秒（短歌听满一半）会记一次播放。', padding: EdgeInsets.fromLTRB(Tk.pad, 12, Tk.pad, 0)),
+      const Sec('近 7 天每日时长', size: 16, more: '分钟'),
+      CardBox(
+        padding: const EdgeInsets.fromLTRB(14, 18, 14, 12),
+        child: SizedBox(
+          height: 150,
+          child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            for (var i = 0; i < 7; i++)
+              Expanded(
+                child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+                  Text('${mins[i]}', style: ts(10, c: pal.t3, num: true)),
+                  const SizedBox(height: 4),
+                  TweenAnimationBuilder<double>(
+                    key: ValueKey('bar$i${mins[i]}'),
+                    tween: Tween(begin: 0, end: mins[i] / maxMin),
+                    duration: Duration(milliseconds: 600 + i * 60),
+                    curve: Tk.softSpring,
+                    builder: (_, v, __) => Container(height: math.max(2.0, 110 * v), margin: const EdgeInsets.symmetric(horizontal: 7), decoration: BoxDecoration(color: pal.acc.withValues(alpha: i == 6 ? 1 : .55), borderRadius: BorderRadius.circular(6))),
+                  ),
+                  const SizedBox(height: 6),
+                  Text('一二三四五六日'[DateTime(today.year, today.month, today.day - 6 + i).weekday - 1], style: ts(11, c: pal.t3)),
+                ]),
+              ),
+          ]),
+        ),
+      ),
+      const Sec('90 天足迹', size: 16),
+      CardBox(
+        child: GridView.count(
+          crossAxisCount: 15,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 4,
+          crossAxisSpacing: 4,
+          children: [for (final n in foot) Container(decoration: BoxDecoration(color: pal.acc.withValues(alpha: n == 0 ? .06 : .2 + .8 * n / maxFoot), borderRadius: BorderRadius.circular(3)))],
+        ),
+      ),
+      if (top.isNotEmpty) ...[
+        const Sec('最常听的歌手', size: 16),
+        HScroll(height: 120, gap: 16, children: [
+          for (final (i, (a, n)) in top.indexed)
+            SizedBox(width: 76, child: Column(children: [Cover(hue: i * 60.0 + 20, variant: 1, size: 76, radius: 38), const SizedBox(height: 6), Text(a, maxLines: 1, overflow: TextOverflow.ellipsis, style: ts(12.5, w: FontWeight.w600, c: pal.t1)), Text('$n 次', style: ts(11, c: pal.t3))])),
+        ]),
+      ],
+      const SizedBox(height: 18),
+      if (app.isSponsor)
+        Group(title: '云端统计', foot: '与桌面端等其它设备上的听歌统计合并显示。合并取各设备的最大值，不会重复累加。', children: [
+          Item(icon: 'refresh', color: 'teal', label: '从云端合并', trailing: busy ? const Padding(padding: EdgeInsets.only(right: 12), child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))) : null, onTap: busy ? null : () => _cloud(() async {
+                final r = await app.cloud.engine!.download('listening_stats', replace: false);
+                toast(r.changed ? '已合并云端统计' : '云端还没有统计数据', r.changed ? 'check' : 'info');
+              })),
+          Item(icon: 'up', color: 'blue', label: '上传本机记录', onTap: busy ? null : () => _cloud(() async {
+                await app.cloud.engine!.upload('listening_stats');
+                toast('已上传到云端', 'cloud');
+              })),
+        ])
+      else
+        const SponsorGate('云端听歌统计', desc: '激活赞助后，听歌统计可以上传到账号，并与桌面端等其它设备合并显示。'),
+      Group(children: [
+        Item(icon: 'trash', color: 'red', label: '清除听歌记录', danger: true, chev: false, onTap: () => showLDialog(context, icon: 'trash', iconColor: pal.danger, title: '清除全部听歌记录？', body: app.isSponsor ? '本机记录和云端统计都会被清空。其它设备上的记录需要在那台设备上单独清除，否则下次同步会合并回来。' : '本机的听歌记录会被清空，此操作不可撤销。', actions: [
+              ('取消', BtnKind.sec, null),
+              ('清除', BtnKind.danger, () => _cloud(() async {
+                    await app.cloud.clearStats();
+                    toast('已清除听歌记录', 'trash');
+                  })),
+            ])),
+      ]),
+    ]);
+  }
+
+  Future<void> _cloud(Future<void> Function() f) async {
+    setState(() => busy = true);
+    try {
+      await f();
+    } catch (e) {
+      toastApiError(e);
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  /// 演示模式（截图 / 测试）：原来的 mock 统计。
+  Widget _demo(BuildContext context) {
     final pal = context.pal;
     final k = range == '近 7 天' ? 1.0 : range == '近 30 天' ? 4.1 : 11.6;
     final cards = [('聆听时长', 6.2 * k, 1, '小时', '+18%'), ('播放次数', 214 * k, 0, '次', '+9%'), ('不同歌曲', 63 * math.sqrt(k), 0, '首', ''), ('不同歌手', 21 * math.sqrt(k), 0, '位', '')];
