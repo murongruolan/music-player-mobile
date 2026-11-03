@@ -276,7 +276,7 @@ TencentLyricText? _parseQrcLines(String value) {
     }
     found = true;
     final lineStart = int.parse(m.group(1)!), lineDuration = int.parse(m.group(2)!);
-    final lineEnd = lineStart + max(0, lineDuration);
+    final int lineEnd = lineStart + max<int>(0, lineDuration);
     final rest = m.group(3) ?? '';
     final words = <({int start, int duration, String text})>[];
     var cursor = 0;
