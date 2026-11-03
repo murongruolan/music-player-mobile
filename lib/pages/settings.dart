@@ -594,7 +594,10 @@ void _scriptLink(BuildContext context) {
           const SizedBox(height: 14),
           Row(children: [
             Expanded(child: Btn.sec('粘贴', icon: 'paste', onTap: () async {
-              if (!context.appRead.online) return tc.text = 'https://example.com/lyra/source-e.js';
+              if (!context.appRead.online) {
+                tc.text = 'https://example.com/lyra/source-e.js';
+                return;
+              }
               final d = await Clipboard.getData('text/plain');
               tc.text = d?.text?.trim() ?? '';
             })),
