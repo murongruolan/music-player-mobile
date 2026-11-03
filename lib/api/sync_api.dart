@@ -1,4 +1,6 @@
 // 云同步 / 云备份接口。整个 /sync/* 家族都要求赞助用户（后端 requireSponsor → 403 / 40301）。
+// 实时通知只用 WebSocket（/sync/ws）。旧的长轮询 /sync/wait 每 20 秒占一个请求，太费 CF 免费额度，
+// 后端已标为过渡期回退通道，客户端不封装、不调用。
 import '../net/net.dart';
 
 /// 后端支持的同步文档类型。
@@ -41,15 +43,6 @@ class SyncApi {
         body: {'docType': docType, 'baseRevision': baseRevision, 'force': force, 'deviceName': _c.device.deviceName, 'payload': payload},
         timeout: const Duration(seconds: 30),
         decode: (d) => PushResult.fromJson(asJson(d)),
-      );
-
-  /// 长轮询（最长 20 秒）。每次调用都占一个请求，客户端默认不用它，实时通知走 WebSocket。
-  Future<PullResult> wait(String docType, {required int sinceRevision, int timeoutSec = 20}) => _c.get(
-        '/sync/wait',
-        query: {'docType': docType, 'sinceRevision': sinceRevision, 'timeout': timeoutSec},
-        retry: false,
-        timeout: Duration(seconds: timeoutSec + 8),
-        decode: (d) => PullResult.fromJson(asJson(d)),
       );
 
   /// WebSocket 地址：wss://<host>/api/v1/sync/ws?token=…&deviceId=…
