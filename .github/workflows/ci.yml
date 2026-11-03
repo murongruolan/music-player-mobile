@@ -1,0 +1,104 @@
+name: CI
+
+# check：每次推送 / PR 都跑（analyze + test），失败即标红。
+# build：推送到 main、PR、手动触发，或提交信息里带 [apk] / [shots] 时，构建 Web 截图和 Android APK。
+#   - 截图默认跑 tool/shots-quick.json；提交信息带 [shots] 时跑完整的 tool/shots.json。
+
+on:
+  push:
+    branches: ['**']
+    paths-ignore: ['docs/**', '**.md']
+  pull_request:
+    paths-ignore: ['docs/**', '**.md']
+  workflow_dispatch:
+    inputs:
+      full_shots:
+        description: '跑完整截图列表'
+        type: boolean
+        default: false
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter --version
+      - run: flutter pub get
+      - name: Analyze
+        run: |
+          set -o pipefail
+          flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1 | tee analyze.txt
+      - name: Test
+        run: |
+          set -o pipefail
+          flutter test 2>&1 | tee test.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: check-logs
+          path: |
+            analyze.txt
+            test.txt
+          retention-days: 14
+
+  build:
+    needs: check
+    if: >-
+      github.event_name == 'pull_request' ||
+      github.event_name == 'workflow_dispatch' ||
+      github.ref == 'refs/heads/main' ||
+      contains(github.event.head_commit.message, '[apk]') ||
+      contains(github.event.head_commit.message, '[shots]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+
+      - name: Build web
+        run: flutter build web --release --no-tree-shake-icons
+
+      - name: Screenshots
+        working-directory: tool
+        timeout-minutes: 15
+        continue-on-error: true
+        env:
+          MSG: ${{ github.event.head_commit.message }}
+          FULL: ${{ inputs.full_shots }}
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq fonts-noto-cjk >/dev/null
+          npm init -y >/dev/null && npm i -s playwright@1.48.2 >/dev/null
+          npx playwright install --with-deps chromium >/dev/null
+          (cd ../build/web && python3 -m http.server 8080 >/dev/null 2>&1 &)
+          sleep 2
+          if [[ "$MSG" != *"[shots]"* && "$FULL" != "true" ]]; then cp shots-quick.json shots.json; fi
+          node shots.mjs
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shots
+          path: tool/shots/
+          retention-days: 14
+
+      - name: Build APK
+        run: flutter build apk --release --split-per-abi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: build/app/outputs/flutter-apk/*.apk
+          retention-days: 30
