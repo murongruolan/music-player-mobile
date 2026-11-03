@@ -285,7 +285,7 @@ class NeteasePlatform extends MusicPlatform {
       title: title,
       description: description,
       cover: cover,
-      creator: (creator ?? '').isEmpty ? null : creator,
+      creator: creator.isEmpty ? null : creator,
       tracks: tracks,
       total: total,
       page: page,
