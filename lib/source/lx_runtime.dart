@@ -5,8 +5,8 @@
 //   request(action, platform, musicInfo, quality) → 调脚本的 request 处理器（默认 20 秒超时）
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter_qjs/flutter_qjs.dart';
 import 'package:http/http.dart' as http;
+import 'js_engine.dart';
 import 'lx_native.dart';
 import 'lx_prelude.dart';
 
@@ -56,7 +56,7 @@ Map<String, LxCapability> validateLxInit(Object? value) {
 }
 
 class LxRuntime {
-  final FlutterQjs _qjs;
+  final JsEngine _qjs;
   final http.Client _http;
   final _inited = Completer<Map<String, LxCapability>>();
   final _cancelled = <String>{};
@@ -73,7 +73,12 @@ class LxRuntime {
   /// 启动脚本并等它初始化完成。失败（语法错误、超时、没声明平台）抛 [LxException]。
   static Future<LxRuntime> start(String script, {LxScriptInfo info = const LxScriptInfo(), http.Client? client, Duration initTimeout = const Duration(seconds: 10)}) async {
     // timeout：单次执行（eval / 回调 / 微任务）超过 5 秒就中断，防止脚本死循环卡住界面
-    final qjs = FlutterQjs(stackSize: 1024 * 1024, timeout: 5000, memoryLimit: 64 * 1024 * 1024);
+    final JsEngine qjs;
+    try {
+      qjs = createJsEngine(timeoutMs: 5000);
+    } on UnsupportedError catch (e) {
+      throw LxException('${e.message}');
+    }
     final rt = LxRuntime._(qjs, client ?? http.Client());
     try {
       rt._install(info, script);
@@ -94,22 +99,15 @@ class LxRuntime {
   late Map<String, LxCapability> capabilities;
 
   void _install(LxScriptInfo info, String script) {
-    final set = _qjs.evaluate('(function (k, v) { globalThis[k] = v; })') as JSInvokable;
-    try {
-      set.invoke(['__lx_native', (String op, String arg) => lxNative(op, arg)]);
-      set.invoke(['__lx_http', (String id, String url, String opts) => _httpCall(id, url, opts)]);
-      set.invoke(['__lx_http_cancel', (String id) => _cancelled.add(id)]);
-      set.invoke(['__lx_zlib', (String op, String data) => Future(() => lxZlib(op, data))]);
-      set.invoke(['__lx_sleep', (dynamic ms) => Future<void>.delayed(Duration(milliseconds: ms is num ? ms.toInt() : 0))]);
-      set.invoke(['__lx_event', (String name, String json) => _event(name, json)]);
-      set.invoke([
-        '__lx_script_info',
-        {'name': info.name, 'description': info.description, 'version': info.version, 'author': info.author, 'homepage': info.homepage, 'rawScript': script},
-      ]);
-    } finally {
-      set.free();
-    }
-    _qjs.evaluate(lxPrelude, name: 'lx-prelude.js');
+    final e = _qjs;
+    e.setGlobal('__lx_native', (String op, String arg) => lxNative(op, arg));
+    e.setGlobal('__lx_http', (String id, String url, String opts) => _httpCall(id, url, opts));
+    e.setGlobal('__lx_http_cancel', (String id) => _cancelled.add(id));
+    e.setGlobal('__lx_zlib', (String op, String data) => Future(() => lxZlib(op, data)));
+    e.setGlobal('__lx_sleep', (dynamic ms) => Future<void>.delayed(Duration(milliseconds: ms is num ? ms.toInt() : 0)));
+    e.setGlobal('__lx_event', (String name, String json) => _event(name, json));
+    e.setGlobal('__lx_script_info', {'name': info.name, 'description': info.description, 'version': info.version, 'author': info.author, 'homepage': info.homepage, 'rawScript': script});
+    e.evaluate(lxPrelude, name: 'lx-prelude.js');
   }
 
   Future<String> _httpCall(String id, String url, String opts) async {
