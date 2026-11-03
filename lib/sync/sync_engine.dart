@@ -6,7 +6,7 @@
 // - push：baseRevision = 本机记的 revision。服务端返回冲突时带回远端快照 → 合并 → 用新 revision 再推一次（只重试一次）。
 // - 实时：只有 [live] 里的文档（默认 settings、library）自动同步。本机变化防抖 2 秒后推送；
 //   WebSocket（/sync/ws）收到其他设备的 {type:"changed", docType, revision} 后拉取。
-//   连不上 WebSocket 时退回每 5 分钟拉一次（pull 没变化时服务端只查元数据），不用长轮询（每 20 秒占一个请求，免费额度扛不住）。
+//   连不上 WebSocket 时退回每 5 分钟拉一次（pull 没变化时服务端只查元数据）。不用 /sync/wait 长轮询（每 20 秒占一个请求，免费额度扛不住）。
 // - 其余文档（听歌统计、音源脚本、收藏、歌单）由用户在界面上手动上传 / 恢复。
 // - 403 / 40301（非赞助用户）：停止并进入 needSponsor，界面引导激活。
 import 'dart:async';
