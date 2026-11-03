@@ -15,6 +15,7 @@ import '../ui/brand.dart';
 import '../ui/cover.dart';
 import '../ui/icons.dart';
 import '../ui/kit.dart';
+import '../ui/markdown.dart';
 import '../widgets/announce.dart';
 import '../widgets/sheets.dart';
 import 'common.dart';
@@ -101,7 +102,7 @@ class _AnnouncementsPageState extends State<AnnouncementsPage> {
                   const SizedBox(height: 8),
                   Text(a.title, style: ts(16, w: FontWeight.w700, c: app.isRead(a) ? pal.t2 : pal.t1)),
                   const SizedBox(height: 4),
-                  Text(a.body, maxLines: 2, overflow: TextOverflow.ellipsis, style: ts(13, c: pal.t3, h: 1.6)),
+                  Text(markdownPlain(a.body), maxLines: 2, overflow: TextOverflow.ellipsis, style: ts(13, c: pal.t3, h: 1.6)),
                 ]),
               ),
             ),
