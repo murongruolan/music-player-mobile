@@ -1,19 +1,22 @@
-# Lyra（暂名）· Flutter 移动端
+# Lyra（暂名）· 移动端
 
-按 `deliverables/lyra-mobile-ui-v4.zip` 里的高保真原型与 `DESIGN.md` 实现的完整前端，全部使用 mock 数据，接口后续对接。
+Lyra 的 iOS / Android 客户端，Flutter 实现。目前是完整的前端界面与交互，数据全部来自 mock，接口后续对接。
 
-- 零第三方依赖（只用 Flutter SDK），避免版本冲突。
-- 状态集中在 `lib/core/state.dart`（`AppState`，`ChangeNotifier`）；UI 通过 `context.app` 读写。
-- 主题、主题色、底栏样式、皮肤、字体等设置实时生效。
+- 设计稿：[`docs/design/mobile-v4/`](docs/design/mobile-v4/)（`DESIGN.md` 规范、`tokens.json` 设计令牌、`prototype/` 可交互原型，浏览器打开 `prototype/index.html`）。
+- 零第三方依赖（只用 Flutter SDK）。
+- 状态集中在 `lib/core/state.dart`（`AppState`，`ChangeNotifier`），UI 通过 `context.app` 读写；主题、主题色、底栏样式、皮肤、字体等设置实时生效。
+
+开发流程、分支与提交规范见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## 运行
 
+需要 Flutter stable（Dart ≥ 3.5）。
+
 ```bash
-cd lyra_flutter
-flutter create . --platforms=android,ios,web --project-name lyra --org app.lyra   # 第一次：生成平台目录，不会覆盖 lib/
 flutter pub get
 flutter run                 # 真机 / 模拟器
 flutter run -d chrome       # Web
+flutter analyze && flutter test
 ```
 
 Web 端可以用 `?shot=<状态>` 直接打开某个页面（用于截图和走查），例如：
@@ -21,18 +24,28 @@ Web 端可以用 `?shot=<状态>` 直接打开某个页面（用于截图和走�
 | URL 参数 | 打开 |
 |---|---|
 | `?shot=login` / `forgot` / `disclaimer` | 登录流程 |
-| `?shot=discover` · `discover.nologin` · `discover.qq` · `discover.light` | 发现页（已登录 / 未登录 / QQ / 浅色） |
+| `?shot=discover` · `discover.nologin` · `discover.qq` · `discover.light` · `picker` | 发现页（已登录 / 未登录 / QQ / 浅色 / 音源面板） |
 | `?shot=search` · `daily` · `library.pl` · `library.local` · `me` · `me.clip` | 各 Tab（`me.clip` 带剪贴板口令横幅） |
+| `?shot=popup` · `notice` | 弹窗公告 / 公告页 |
 | `?shot=player.<皮肤>` | 播放器，皮肤 id 见 `lib/data/mock.dart` 的 `skins` |
 | `?shot=sheet.<名称>` | more / import / platlogin / eq / skins / bars / icons / queue / home / quality |
 | 修饰符 | `.light` 浅色、`.acc2` 第 3 个主题色、`.bar-island` 底栏样式、`.paused` 暂停 |
 
-CI（`.github/workflows/lyra-flutter.yml`）每次推送会跑 `flutter analyze`、`flutter test`、Web 构建 + 54 个状态截图、Android APK，产物在 Actions 页面的 Artifacts 里下载（`shots`、`apk`）。
+## CI
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml)
+
+| Job | 什么时候跑 | 做什么 |
+|---|---|---|
+| `check` | 每次推送、每个 PR | `flutter analyze`（有 error 即失败）、`flutter test`（有失败即失败） |
+| `build` | PR、推送到 `main`、手动触发，或提交信息带 `[apk]` / `[shots]` | Web 构建 + 截图、Android APK（按 ABI 拆分） |
+
+产物在 Actions 运行页底部的 Artifacts：`apk`（手机装 arm64-v8a）、`shots`（截图，默认 `tool/shots-quick.json` 的十几个状态；提交信息带 `[shots]` 或手动触发勾选「完整截图」时跑 `tool/shots.json` 全部状态，横屏状态以 `@land` 结尾）、`check-logs`。
 
 ## 目录
 
 ```
-lib/
+lib/                        应用代码
   main.dart                 入口：AppScope → MaterialApp → 鉴权 / 主界面
   core/
     tokens.dart             设计令牌（深浅色、6 种主题色、动效曲线、设置图标色）
@@ -65,12 +78,19 @@ lib/
     picker.dart             音源选择器（平台 → 解析脚本，从源条展开）
     sheets.dart             全部 Sheet：歌曲更多、加入/新建/导入歌单、平台登录、分享口令、定时、均衡器、音质、倍速、
                             投放、歌词卡、播放链路、队列（拖动排序）、底栏样式、App 图标、字体；LField 输入框
+    announce.dart           公告弹窗（普通 / 弹窗；可关闭 / 必须确认；多条翻页）
   auth/auth.dart            使用须知、登录 / 注册（通用人机验证：图形字符 / 滑块拼图 / 文字点选）、找回密码、版本停用
   player/
     player.dart             播放器路由（升起 / 下拉关闭）、背景层、顶栏 / 信息 / 进度 / 主控 / 辅助行、歌词快调
     lyrics.dart             歌词引擎：瀑布弹簧、逐字填充 + 辉光、距离模糊、点按跳转、手动拖动 + 4s 回弹、波浪漂浮
     skins.dart              15 套皮肤 + 缩略图
     particles.dart          粒子舞台（星系 / 事件视界 / 全息地球 / 陀螺核心，可拖动旋转）
+test/                       组件测试（每个 Tab、9 种底栏、二级页、15 套皮肤、全部 Sheet、浅色主题）
+tool/                       CI 截图脚本与截图列表
+android/ ios/ web/          平台工程
+docs/design/
+  mobile-v4/                移动端设计规范与可交互原型（实现以此为准）
+  fx-presets/               粒子动效预设（GLSL / three.js），粒子皮肤正式版的参考
 ```
 
 ## 对接接口
@@ -86,6 +106,6 @@ UI 不直接读 mock：所有数据都经过 `AppState` 或 `mock.dart` 的常�
 ## 已知限制
 
 - 播放为计时模拟，没有声音；均衡器、投放、识曲、扫码都是界面与流程演示。
-- 粒子皮肤用 Canvas 画 2600 点，正式版建议改为 `FragmentProgram` 复用桌面端 GLSL。
+- 粒子皮肤用 Canvas 画 2600 点，正式版建议改为 `FragmentProgram` 复用 `docs/design/fx-presets/` 里的 GLSL。
 - 字体「圆润 / 书卷 / 楷意 / 等宽」依赖设备上已有的字体；需要统一效果时把字体文件放进 `assets/fonts` 并在 `pubspec.yaml` 声明。
 - 平板双栏布局未实现（DESIGN.md 第 10 节只给了规则）。

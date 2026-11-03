@@ -1,0 +1,60 @@
+/* Lyra Mobile · Design Tokens（与 ../../tokens.json 一一对应）
+   暗色为默认；[data-theme=light] 覆盖为亮色。主题色由 JS 写入 --accent / --accent-text / --accent-ink。 */
+:root{
+  /* 表面层级：越往上越亮 */
+  --bg:#0A0B11;          /* 页面底，与电脑端动效舞台同色 */
+  --bg-elev:#101119;     /* 实底导航 / 顶栏 */
+  --s1:#14151D;          /* 卡片 */
+  --s2:#1A1C26;          /* 输入框 / 次级卡片 */
+  --s3:#242735;          /* 按压态 / 分隔块 */
+  --line:rgba(255,255,255,.07);
+  --line-strong:rgba(255,255,255,.12);
+
+  /* 文本 */
+  --t1:#F3F4F8;  /* 标题、正文 */
+  --t2:#A6ABBB;  /* 副标题 */
+  --t3:#6C7186;  /* 说明、占位 */
+  --t4:#454A5C;  /* 禁用 */
+
+  /* 主题色（默认鎏金） */
+  --accent:#F4D28A;
+  --accent-text:#F4D28A;
+  --accent-ink:#1B1508;
+  --accent-soft:rgba(244,210,138,.14);
+  --accent-glow:rgba(244,210,138,.38);
+
+  /* 语义色 */
+  --ok:#5EE6A8; --warn:#FFC266; --danger:#FF6B6B; --info:#8AB4FF;
+
+  /* 玻璃 */
+  --glass:rgba(20,21,30,.58);
+  --glass-strong:rgba(24,25,34,.82);
+  --glass-line:rgba(255,255,255,.09);
+  --glass-blur:blur(26px) saturate(1.5);
+
+  /* 圆角 */
+  --r-xs:6px; --r-sm:10px; --r-md:14px; --r-lg:20px; --r-xl:28px; --r-full:999px;
+
+  /* 间距（4pt 网格） */
+  --pad:20px; --gap:12px;
+
+  /* 动效 */
+  --ease-out:cubic-bezier(.22,1,.36,1);
+  --ease-std:cubic-bezier(.4,0,.2,1);
+  --ease-spring:cubic-bezier(.34,1.56,.64,1);
+  --d-fast:160ms; --d-base:240ms; --d-slow:380ms;
+
+  /* 阴影 */
+  --shadow-1:0 6px 18px rgba(0,0,0,.28);
+  --shadow-2:0 14px 40px rgba(0,0,0,.42);
+
+  --font:-apple-system,"SF Pro Text","PingFang SC","HarmonyOS Sans SC","MiSans","Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;
+  --font-num:"SF Pro Rounded","SF Pro Display",-apple-system,"DIN Alternate",system-ui,sans-serif;
+}
+[data-theme=light]{
+  --bg:#F5F5F8; --bg-elev:#FFFFFF; --s1:#FFFFFF; --s2:#EEF0F4; --s3:#E3E6EC;
+  --line:rgba(12,14,24,.07); --line-strong:rgba(12,14,24,.12);
+  --t1:#12131A; --t2:#5A5F6F; --t3:#8C91A1; --t4:#C2C6D0;
+  --glass:rgba(255,255,255,.66); --glass-strong:rgba(255,255,255,.9); --glass-line:rgba(12,14,24,.08);
+  --shadow-1:0 6px 18px rgba(20,24,40,.08); --shadow-2:0 14px 40px rgba(20,24,40,.14);
+}

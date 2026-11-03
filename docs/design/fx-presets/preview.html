@@ -1,0 +1,1136 @@
+<!doctype html>
+<!--
+  Sollin 动效模式 · 新预设 13–25 预览 v2（零依赖，纯 WebGL2，可离线双击打开）
+
+  v2 变化：
+  - 所有预设都是真 3D，可以用鼠标拖拽 360° 观察（左键拖 = 旋转，滚轮 = 缩放，双击 = 复位）。
+  - 需要"朝向相机"的部件（事件视界的透镜弧/光子环等）改为用 uCamPos 实时计算朝向，不再钉死在 +z 平面。
+  - 新增 6 个科幻/太空预设：20 戴森云 / 21 全息地球 / 22 托卡马克 / 23 旋涡星系 / 24 虫洞 / 25 陀螺核心。
+
+  给本地 agent 的阅读指引：
+  1. 所有预设都在 VERT_SRC 里，每个预设一个函数 pXxx()，用 "// ==== PRESET nn ====" 标记。
+     同目录 presets.vert.glsl 是同一份 shader 的独立文件。
+  2. 函数只写全局变量 P(位置) C(颜色) A(透明度) S(点大小倍率)。
+  3. 输入对齐 DETAIL-FX-EFFECTS：aUv / aSeed / aRnd / uTime uBass uMid uTreble uEnergy uBeat / uK / uCover。
+     新增 uniform：uCoverA / uCoverB（封面主色/高光色）、uAccent、uShield（歌词避让）、
+     uCamPos（相机位置，点云局部坐标系；three.js 里 = points.worldToLocal(camera.position.clone())）。
+  4. 相机基线在 PRESETS[].cam（r 半径 / yaw 方位 / pitch 俯仰 / look 注视点 / orbit 自动公转 rad/s / sway 摆动 rad）。
+  5. URL 参数：?p=16&audio=demo|mute&ui=0&lyrics=0&t=20&yaw=1.57&pitch=0.1&zoom=1
+     键盘：1-9 切 13-21，[ ] 前后切换，M 静音，D 演示音频，H 隐藏面板，L 歌词，S 歌词避让，R 复位视角
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sollin FX · 新预设 13–25 预览</title>
+<style>
+  html,body{margin:0;height:100%;background:#0a0b11;overflow:hidden;
+    font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:#cfd3e0}
+  #c{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:grab;touch-action:none}
+  #c.drag{cursor:grabbing}
+  #lyrics{position:fixed;left:0;right:0;top:27%;text-align:center;pointer-events:none;
+    font-weight:800;line-height:1.6;letter-spacing:.02em}
+  #lyrics div{font-size:clamp(18px,3vw,34px);opacity:.42;color:var(--ly,#5a6cff);transition:all .4s}
+  #lyrics div.cur{font-size:clamp(22px,3.5vw,40px);opacity:1;text-shadow:0 0 16px var(--ly,#5a6cff)}
+  #panel{position:fixed;left:12px;top:12px;width:280px;max-height:calc(100% - 24px);overflow:auto;
+    background:rgba(14,16,24,.82);border:1px solid #23263a;border-radius:10px;padding:10px 12px;
+    font-size:12px;backdrop-filter:blur(6px)}
+  #panel h3{margin:2px 0 8px;font-size:13px;color:#f4d28a;font-weight:600}
+  #panel h4{margin:8px 0 4px;font-size:11px;color:#8d93a8;font-weight:500}
+  .row{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
+  button{background:#1a1d2b;color:#cfd3e0;border:1px solid #2c3046;border-radius:6px;padding:4px 7px;
+    font-size:12px;cursor:pointer}
+  button.on{border-color:#f4d28a;color:#f4d28a}
+  button.new::after{content:"新";font-size:9px;color:#f4d28a;margin-left:3px}
+  label{display:flex;align-items:center;gap:6px;margin:3px 0}
+  label span{width:64px;color:#8d93a8}
+  input[type=range]{flex:1}
+  .meter{display:flex;align-items:center;gap:6px;margin:2px 0}
+  .meter b{width:52px;font-weight:400;color:#8d93a8}
+  .meter i{display:block;height:6px;background:#f4d28a;border-radius:3px;width:0}
+  .meter .bar{flex:1;background:#1a1d2b;border-radius:3px}
+  #info{margin-top:8px;line-height:1.55;color:#a9afc4;white-space:pre-line}
+  #err{position:fixed;inset:0;display:none;align-items:center;justify-content:center;color:#f88;font-size:14px;padding:40px;white-space:pre-wrap;background:#0a0b11}
+  #hint{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);font-size:11px;color:#8d93a8;
+    background:rgba(20,22,32,.7);padding:5px 12px;border-radius:12px;pointer-events:none;white-space:nowrap}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="lyrics"></div>
+<div id="hint">拖拽旋转 · 滚轮缩放 · 双击/R 复位 · 1-9 / [ ] 切预设 · M 静音 · H 面板 · S 歌词避让</div>
+<div id="panel">
+  <h3>Sollin FX · 新预设预览 v2</h3>
+  <h4>第一批（已改为全 3D）</h4>
+  <div class="row" id="presetBtnsA"></div>
+  <h4>第二批 · 科幻 / 太空</h4>
+  <div class="row" id="presetBtnsB"></div>
+  <h4>音频与封面</h4>
+  <div class="row">
+    <button data-src="demo" class="on">演示音频</button>
+    <button data-src="mute">静音</button>
+    <button data-src="file">音频文件</button>
+    <button data-src="mic">麦克风</button>
+    <button id="coverBtn">换封面</button>
+  </div>
+  <input type="file" id="audioFile" accept="audio/*" hidden>
+  <input type="file" id="coverFile" accept="image/*" hidden>
+  <label><span>intensity</span><input type="range" id="intensity" min="0" max="1.5" step="0.01" value="0.85"></label>
+  <label><span>point</span><input type="range" id="point" min="0.3" max="2.5" step="0.01" value="1"></label>
+  <label><span>speed</span><input type="range" id="speed" min="0" max="3" step="0.01" value="1"></label>
+  <label><span>color</span><input type="range" id="color" min="0.5" max="2" step="0.01" value="1.1"></label>
+  <label><span>bloom</span><input type="range" id="bloom" min="0" max="1" step="0.01" value="0.62"></label>
+  <label><input type="checkbox" id="shieldChk" checked> 歌词区避让（uShield）</label>
+  <label><input type="checkbox" id="lyricChk" checked> 显示模拟歌词</label>
+  <label><input type="checkbox" id="autoChk" checked> 自动公转/摆动</label>
+  <div id="meters"></div>
+  <div id="info"></div>
+</div>
+<div id="err"></div>
+
+<script>
+"use strict";
+// =====================================================================
+// 预设元数据
+// cam: r 半径 / yaw 方位角 rad / pitch 俯仰 rad / look 注视点 / orbit 自动公转 rad/s / sway 左右摆动 rad
+// =====================================================================
+const PRESETS = [
+  { id:13, name:'金缮', en:'KINTSUGI', batch:'A', shield:0.35,
+    cam:{ r:8.5, yaw:0, pitch:0.18, look:[0,-0.2,0], orbit:0, sway:0.15 },
+    map:'bass→碎片外浮  mid→碎片晃动  treble→金缝闪粉  beat→整球裂开再愈合' },
+  { id:14, name:'墨韵', en:'INK BLOOM', batch:'A', shield:0.35,
+    cam:{ r:9, yaw:0, pitch:0.12, look:[0,-0.2,0], orbit:0.02, sway:0.1 },
+    map:'bass→墨团体积  mid→湍流强度  treble→边缘丝絮  beat→新鲜墨滴提亮' },
+  { id:15, name:'超立方', en:'TESSERACT', batch:'A', shield:0.55,
+    cam:{ r:9, yaw:0, pitch:0.1, look:[0,-0.4,-0.6], orbit:0.03, sway:0 },
+    map:'bass→4D 透视膨胀  mid→XW 旋转相位  treble→棱上流光  beat→顶点闪光+棱散开' },
+  { id:16, name:'事件视界', en:'ACCRETION', batch:'A', shield:0.45,
+    cam:{ r:9.6, yaw:0, pitch:0.24, look:[0,-0.6,0], orbit:0.015, sway:0.12 },
+    map:'bass→内盘升温/内缘收缩  mid→密度波+盘厚  treble→热斑  beat→光子环闪+外扩光环' },
+  { id:17, name:'磷光示波', en:'PHOSPHOR SCOPE', batch:'A', shield:0.5,
+    cam:{ r:8.8, yaw:0.5, pitch:0.28, look:[0,-0.5,0], orbit:0.04, sway:0 },
+    map:'bass→波形振幅  mid→频率比失谐  treble→电子束抖动/飞溅  beat→余辉拉长+闪亮' },
+  { id:18, name:'神经花火', en:'NEURAL BLOOM', batch:'A', shield:0.5,
+    cam:{ r:8.2, yaw:0, pitch:0.3, look:[0,-0.2,0], orbit:0.04, sway:0 },
+    map:'bass→胞体膨胀  mid→树突摆动  treble→突触末梢闪烁  beat→动作电位波前外推' },
+  { id:19, name:'雾中光柱', en:'VOLUMETRIC BEAMS', batch:'A', shield:0.55,
+    cam:{ r:10.5, yaw:0, pitch:0.16, look:[0,0.3,0], orbit:0.02, sway:0 },
+    map:'bass→光束变粗/地面亮  mid→扫动幅度  treble→雾尘闪烁  beat→频闪' },
+  { id:20, name:'戴森云', en:'DYSON SWARM', batch:'B', shield:0.45,
+    cam:{ r:10.5, yaw:0, pitch:0.28, look:[0,0,0], orbit:0.03, sway:0 },
+    map:'bass→恒星膨胀/日冕  mid→轨道进动  treble→卫星/面板反光  beat→壳层自下而上扫光+面板外弹' },
+  { id:21, name:'全息地球', en:'HOLO GLOBE', batch:'B', shield:0.45,
+    cam:{ r:8, yaw:0, pitch:0.22, look:[0,-0.1,0], orbit:0, sway:0.2 },
+    map:'bass→大气层厚度  mid→数据弧拱高  treble→城市灯光闪烁  beat→所有数据弧同时发射脉冲' },
+  { id:22, name:'托卡马克', en:'TOKAMAK', batch:'B', shield:0.45,
+    cam:{ r:9, yaw:0, pitch:0.5, look:[0,-0.2,0], orbit:0.03, sway:0 },
+    map:'bass→等离子体变粗/变亮  mid→m=3 扭曲不稳定  treble→等离子体逃逸火花  beat→脉冲绕环一周+线圈闪' },
+  { id:23, name:'旋涡星系', en:'SPIRAL GALAXY', batch:'B', shield:0.4,
+    cam:{ r:10, yaw:0, pitch:0.6, look:[0,-0.5,0], orbit:0.02, sway:0 },
+    map:'bass→核球亮度/尺寸  mid→旋臂收紧+盘厚  treble→恒星闪烁  beat→密度波亮环外扩' },
+  { id:24, name:'虫洞', en:'WORMHOLE', batch:'B', shield:0.45,
+    cam:{ r:10, yaw:0, pitch:0.38, look:[0,0,0], orbit:0.03, sway:0 },
+    map:'bass→喉部半径  mid→时空网格扭转  treble→吸积物闪烁  beat→引力波环从喉部外扩' },
+  { id:25, name:'陀螺核心', en:'GYRO CORE', batch:'B', shield:0.5,
+    cam:{ r:8, yaw:0, pitch:0.2, look:[0,-0.1,0], orbit:0.02, sway:0 },
+    map:'bass→核心膨胀  mid→环翻转相位  treble→环上追光  beat→所有环"咔"地拧一下' },
+];
+const MAX_ID = PRESETS[PRESETS.length - 1].id;
+
+// =====================================================================
+// 顶点着色器
+// 输出约定：P 位置（点云局部坐标）  C 颜色（加色）  A 透明度  S 点大小倍率
+// 预算：无循环；每点三角函数 ≤ 6（注释 // trig n 为累计）；纹理采样 1 次
+// =====================================================================
+const VERT_SRC = `#version 300 es
+precision highp float;
+in vec2 aUv; in float aSeed; in vec3 aRnd;
+uniform mat4 uView, uProj;
+uniform vec3 uCamPos;
+uniform float uTime, uBass, uMid, uTreble, uEnergy, uBeat;
+uniform float uPreset, uK, uPoint, uBurst, uShield, uSizeK, uColorBoost, uAlpha;
+uniform sampler2D uCover;
+uniform vec3 uCoverA, uCoverB, uAccent;
+out vec3 vColor; out float vAlpha;
+
+const float TAU = 6.2831853;
+const vec3 HOT = vec3(1.0, 0.95, 0.86);
+vec3 P; vec3 C; float A; float S; vec3 cover;
+
+// ---- 共享工具（hash / value noise 都不用三角函数）----
+float h11(float p){ p = fract(p*0.1031); p *= p + 33.33; p *= p + p; return fract(p); }
+float h21(vec2 p){ vec3 p3 = fract(vec3(p.xyx)*0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y)*p3.z); }
+float h31(vec3 p3){ p3 = fract(p3*0.1031); p3 += dot(p3, p3.zyx + 31.32); return fract((p3.x + p3.y)*p3.z); }
+vec3 hv3(float k){ return vec3(h11(k*1.17 + 0.31), h11(k*2.39 + 1.73), h11(k*3.71 + 2.97)); }
+float vnoise(vec3 p){
+  vec3 i = floor(p), f = fract(p); f = f*f*(3.0 - 2.0*f);
+  return mix(mix(mix(h31(i),             h31(i+vec3(1,0,0)), f.x),
+                 mix(h31(i+vec3(0,1,0)), h31(i+vec3(1,1,0)), f.x), f.y),
+             mix(mix(h31(i+vec3(0,0,1)), h31(i+vec3(1,0,1)), f.x),
+                 mix(h31(i+vec3(0,1,1)), h31(i+vec3(1,1,1)), f.x), f.y), f.z);
+}
+// 球面均匀方向（2 次三角函数）。不要用 normalize(aRnd-0.5)，那样会有立方体偏差，球看起来发方。
+vec3 sphDir(vec2 r){ float y = r.x*2.0 - 1.0, a = r.y*TAU, q = sqrt(max(0.0, 1.0 - y*y)); return vec3(q*cos(a), y, q*sin(a)); }
+vec3 rotY(vec3 p, float c, float s){ return vec3(c*p.x + s*p.z, p.y, -s*p.x + c*p.z); }
+// 法线朝向相机的程度：1 正对，0 切线（轮廓），-1 背面。用来压暗球体背面，避免加色混合下前后糊在一起。
+float facing(vec3 n, vec3 p){ return dot(n, normalize(uCamPos - p)); }
+// uBeat 峰值后指数衰减 → 反过来就是"距上一拍的进度" 0→1，用于从中心向外推的波前
+float beatFront(){ return clamp(1.0 - uBeat/0.78, 0.0, 1.0); }
+
+// ==== PRESET 13 ==== 金缮 KINTSUGI：封面贴成的瓷球，碎成不规则碎片，裂缝里是金
+void pKintsugi(){
+  float t = uTime;
+  float th = aUv.x*TAU;
+  float y = aUv.y*2.0 - 1.0;                       // y 均匀 → 球面等面积分布
+  float rxz = sqrt(max(0.0, 1.0 - y*y));
+  vec3 n = vec3(rxz*cos(th), y, rxz*sin(th));      // trig 2
+  // 3D 晶格 + 噪声扭曲 = 不规则碎片；晶格平面与球面的交线就是裂缝
+  vec3 w = n*2.6 + (vec3(vnoise(n*2.0 + 1.7), vnoise(n*2.0 + 7.3), vnoise(n*2.0 + 4.1)) - 0.5)*0.9;
+  vec3 cell = floor(w), f = fract(w);
+  vec3 ed = min(f, 1.0 - f);
+  float edge = min(ed.x, min(ed.y, ed.z));
+  float ch = h31(cell + 17.0);
+  vec3 cdir = normalize(cell + 0.5);
+  float open = (uBeat*0.55 + uBass*0.22)*uK*0.6;
+  float R = 2.2;
+  vec3 p;
+  if (edge < 0.045) {
+    p = n*R*0.985;                                 // 金缝留在原球面，碎片浮起时露出金网
+    float glit = pow(h11(aSeed*91.7 + floor(t*14.0)), 10.0);
+    C = uAccent*(0.95 + 1.6*uBeat + 0.5*uBass) + HOT*glit*(0.15 + uTreble*2.6);
+    A = 0.9; S = 1.15;
+  } else {
+    float breathe = sin(t*0.35 + ch*TAU)*0.025;                 // trig 3
+    float wob = sin(t*0.6 + ch*9.0)*(0.03 + uMid*0.15*uK);       // trig 4
+    p = n*R*(1.0 + breathe + open*(0.12 + 0.3*ch) + uBass*0.05*ch*uK) + (n - cdir)*wob*R;
+    C = cover*(1.5 + 0.4*uEnergy)*(0.9 + 0.25*ch);
+    A = 0.9; S = 1.05;
+  }
+  float sp = t*0.1, cs = cos(sp), ss = sin(sp);                  // trig 6
+  P = rotY(p, cs, ss);
+  A *= mix(0.22, 1.0, smoothstep(-0.25, 0.35, facing(rotY(n, cs, ss), P)));
+}
+
+// ==== PRESET 14 ==== 墨韵 INK BLOOM：4 团墨在 3D 水体里错峰扩散、翻卷、下沉
+void pInk(){
+  float t = uTime;
+  if (aSeed > 0.86) {                              // 14%：悬浮微尘
+    vec3 p = (aRnd - 0.5)*vec3(12.0, 8.0, 12.0);
+    vec3 q = p*0.3 + vec3(0.0, t*0.05, 0.0);
+    p += (vec3(vnoise(q), vnoise(q + 3.1), vnoise(q + 6.7)) - 0.5)*0.9;
+    float tw = pow(h11(aSeed*13.1 + floor(t*6.0)), 12.0);
+    P = p; C = mix(uCoverA, vec3(1.0), 0.4)*(0.4 + tw*uTreble*3.0);
+    A = 0.16 + tw*uTreble*0.6; S = 0.6; return;
+  }
+  float d = floor(aSeed/0.86*4.0);
+  float cyc = t/10.0 + d*0.25;
+  float age = fract(cyc), gen = floor(cyc);
+  vec3 hd = hv3(d*7.0 + gen*13.0) - 0.5;
+  vec2 hz = normalize(hd.xz + 1e-3)*(1.3 + abs(hd.y)*2.4);       // 绕中心一圈分布，不挤在正中
+  vec3 c = vec3(hz.x, 0.9 + hd.y*0.6, hz.y);
+  vec3 dir = sphDir(aRnd.xy);
+  float r0 = pow(fract(aSeed*53.7), 0.3);                        // 偏向外层 → 云团有清晰"表皮"
+  vec3 q = dir*r0;
+  float R = (0.35 + 1.5*sqrt(age))*(1.0 + uBass*0.3*uK)*(1.0 + uBeat*0.15);
+  vec3 nq = q*2.2 + vec3(0.0, 0.0, t*0.12 + d*3.1 + gen*1.7);
+  vec3 warp = vec3(vnoise(nq), vnoise(nq + 5.2), vnoise(nq + 9.7)) - 0.5;
+  vec3 xyz = q*R + warp*(0.6 + uMid*1.1*uK)*r0*R;
+  xyz.xz *= 1.0 + age*0.7*smoothstep(-0.2, 0.7, q.y);           // 上半部外翻 → 蘑菇状涡环
+  xyz.y -= age*age*2.0 + r0*age*0.3;                             // 下沉
+  float edge = smoothstep(0.6, 1.0, r0);
+  float fib = pow(vnoise(q*9.0 + t*0.3 + d), 3.0)*uTreble*1.2*edge;
+  xyz += dir*fib*R*0.3;
+  P = c + xyz;
+  float fade = pow(1.0 - age, 1.4)*smoothstep(0.0, 0.06, age);
+  C = mix(cover*1.0, mix(uCoverB, uAccent, 0.35)*1.7, edge)*(1.0 + uBeat*0.7*(1.0 - age));
+  A = (0.3 + 0.55*edge)*fade; S = 0.9 + edge*0.4;
+}
+
+// ==== PRESET 15 ==== 超立方 TESSERACT：32 棱 + 16 顶点，XW/YW 旋转后 4D→3D 透视
+void pTess(){
+  float t = uTime;
+  float e = floor(aSeed*32.0);
+  float ax = mod(e, 4.0);
+  float b = floor(e/4.0);
+  vec3 bits = vec3(mod(b, 2.0), mod(floor(b/2.0), 2.0), floor(b/4.0))*2.0 - 1.0;
+  float s = aUv.x*2.0 - 1.0;
+  bool isVert = aRnd.x < 0.18;
+  if (isVert) s = s < 0.0 ? -1.0 : 1.0;
+  vec4 v;
+  if (ax < 0.5)      v = vec4(s, bits);
+  else if (ax < 1.5) v = vec4(bits.x, s, bits.yz);
+  else if (ax < 2.5) v = vec4(bits.xy, s, bits.z);
+  else               v = vec4(bits, s);
+  v += vec4(aRnd - 0.5, aRnd.x - 0.5)*(isVert ? 0.06 : 0.012)*(1.0 + uBeat*4.0);
+  float a1 = t*0.21 + uMid*0.45*uK, a2 = t*0.13 + 0.6, a3 = t*0.07;
+  float c1 = cos(a1), s1 = sin(a1), c2 = cos(a2), s2 = sin(a2), c3 = cos(a3), s3 = sin(a3); // trig 6
+  v = vec4(c1*v.x - s1*v.w, v.y, v.z, s1*v.x + c1*v.w);
+  v = vec4(v.x, c2*v.y - s2*v.w, v.z, s2*v.y + c2*v.w);
+  float wd = 3.0 - uBass*0.7*uK - uBeat*0.3;
+  vec3 p = v.xyz/(wd - v.w)*2.0;
+  p = rotY(p, c3, s3);
+  P = p*1.05 + vec3(0.0, -0.55, -0.6);
+  float wn = clamp(v.w*0.5 + 0.5, 0.0, 1.0);
+  C = mix(uCoverA*0.9, uAccent, wn);
+  float run = pow(fract(aUv.x*1.5 - t*0.8 + h11(e)*3.0), 14.0);
+  C += HOT*run*(0.25 + uTreble*2.2);
+  A = 0.5 + 0.25*wn; S = 0.9;
+  if (isVert) { C = mix(uAccent, vec3(1.0), 0.4)*(1.0 + uBeat*2.0); A = 0.9; S = 1.6 + uBeat*1.5; }
+}
+
+// ==== PRESET 16 ==== 事件视界 ACCRETION：吸积盘（真 3D）+ 透镜弧/光子环（实时朝向相机）
+void pDisk(){
+  float t = uTime;
+  vec3 warm = mix(uCoverA, vec3(1.0, 0.48, 0.18), 0.55);
+  vec3 O = vec3(0.0, -0.6, 0.0);
+  // 观察基：V 指向相机；rt = 盘法线 × V（屏幕右）；upv = 屏幕上方向里离盘法线最近的方向
+  vec3 V = normalize(uCamPos - O);
+  vec3 rt = cross(vec3(0.0, 1.0, 0.0), V);
+  float rlen = length(rt);
+  rt = rlen > 1e-3 ? rt/rlen : vec3(1.0, 0.0, 0.0);
+  vec3 upv = cross(V, rt);
+  float above = V.y >= 0.0 ? 1.0 : -1.0;          // 从盘下方看时，透镜弧翻到下方
+  float elev = abs(V.y);                           // 越接近俯视，透镜像越接近完整对称圆环
+  float front = beatFront()*4.8;
+  if (aSeed < 0.74) {
+    float rin = 1.3 - uBass*0.12*uK;
+    float r = mix(rin, 4.8, pow(aRnd.x, 0.75));
+    float w = 0.95*pow(r, -1.5)*(1.0 + uEnergy*0.25);           // 开普勒
+    float th = aRnd.y*TAU + t*w;
+    float ct = cos(th), st = sin(th);                            // trig 2
+    float wave = 0.5 + 0.5*cos(2.0*th - 4.0*log(r) + t*0.2);     // trig 3
+    float y = (aRnd.z - 0.5)*(0.03 + 0.025*r)*(1.0 + uMid*1.4*uK)
+            + (vnoise(vec3(ct*r, st*r, t*0.3)) - 0.5)*uMid*0.12*r;
+    vec3 p = vec3(ct*r, y, st*r);
+    float heat = 1.0 - smoothstep(rin, 3.2, r);
+    C = mix(mix(uCoverA*0.55, warm, smoothstep(4.8, 2.2, r)), mix(uAccent, HOT, heat), heat);
+    float dop = 1.0 + 0.6*dot(vec3(-st, 0.0, ct), V);           // 多普勒：朝相机运动的一侧更亮（任意视角）
+    float hotspot = pow(h11(aSeed*57.3 + floor(t*12.0)), 14.0)*uTreble*3.0*heat;
+    float ringBeat = exp(-abs(r - front)*3.0)*uBeat*1.4;
+    C *= 1.5*dop*(0.55 + 0.55*wave*(0.6 + uMid*0.8))*(1.0 + uBass*0.7*heat);
+    C += HOT*hotspot + uAccent*ringBeat;
+    A = (0.4 + 0.55*heat)*smoothstep(4.8, 4.0, r);
+    float along = dot(p, V);                                     // 被黑影挡住：在黑洞后方且投影落在阴影半径内
+    if (along < 0.0 && length(p - V*along) < 1.12) A *= 0.04;
+    S = 0.85 + heat*0.5;
+    P = O + p;
+  } else if (aSeed < 0.9) {
+    // 引力透镜弧：盘背面的像被弯到黑影上方（始终在垂直于视线的平面里）
+    float ph = aRnd.y*TAU;
+    float rl = 1.3 + pow(aRnd.x, 2.2)*0.75*(1.0 + uBass*0.2*uK);
+    float cp = cos(ph), sp = sin(ph);                            // trig 2
+    P = O + (rt*cp + upv*sp*0.92)*rl - V*(0.1 + (aRnd.z - 0.5)*0.05);
+    float up = mix(sp*above > 0.0 ? 1.0 : 0.38, 1.0, smoothstep(0.6, 0.95, elev));
+    C = mix(uAccent, HOT, 0.4)*(0.6 + 0.5*(1.0 - aRnd.x))*(1.0 + 0.5*cp)*(1.0 + uBass*0.5);
+    A = 0.85*up*(1.0 - aRnd.x*0.7); S = 0.85;
+  } else {
+    // 光子环：同样朝向相机
+    float ph = aRnd.y*TAU;
+    float rr = 1.12 + (aRnd.x - 0.5)*0.035;
+    P = O + (rt*cos(ph) + upv*sin(ph))*rr;                       // trig 2
+    C = HOT*(1.0 + uBeat*2.5 + uBass*0.6); A = 0.75; S = 0.9 + uBeat;
+  }
+}
+
+// ==== PRESET 17 ==== 磷光示波 PHOSPHOR SCOPE：3:2:5 李萨如三维结 + 玻璃立方体框 + 水平扫描面
+void pScope(){
+  float t = uTime;
+  vec3 O = vec3(0.0, -0.5, 0.0);
+  vec3 H = vec3(2.4, 1.5, 2.0);                    // 示波"立方体"半尺寸
+  float scanY = (1.0 - fract(t*0.22)*2.0)*H.y;
+  if (aSeed < 0.66) {
+    float tr = pow(aRnd.y, 1.7);
+    float s = aRnd.x*TAU;
+    float delta = t*0.45 - tr*0.9;
+    float amp = 0.82 + uBass*0.3*uK + uBeat*0.12;
+    float bq = 2.0 + uMid*0.3*uK;
+    vec3 p = H*amp*0.92*vec3(sin(3.0*s + delta), sin(bq*s), sin(5.0*s - delta*0.7)); // trig 3
+    float j = floor(t*30.0);
+    p += (vec3(h11(aSeed*31.1 + j), h11(aSeed*17.3 + j), h11(aSeed*7.9 + j)) - 0.5)*uTreble*0.1*uK;
+    if (aRnd.z > 0.985) p += (aRnd - 0.5)*0.7*uTreble*uK;
+    float persist = mix(3.2, 1.5, uBeat);
+    float scan = exp(-abs(p.y - scanY)*14.0);
+    A = pow(1.0 - tr, persist)*0.85;
+    C = mix(vec3(1.0, 0.97, 0.9), mix(uCoverB, uAccent, 0.3), smoothstep(0.0, 0.25, tr))*(1.0 + uBeat*1.2)
+      + uAccent*scan*0.8*(1.0 - tr);
+    S = mix(1.3, 0.7, tr);
+    P = O + p;
+  } else if (aSeed < 0.8) {
+    // 12 条立方体棱
+    float e = floor(aRnd.z*12.0), ax = floor(e/4.0), m = mod(e, 4.0);
+    vec2 sg = vec2(mod(m, 2.0), floor(m/2.0))*2.0 - 1.0;
+    float s = aRnd.x*2.0 - 1.0;
+    vec3 p = ax < 0.5 ? vec3(s, sg.x, sg.y) : (ax < 1.5 ? vec3(sg.x, s, sg.y) : vec3(sg.x, sg.y, s));
+    float corner = smoothstep(0.82, 1.0, abs(s));
+    P = O + p*H*1.05;
+    C = uCoverA*0.45 + uAccent*(0.12 + 0.5*corner);
+    A = 0.28 + 0.3*corner; S = 0.7;
+  } else {
+    if (aRnd.z < 0.7) {
+      // 底面刻度网格
+      vec2 g = (aRnd.xy*2.0 - 1.0)*H.xz;
+      if (aRnd.z < 0.35) g.x = floor(g.x/0.48 + 0.5)*0.48; else g.y = floor(g.y/0.5 + 0.5)*0.5;
+      P = O + vec3(g.x, -H.y*1.05, g.y);
+      C = uCoverA*0.4 + uAccent*0.1; A = 0.2; S = 0.6;
+    } else {
+      // 扫描面的矩形轮廓（随 scanY 上下移动）
+      float u = aRnd.x*4.0, k = floor(u), s = fract(u)*2.0 - 1.0;
+      vec2 g = k < 0.5 ? vec2(s, -1.0) : (k < 1.5 ? vec2(1.0, s) : (k < 2.5 ? vec2(-s, 1.0) : vec2(-1.0, -s)));
+      P = O + vec3(g.x*H.x*1.05, scanY, g.y*H.z*1.05);
+      C = uAccent*(0.7 + uEnergy + uBeat*1.5); A = 0.5; S = 0.8;
+    }
+  }
+}
+
+// ==== PRESET 18 ==== 神经花火 NEURAL BLOOM：胞体 + 30 根全方位（斐波那契球面）树突
+void pNeuron(){
+  float t = uTime;
+  vec3 O = vec3(0.0, -0.2, 0.0);
+  if (aSeed < 0.1) {
+    vec3 n = sphDir(aRnd.xy);
+    float rr = 0.4*(1.0 + uBass*0.3*uK + uBeat*0.15)*(0.85 + 0.15*vnoise(n*3.0 + t*0.4));
+    P = O + n*rr*(0.6 + 0.4*fract(aSeed*37.0));
+    C = mix(uCoverB, uAccent, 0.4)*(0.8 + uBass*0.9 + uBeat*1.2); A = 0.55; S = 1.1; return;
+  }
+  float f = floor((aSeed - 0.1)/0.9*30.0);
+  float s = aRnd.x;
+  float yf = 1.0 - 2.0*(f + 0.5)/30.0;
+  float af = f*2.39996;                            // 黄金角
+  float rf = sqrt(1.0 - yf*yf);
+  vec3 d0 = vec3(cos(af)*rf, yf, sin(af)*rf);      // trig 2
+  vec3 bend = hv3(f*3.3) - 0.5, bend2 = hv3(f*5.9 + 4.0) - 0.5, br = hv3(f*8.1 + 2.0) - 0.5;
+  float sway = sin(t*0.5 + f*1.7)*(0.08 + uMid*0.25*uK);          // trig 3
+  vec3 dir = d0 + bend*s*s*1.3 + bend2*s*sway;
+  if (aRnd.y > 0.55 && s > 0.45) dir += br*1.6*(s - 0.45);       // 分叉
+  dir = normalize(dir);
+  float hf = h11(f*1.37 + 0.5), hg = h11(f*2.71 + 1.3);
+  float L = (2.0 + hf*1.8)*(1.0 + uBass*0.08*uK);
+  P = O + dir*(0.36 + s*L) + (aRnd.zxy - 0.5)*0.03*(1.0 + s*2.0);
+  float ph2 = fract(t*(0.18 + 0.12*hf) + hg);
+  float idle = exp(-abs(s - ph2)*28.0)*0.8;
+  float ap = exp(-abs(s - beatFront())*12.0)*uBeat*2.2;
+  float tip = smoothstep(0.9, 1.0, s);
+  float spark = pow(h11(f*9.1 + floor(t*9.0) + aRnd.y), 8.0)*uTreble*3.0*tip;
+  C = uCoverA*0.85*(1.0 - 0.4*s) + uAccent*(idle + ap) + HOT*spark;
+  A = 0.3 + 0.35*(1.0 - s) + (idle + ap)*0.4; S = 0.75 + tip*0.5 + ap*0.4;
+}
+
+// ==== PRESET 19 ==== 雾中光柱 VOLUMETRIC BEAMS：环形排布的 10 束光（皇冠状）+ 体积雾 + 极坐标激光地网
+void pBeams(){
+  float t = uTime;
+  float floorY = -2.2;
+  if (aSeed < 0.68) {
+    float b = floor(aSeed/0.68*10.0);
+    float phi = b/10.0*TAU + t*0.05;
+    float cphi = cos(phi), sphi = sin(phi);                          // trig 2
+    float ang = 0.32 + 0.25*h11(b*3.1) + sin(t*0.37 + b*0.9)*(0.12 + uMid*0.25*uK); // trig 3
+    float sa = sin(ang), ca = cos(ang);                              // trig 5
+    vec3 radial = vec3(cphi, 0.0, sphi);
+    vec3 tng = vec3(-sphi, 0.0, cphi);
+    vec3 dir = radial*sa + vec3(0.0, ca, 0.0);                       // 向上并向外张开
+    vec3 bin = cross(dir, tng);
+    float L = 8.0, l = pow(aRnd.x, 0.8)*L;
+    float rad = (0.02 + l*0.022)*(1.0 + uBass*0.9*uK);
+    vec2 off = (aRnd.yz - 0.5)*2.0;
+    float rr = length(off); off /= max(1.0, rr); rr = min(rr, 1.0);
+    vec3 p = radial*3.0 + vec3(0.0, floorY, 0.0) + dir*l + (tng*off.x + bin*off.y)*rad;
+    float haze = 0.35 + 0.65*vnoise(p*0.7 + vec3(0.0, -t*0.15, t*0.05));
+    float core = 1.0 - rr;
+    vec3 bc = mod(b, 2.0) < 0.5 ? mix(uCoverB, vec3(1.0), 0.25) : uAccent;
+    C = bc*(0.6 + 1.2*core*core)*haze*(1.0 + uBeat*2.2)*(0.8 + uBass*0.6);
+    A = exp(-l*0.16)*(0.55 + 0.45*core)*haze; S = 0.8;
+    P = p;
+  } else if (aSeed < 0.88) {
+    vec3 p = (aRnd - 0.5)*vec3(14.0, 7.0, 14.0) + vec3(0.0, 1.2, 0.0);
+    vec3 q = p*0.25 + t*0.04;
+    p += (vec3(vnoise(q), vnoise(q + 9.0), vnoise(q + 3.0)) - 0.5)*1.2;
+    float tw = pow(h11(aSeed*77.7 + floor(t*8.0)), 9.0)*uTreble*3.0;
+    C = mix(uCoverA, vec3(1.0), 0.5)*(0.25 + tw); A = 0.12 + tw*0.4; S = 0.55 + tw*0.6; P = p;
+  } else {
+    // 极坐标地网：同心圆向外扩散 + 16 条辐条
+    float u = aRnd.y*TAU, r;
+    if (aRnd.z < 0.55) r = floor(aRnd.x*7.0) + fract(t*0.15); else { u = floor(aRnd.y*16.0)/16.0*TAU; r = aRnd.x*7.5; }
+    P = vec3(cos(u)*r, floorY, sin(u)*r);                            // trig 2
+    float fade = smoothstep(7.5, 2.0, r);
+    C = uCoverB*0.5*(1.0 + uBass*1.2 + uBeat*1.5); A = 0.4*fade; S = 0.7;
+  }
+}
+
+// ==== PRESET 20 ==== 戴森云 DYSON SWARM：恒星 + 9 条倾斜卫星轨道 + 建造中的面板壳层
+void pDyson(){
+  float t = uTime;
+  if (aSeed < 0.16) {
+    vec3 n = sphDir(aRnd.xy);
+    float conv = vnoise(n*4.0 + t*0.25);                            // 米粒组织/对流
+    P = n*0.9*(1.0 + uBass*0.18*uK + uBeat*0.08)*(0.94 + 0.08*conv)*(0.75 + 0.25*fract(aSeed*61.0));
+    C = mix(uAccent, HOT, conv)*(1.2 + uBass*0.8 + uBeat*1.0); A = 0.6; S = 1.1;
+    if (fract(aSeed*97.0) < 0.22) {                                  // 日冕：被高频吹出
+      P = n*(0.95 + pow(h11(aSeed*5.3 + floor(t*6.0)), 3.0)*(0.4 + uTreble*1.2));
+      A = 0.3; C *= 0.7;
+    }
+    return;
+  }
+  if (aSeed < 0.64) {
+    float k = floor((aSeed - 0.16)/0.48*9.0);
+    float hk = h11(k*3.1 + 0.7), hk2 = h11(k*5.7 + 2.1);
+    float rad = 1.5 + k*0.2 + hk*0.1;
+    float inc = (hk - 0.5)*2.4;
+    float node = hk2*TAU + t*0.03 + uMid*0.4*uK;                     // 中频推动轨道进动
+    float dirS = mod(k, 2.0) < 0.5 ? 1.0 : -1.0;
+    float u = aRnd.x*TAU + t*0.9*pow(rad, -1.5)*(1.0 + uEnergy*0.3)*dirS;
+    float cu = cos(u), su = sin(u), ci = cos(inc), si = sin(inc), cn = cos(node), sn = sin(node); // trig 6
+    vec3 p = vec3(cu*rad, -su*rad*si, su*rad*ci);
+    p = rotY(p, cn, sn) + (aRnd - 0.5)*0.035;
+    float train = step(0.5, fract(aRnd.x*36.0 + k*0.3));             // 卫星成列分布
+    float glint = pow(h11(aSeed*41.3 + floor(t*10.0)), 12.0)*uTreble*3.0;
+    C = mix(uCoverA, uCoverB, hk)*0.9 + HOT*glint;
+    A = 0.12 + 0.5*train + glint*0.3; S = 0.8 + glint*0.6;
+    P = p; return;
+  }
+  // 壳层：3D 晶格切分成面板，约一半已建成
+  vec3 n = sphDir(aRnd.xy);
+  float g = t*0.05, cg = cos(g), sg = sin(g);                       // trig 2
+  vec3 cell = floor(n*5.0), f = fract(n*5.0);
+  vec3 ed = min(f, 1.0 - f);
+  float frame = step(min(ed.x, min(ed.y, ed.z)), 0.06);
+  float ch = h31(cell + 3.0);
+  float built = step(ch, 0.5 + 0.15*uEnergy);
+  float R = 3.3 + uBeat*0.3*ch + uBass*0.06*uK;
+  P = rotY(n*R, cg, sg);
+  float wave = exp(-abs(n.y - (beatFront()*2.0 - 1.0))*6.0)*uBeat*1.6;  // 主拍：一道光自下而上扫过壳层
+  float glint = pow(h31(cell + floor(t*5.0)), 14.0)*uTreble*3.0;
+  C = frame > 0.5 ? uAccent*(0.8 + wave) : uCoverA*0.6*(1.0 + glint*4.0) + uAccent*wave*0.5;
+  A = built > 0.5 ? (frame > 0.5 ? 0.8 : 0.4) : (frame > 0.5 ? 0.25 : 0.0);
+  A *= mix(0.35, 1.0, smoothstep(-0.2, 0.3, facing(rotY(n, cg, sg), P)));
+  S = 0.85;
+}
+
+// ==== PRESET 21 ==== 全息地球 HOLO GLOBE：点阵大陆 + 经纬网 + 大气辉光 + 数据弧 + 卫星环 + 扫描环
+void pGlobe(){
+  float t = uTime;
+  float R = 2.1*(1.0 + uBass*0.05*uK);
+  float sp = t*0.08, cs = cos(sp), ss = sin(sp);                    // trig 2
+  if (aSeed < 0.6) {
+    float y = aRnd.x*2.0 - 1.0, th = aRnd.y*TAU, rxz = sqrt(max(0.0, 1.0 - y*y));
+    vec3 n = vec3(rxz*cos(th), y, rxz*sin(th));                     // trig 4
+    float land = vnoise(n*2.3 + 3.0)*0.65 + vnoise(n*5.1 + 1.0)*0.35;
+    float lat = step(abs(fract(y*6.0 + 0.5) - 0.5), 0.018);
+    float lon = step(abs(fract(aRnd.y*24.0 + 0.5) - 0.5), 0.02);
+    vec3 nr = rotY(n, cs, ss);
+    float fc;
+    if (land > 0.53) {
+      P = nr*R; fc = facing(nr, P);
+      float city = pow(h11(aSeed*33.1 + floor(t*7.0)), 10.0)*uTreble*3.0;
+      C = mix(uCoverA, uCoverB, smoothstep(0.53, 0.7, land))*1.5 + HOT*city;
+      A = 0.9*mix(0.15, 1.0, smoothstep(-0.2, 0.35, fc)); S = 0.85 + city*0.4;
+    } else if (lat + lon > 0.5) {
+      P = nr*R*1.003; fc = facing(nr, P);
+      C = uCoverA*0.8 + uAccent*0.2;
+      A = 0.6*mix(0.15, 1.0, smoothstep(-0.2, 0.35, fc)); S = 0.7;
+    } else {
+      // 海洋区域的点抬成大气层，边缘（轮廓）最亮 → 任意角度都有球形辉光
+      float h = pow(fract(aSeed*91.3), 2.0);
+      P = nr*R*(1.03 + h*0.16*(1.0 + uBass*0.6*uK)); fc = facing(nr, P);
+      C = mix(uCoverB, vec3(1.0), 0.3)*(0.5 + uBass*0.6);
+      A = 0.12*(1.0 - h)*(0.6 + 2.4*(1.0 - abs(fc))); S = 0.8;
+    }
+    return;
+  }
+  if (aSeed < 0.86) {
+    // 36 条数据弧：两端点在球面上，中间拱起
+    float k = floor((aSeed - 0.6)/0.26*36.0);
+    vec3 a = normalize(hv3(k*1.3) - 0.5 + 1e-3), b = normalize(hv3(k*7.7 + 3.0) - 0.5 + 1e-3);
+    float s = aRnd.x;
+    vec3 dir = normalize(mix(a, b, s) + 1e-3);
+    float hgt = 4.0*s*(1.0 - s)*(0.18 + 0.3*h11(k*9.1))*(1.0 + uMid*0.9*uK);
+    P = rotY(dir, cs, ss)*R*(1.0 + hgt) + (aRnd - 0.5)*0.015;
+    float idle = exp(-abs(s - fract(t*0.25 + h11(k*2.2)))*30.0);
+    float ap = exp(-abs(s - beatFront())*14.0)*uBeat*2.5;
+    float endp = 1.0 - smoothstep(0.0, 0.03, min(s, 1.0 - s));
+    C = uCoverB*0.7 + uAccent*(idle + ap) + HOT*endp*0.6;
+    A = 0.35 + 0.5*(idle + ap) + endp*0.4; S = 0.7 + ap*0.5 + endp*0.5;
+    return;
+  }
+  if (aSeed < 0.94) {
+    // 倾斜卫星环（虚线）+ 3 颗卫星
+    float u = aRnd.x*TAU + t*0.3;
+    vec3 p = vec3(cos(u), 0.0, sin(u))*R*1.45;                      // trig 4
+    const float ci = 0.9004, si = 0.4350;                          // cos/sin(0.45)
+    P = vec3(p.x, -p.z*si, p.z*ci) + (aRnd - 0.5)*0.02;
+    float dash = step(0.35, fract(aRnd.x*48.0));
+    float sat = step(fract(aRnd.x*3.0), 0.015);
+    C = uCoverA*0.6*dash + HOT*sat*(1.0 + uBeat*2.0);
+    A = 0.3*dash + 0.8*sat; S = 0.75 + sat*1.2;
+    return;
+  }
+  // 纬度扫描环：上下往复
+  float ys = sin(t*0.4)*0.92;                                       // trig 3
+  float rr = sqrt(max(0.0, 1.0 - ys*ys))*R*1.02;
+  float u = aRnd.x*TAU;
+  P = vec3(cos(u)*rr, ys*R*1.02, sin(u)*rr);                        // trig 5
+  C = uAccent*(0.6 + uBeat*2.0 + uEnergy); A = 0.35; S = 0.85;
+}
+
+// ==== PRESET 22 ==== 托卡马克 TOKAMAK：螺旋磁力线上流动的等离子体环 + 16 个 D 形线圈 + 中心螺线管
+void pTokamak(){
+  float t = uTime;
+  float R0 = 2.3;
+  if (aSeed < 0.6) {
+    float line = floor(aRnd.y*28.0);
+    float hl = h11(line*3.7 + 0.4);
+    float a = 0.62*(1.0 + uBass*0.3*uK);
+    float u = aRnd.x*TAU;
+    float rr = (0.25 + 0.75*hl)*a;
+    rr *= 1.0 + 0.25*uMid*uK*sin(3.0*u + t);                         // trig 1：m=3 扭曲模
+    if (aRnd.z > 0.97) rr += pow(h11(aSeed*19.3 + floor(t*12.0)), 3.0)*uTreble*0.9*uK;
+    float v = line/28.0*TAU + u*2.0 + t*(0.5 + 0.3*hl);             // 磁力线缠绕 + 沿线流动
+    float uu = u + t*0.12;
+    float cu = cos(uu), su = sin(uu), cv = cos(v), sv = sin(v);     // trig 5
+    float Rr = R0 + rr*cv;
+    P = vec3(Rr*cu, rr*sv*1.35, Rr*su) + (aRnd.zxy - 0.5)*0.015;
+    float core = clamp(1.0 - rr/(a*1.05), 0.0, 1.0);
+    float dash = pow(fract(u/TAU*12.0 - t*0.8*(0.6 + hl)), 5.0);
+    float ap = exp(-abs(fract(u/TAU) - beatFront())*18.0)*uBeat*2.5;   // 主拍：一团亮脉冲绕环跑一圈
+    C = mix(uCoverB, HOT, core*core)*(0.7 + 1.1*dash)*(1.0 + uBass*0.8) + uAccent*ap;
+    A = 0.45 + 0.45*core + ap*0.3; S = 0.8 + core*0.4;
+  } else if (aSeed < 0.88) {
+    float k = floor((aSeed - 0.6)/0.28*16.0);
+    float u = k/16.0*TAU + t*0.12;
+    float v = aRnd.x*TAU;
+    float cu = cos(u), su = sin(u), cv = cos(v), sv = sin(v);        // trig 4
+    vec2 dl = vec2(max(R0 + 0.15 + 1.05*cv, R0 - 0.7), 1.45*sv);     // max() 截出 D 形的直边
+    dl += (aRnd.yz - 0.5)*0.09;
+    P = vec3(dl.x*cu, dl.y, dl.x*su);
+    float chase = pow(fract(k/16.0 + t*0.4), 6.0);
+    C = uCoverA*0.6 + uAccent*(0.2 + chase*0.7 + uBeat*0.8); A = 0.45; S = 0.8;
+  } else {
+    float u = aRnd.x*TAU, y = (aRnd.y - 0.5)*3.0;
+    P = vec3(cos(u)*0.55, y, sin(u)*0.55) + (aRnd.z - 0.5)*0.03;    // trig 2
+    float wind = pow(fract(y*5.0 + u/TAU + t*0.5), 6.0);
+    C = mix(uCoverA*0.5, uAccent, wind)*(1.0 + uBass*1.2 + uBeat*1.5); A = 0.35; S = 0.8;
+  }
+}
+
+// ==== PRESET 23 ==== 旋涡星系 SPIRAL GALAXY：核球 + 双臂对数螺旋 + 暗尘带 + HII 区 + 晕
+void pGalaxy(){
+  float t = uTime;
+  float front = beatFront()*6.0;
+  if (aSeed < 0.12) {
+    vec3 n = sphDir(aRnd.xy);
+    float r = pow(fract(aSeed*71.3), 1.8)*1.15*(1.0 + uBass*0.15*uK);
+    P = n*r*vec3(1.0, 0.62, 1.0);
+    C = mix(HOT, uAccent, r)*(1.0 + uBass*0.8 + uBeat*0.8); A = 0.45; S = 1.0; return;
+  }
+  if (aSeed < 0.9) {
+    float r = 0.5 + pow(aRnd.x, 0.85)*4.8;
+    bool inArm = fract(aSeed*29.3) > 0.3;
+    float arm = floor(aRnd.z*2.0);
+    float sp = aRnd.y + fract(aSeed*7.31) - 1.0;                    // 三角分布：集中在旋臂中线附近，范围 ±1
+    float wind = 2.3 + uMid*0.35*uK;                                // 中频让旋臂收紧
+    float th = inArm ? arm*3.14159 + log(r)*wind + sp*(0.7 + 0.1*r) : aRnd.y*TAU;
+    th += t*0.32/(0.5 + r*0.45);                                    // 差速转动
+    float ct = cos(th), st = sin(th);                               // trig 2
+    float y = (h11(aSeed*17.1) - 0.5)*0.22*exp(-r*0.18)*(1.0 + uMid*0.8*uK) + 0.025*r*st; // 盘厚 + 轻微翘曲
+    P = vec3(ct*r, y, st*r);
+    float dust = (inArm && sp < -0.05) ? 0.3 : 1.0;                 // 旋臂内侧暗尘带
+    vec3 young = mix(uCoverB, vec3(0.85, 0.92, 1.0), 0.4);
+    vec3 old = mix(uAccent, uCoverA, 0.5)*0.8;
+    C = (inArm ? mix(young, old, smoothstep(0.0, 0.6, abs(sp))) : old*0.7)*dust;
+    float hii = inArm ? pow(h21(vec2(floor(r*3.0), arm + floor((sp + 1.0)*3.0))), 12.0) : 0.0;
+    float tw = pow(h11(aSeed*61.7 + floor(t*8.0)), 12.0)*uTreble*3.0;
+    float ring = exp(-abs(r - front*0.85)*2.0)*uBeat*1.3;
+    C = C*(0.8 + uMid*0.5) + HOT*tw + mix(uCoverA, HOT, 0.5)*hii*1.5 + uAccent*ring;
+    A = (0.4 + 0.4*exp(-r*0.25))*dust + hii*0.3; S = 0.8 + tw*0.6;
+    return;
+  }
+  vec3 n = sphDir(aRnd.xy);
+  P = n*(2.5 + fract(aSeed*43.7)*5.5);
+  float tw = pow(h11(aSeed*23.9 + floor(t*5.0)), 10.0)*uTreble*3.0;
+  C = mix(uCoverA, vec3(1.0), 0.5)*(0.35 + tw); A = 0.1 + tw*0.3; S = 0.6;
+}
+
+// ==== PRESET 24 ==== 虫洞 WORMHOLE：Flamm/悬链面嵌入图的时空网格 + 螺旋穿过喉部的物质 + 背景星
+void pWormhole(){
+  float t = uTime;
+  float b = 0.75*(1.0 + uBass*0.35*uK + uBeat*0.1);                 // 喉部半径
+  float Rm = 5.0;
+  float front = beatFront();
+  if (aSeed < 0.58) {
+    float side = aRnd.z < 0.5 ? 1.0 : -1.0;
+    float rs, phi;
+    if (fract(aSeed*37.1) < 0.5) { rs = (floor(aRnd.x*14.0) + 1.0 - fract(t*0.25))/14.0; phi = aRnd.y*TAU; } // 同心环向喉部流入
+    else { rs = aRnd.x; phi = floor(aRnd.y*24.0)/24.0*TAU; }                                                  // 24 条经线
+    phi += side*(t*0.05 + uMid*0.8*uK*(1.0 - rs));                    // 中频扭转时空网格
+    float r = b + (Rm - b)*rs*rs;
+    float y = side*b*acosh(max(r/b, 1.0))*1.0;                        // 悬链面 r = b·cosh(y/b)
+    P = vec3(cos(phi)*r, y, sin(phi)*r);                              // trig 2
+    float wave = exp(-abs(rs - front)*12.0)*uBeat*2.0;                // 主拍：引力波环从喉部外扩
+    C = (side > 0.0 ? uCoverA : uCoverB)*1.3 + uAccent*wave;
+    A = 0.6*(1.0 - rs*0.6) + wave*0.3; S = 0.75;
+  } else if (aSeed < 0.88) {
+    float s = fract(aRnd.x + t*0.07*(0.7 + 0.6*aRnd.y));             // 0→1：从上方入口穿过喉部到下方出口
+    float side = s < 0.5 ? 1.0 : -1.0;
+    float rs = abs(1.0 - 2.0*s);
+    float r = b + (Rm - b)*rs*rs;
+    float y = side*b*acosh(max(r/b, 1.0));
+    float phi = aRnd.y*TAU + s*9.0 + 2.5/r;                           // 越靠近喉部转得越快
+    P = vec3(cos(phi)*r, y, sin(phi)*r) + (aRnd.zxy - 0.5)*0.12;     // trig 2
+    float heat = 1.0 - rs;
+    float tw = pow(h11(aSeed*29.1 + floor(t*10.0)), 10.0)*uTreble*3.0;
+    C = mix(uCoverB, HOT, heat*heat)*(0.6 + heat) + HOT*tw;
+    A = 0.22 + 0.5*heat; S = 0.7 + heat*0.6 + tw*0.4;
+  } else if (aSeed < 0.94) {
+    float phi = aRnd.y*TAU;
+    float r = b*(1.0 + (aRnd.x - 0.5)*0.04);
+    P = vec3(cos(phi)*r, (aRnd.z - 0.5)*0.08, sin(phi)*r);            // trig 2
+    C = mix(uAccent, HOT, 0.5)*(1.2 + uBass + uBeat*2.0); A = 0.7; S = 1.0;
+  } else {
+    vec3 n = sphDir(aRnd.xy);
+    P = n*(13.0 + fract(aSeed*53.1)*8.0);
+    float tw = pow(h11(aSeed*11.3 + floor(t*4.0)), 8.0);
+    C = mix(uCoverA, vec3(1.0), 0.6)*(0.5 + tw*(1.0 + uTreble*2.0)); A = 0.35; S = 0.9;
+  }
+}
+
+// ==== PRESET 25 ==== 陀螺核心 GYRO CORE：能量核 + 4 层嵌套万向环（刻度、分段、追光）
+void pGyro(){
+  float t = uTime;
+  if (aSeed < 0.12) {
+    vec3 n = sphDir(aRnd.xy);
+    float r = 0.55*(1.0 + uBass*0.3*uK + uBeat*0.15)*(0.92 + 0.08*vnoise(n*5.0 + t))*mix(0.7, 1.0, fract(aSeed*41.0));
+    P = n*r; C = mix(uAccent, HOT, 0.5)*(1.0 + uBass + uBeat*1.5); A = 0.55; S = 1.0; return;
+  }
+  float k = floor((aSeed - 0.12)/0.88*4.0);
+  float rad = (1.25 + k*0.5)*(1.0 + uBass*0.04*uK);
+  vec3 e1 = normalize(hv3(k*3.3 + 1.0) - 0.5 + 1e-3);              // 环的翻转轴（环的一条直径）
+  vec3 e2 = normalize(cross(e1, normalize(hv3(k*5.1 + 7.0) - 0.5 + 1e-3)));  // 环平面法线
+  vec3 e3 = cross(e2, e1);
+  float dirS = mod(k, 2.0) < 0.5 ? 1.0 : -1.0;
+  float u = aRnd.x*TAU + t*(0.25 + 0.1*k)*dirS;
+  float cu = cos(u), su = sin(u);                                   // trig 2
+  vec3 p = (e1*cu + e3*su)*(rad + (aRnd.z - 0.5)*0.06) + e2*(aRnd.y - 0.5)*0.16;
+  float ang = (t*(0.3 + 0.13*k) + uMid*0.6*uK + uBeat*0.5)*dirS;    // beat 让环"咔"地多拧一下再回弹
+  float ca = cos(ang), sa = sin(ang);                               // trig 4
+  p = p*ca + cross(e1, p)*sa + e1*dot(e1, p)*(1.0 - ca);            // Rodrigues 绕 e1 旋转
+  float g = t*0.05, cg = cos(g), sg = sin(g);                       // trig 6
+  P = rotY(p, cg, sg);
+  float seg = step(0.08, fract(aRnd.x*6.0 + k*0.37));               // 6 段，留缺口
+  float tick = step(0.75, fract(aRnd.x*90.0))*step(0.3, abs(aRnd.y - 0.5));
+  float chase = pow(fract(aRnd.x*2.0 - t*(0.5 + 0.2*k)), 20.0)*(0.3 + uTreble*3.0);
+  C = mix(uCoverA*0.7, uCoverB, k/3.0)*(0.6 + 0.6*tick) + HOT*chase + uAccent*uBeat*0.8;
+  A = ((0.3 + 0.3*tick) + chase*0.4)*seg; S = 0.8 + chase*0.5;
+}
+
+void main(){
+  cover = texture(uCover, aUv).rgb;
+  P = vec3(0.0); C = vec3(1.0); A = 1.0; S = 1.0;
+  if      (uPreset < 13.5) pKintsugi();
+  else if (uPreset < 14.5) pInk();
+  else if (uPreset < 15.5) pTess();
+  else if (uPreset < 16.5) pDisk();
+  else if (uPreset < 17.5) pScope();
+  else if (uPreset < 18.5) pNeuron();
+  else if (uPreset < 19.5) pBeams();
+  else if (uPreset < 20.5) pDyson();
+  else if (uPreset < 21.5) pGlobe();
+  else if (uPreset < 22.5) pTokamak();
+  else if (uPreset < 23.5) pGalaxy();
+  else if (uPreset < 24.5) pWormhole();
+  else                     pGyro();
+
+  vec3 burstPos = P*1.6 + (aRnd - 0.5)*vec3(9.0, 6.0, 6.0);
+  P = mix(P, burstPos, uBurst*uBurst);
+  A *= 1.0 - 0.5*uBurst;
+
+  vec4 mv = uView*vec4(P, 1.0);
+  vec4 clip = uProj*mv;
+  vec2 ndc = clip.xy/clip.w;
+  float lyr = (1.0 - smoothstep(0.55, 0.8, abs(ndc.x)))
+            * smoothstep(-0.42, -0.25, ndc.y) * (1.0 - smoothstep(0.55, 0.72, ndc.y));
+  A *= 1.0 - uShield*lyr;
+
+  vColor = C*uColorBoost;
+  vAlpha = clamp(A*uAlpha, 0.0, 1.0);
+  gl_Position = clip;
+  gl_PointSize = clamp(uPoint*S*uSizeK/max(-mv.z, 0.1), 1.0, 28.0);
+}`;
+
+const FRAG_SRC = `#version 300 es
+precision highp float;
+in vec3 vColor; in float vAlpha; out vec4 o;
+void main(){
+  vec2 c = gl_PointCoord - 0.5; float d = dot(c, c)*4.0;
+  if (d > 1.0) discard;
+  float a = 1.0 - d; a *= a;
+  o = vec4(vColor, vAlpha*a);
+}`;
+
+// ---------------- 后期：简易 bloom ----------------
+const QUAD_VS = `#version 300 es
+in vec2 aPos; out vec2 vUv; void main(){ vUv = aPos*0.5 + 0.5; gl_Position = vec4(aPos, 0.0, 1.0); }`;
+const EXTRACT_FS = `#version 300 es
+precision highp float; in vec2 vUv; out vec4 o;
+uniform sampler2D uTex; uniform vec2 uTexel; uniform float uThresh;
+void main(){
+  vec3 c = (texture(uTex, vUv + uTexel*vec2(-0.5,-0.5)).rgb + texture(uTex, vUv + uTexel*vec2(0.5,-0.5)).rgb
+          + texture(uTex, vUv + uTexel*vec2(-0.5,0.5)).rgb + texture(uTex, vUv + uTexel*vec2(0.5,0.5)).rgb)*0.25;
+  float l = max(c.r, max(c.g, c.b));
+  o = vec4(c*smoothstep(uThresh, uThresh + 0.25, l), 1.0);
+}`;
+const BLUR_FS = `#version 300 es
+precision highp float; in vec2 vUv; out vec4 o;
+uniform sampler2D uTex; uniform vec2 uDir;
+void main(){
+  vec3 c = texture(uTex, vUv).rgb*0.227027;
+  c += (texture(uTex, vUv + uDir*1.3846).rgb + texture(uTex, vUv - uDir*1.3846).rgb)*0.3162162;
+  c += (texture(uTex, vUv + uDir*3.2308).rgb + texture(uTex, vUv - uDir*3.2308).rgb)*0.0702703;
+  o = vec4(c, 1.0);
+}`;
+const COMPOSITE_FS = `#version 300 es
+precision highp float; in vec2 vUv; out vec4 o;
+uniform sampler2D uScene, uB1, uB2; uniform float uStrength;
+void main(){
+  vec3 c = texture(uScene, vUv).rgb + (texture(uB1, vUv).rgb*0.8 + texture(uB2, vUv).rgb*1.2)*uStrength*1.5;
+  float vig = smoothstep(0.95, 0.15, length(vUv - 0.5));
+  c *= mix(0.82, 1.0, vig);
+  c = 1.0 - exp(-c*1.25);
+  o = vec4(c, 1.0);
+}`;
+
+// =====================================================================
+// WebGL 初始化
+// =====================================================================
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2', { antialias:false, alpha:false });
+function fail(msg){ const e = document.getElementById('err'); e.style.display = 'flex'; e.textContent = msg; throw new Error(msg); }
+if (!gl) fail('当前浏览器不支持 WebGL2。');
+const HAS_FLOAT = !!gl.getExtension('EXT_color_buffer_float');
+
+function compile(type, src){
+  const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) fail('Shader 编译失败:\n' + gl.getShaderInfoLog(s));
+  return s;
+}
+function program(vs, fs){
+  const p = gl.createProgram();
+  gl.attachShader(p, compile(gl.VERTEX_SHADER, vs)); gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) fail('Program 链接失败:\n' + gl.getProgramInfoLog(p));
+  const u = {}; const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++){ const info = gl.getActiveUniform(p, i); u[info.name] = gl.getUniformLocation(p, info.name); }
+  return { p, u };
+}
+const pointProg = program(VERT_SRC, FRAG_SRC);
+const extractProg = program(QUAD_VS, EXTRACT_FS);
+const blurProg = program(QUAD_VS, BLUR_FS);
+const compProg = program(QUAD_VS, COMPOSITE_FS);
+
+// ---- 点云：183×183 = 33,489 点 ----
+const N = 183, COUNT = N*N;
+function mulberry32(a){ return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a);
+  t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0)/4294967296; }; }
+const rand = mulberry32(20261102);
+const uvArr = new Float32Array(COUNT*2), seedArr = new Float32Array(COUNT), rndArr = new Float32Array(COUNT*3);
+for (let j = 0; j < N; j++) for (let i = 0; i < N; i++){
+  const k = j*N + i;
+  uvArr[k*2] = (i + 0.5)/N; uvArr[k*2 + 1] = (j + 0.5)/N;
+  seedArr[k] = rand(); rndArr[k*3] = rand(); rndArr[k*3 + 1] = rand(); rndArr[k*3 + 2] = rand();
+}
+const pointVao = gl.createVertexArray(); gl.bindVertexArray(pointVao);
+function attr(name, data, size){
+  const loc = gl.getAttribLocation(pointProg.p, name); if (loc < 0) return;
+  const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, size, gl.FLOAT, false, 0, 0);
+}
+attr('aUv', uvArr, 2); attr('aSeed', seedArr, 1); attr('aRnd', rndArr, 3);
+
+const quadVao = gl.createVertexArray(); gl.bindVertexArray(quadVao);
+{ const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+  for (const pr of [extractProg, blurProg, compProg]){ const loc = gl.getAttribLocation(pr.p, 'aPos');
+    gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0); } }
+gl.bindVertexArray(null);
+
+function makeTarget(w, h){
+  const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+  if (HAS_FLOAT) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+  else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  const fb = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  return { tex, fb, w, h };
+}
+let RT = null;
+function resize(){
+  const pr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.max(2, Math.floor(innerWidth*pr)), h = Math.max(2, Math.floor(innerHeight*pr));
+  canvas.width = w; canvas.height = h;
+  if (RT) for (const k in RT){ gl.deleteTexture(RT[k].tex); gl.deleteFramebuffer(RT[k].fb); }
+  const hw = w >> 1, hh = h >> 1, qw = w >> 2, qh = h >> 2;
+  RT = { scene:makeTarget(w, h), h1:makeTarget(hw, hh), h2:makeTarget(hw, hh), q1:makeTarget(qw, qh), q2:makeTarget(qw, qh) };
+}
+addEventListener('resize', resize); resize();
+
+// ---- 封面纹理 + 主色 ----
+const coverTex = gl.createTexture();
+let coverA = [0.4, 0.4, 0.6], coverB = [0.7, 0.7, 0.9];
+function makeDefaultCover(){
+  const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d');
+  const gr = g.createLinearGradient(0, 0, 256, 256);
+  gr.addColorStop(0, '#16235e'); gr.addColorStop(0.55, '#4d3a8f'); gr.addColorStop(1, '#c9789a');
+  g.fillStyle = gr; g.fillRect(0, 0, 256, 256);
+  const r = mulberry32(7);
+  for (let i = 0; i < 16; i++){
+    const x = r()*256, y = r()*256, rad = 20 + r()*70;
+    const rg = g.createRadialGradient(x, y, 0, x, y, rad);
+    rg.addColorStop(0, `hsla(${200 + i*11},80%,70%,0.5)`); rg.addColorStop(1, 'hsla(0,0%,0%,0)');
+    g.fillStyle = rg; g.beginPath(); g.arc(x, y, rad, 0, 7); g.fill();
+  }
+  return c;
+}
+function computePalette(src){
+  const s = document.createElement('canvas'); s.width = s.height = 32; const g = s.getContext('2d');
+  g.drawImage(src, 0, 0, 32, 32); const d = g.getImageData(0, 0, 32, 32).data;
+  const px = []; const sum = [0, 0, 0];
+  for (let i = 0; i < d.length; i += 4){ const c = [d[i]/255, d[i+1]/255, d[i+2]/255];
+    px.push([c, 0.2126*c[0] + 0.7152*c[1] + 0.0722*c[2]]); sum[0] += c[0]; sum[1] += c[1]; sum[2] += c[2]; }
+  const avg = sum.map(v => v/px.length);
+  px.sort((a, b) => b[1] - a[1]);
+  const top = [0, 0, 0], n = Math.max(1, Math.floor(px.length*0.15));
+  for (let i = 0; i < n; i++) for (let k = 0; k < 3; k++) top[k] += px[i][0][k]/n;
+  const lift = (c, target) => { const l = 0.2126*c[0] + 0.7152*c[1] + 0.0722*c[2];
+    const m = l < target ? target/Math.max(l, 0.02) : 1; return c.map(v => Math.min(1, v*m)); };
+  return [lift(avg, 0.38), lift(top, 0.7)];
+}
+function setCover(src){
+  gl.bindTexture(gl.TEXTURE_2D, coverTex); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  [coverA, coverB] = computePalette(src);
+  const ly = [coverB[0]*0.55 + 0.1, coverB[1]*0.55 + 0.13, Math.min(1, coverB[2]*0.55 + 0.4)];
+  document.documentElement.style.setProperty('--ly', `rgb(${ly.map(v => Math.round(v*255)).join(',')})`);
+}
+setCover(makeDefaultCover());
+
+// =====================================================================
+// 音频（包络参数与文档 2.2 一致）
+// =====================================================================
+const ENV = { bass:[0.28, 0.075, 0.82], mid:[0.18, 0.06, 0.68], treble:[0.18, 0.055, 0.56], energy:[0.16, 0.055, 0.72] };
+const au = { mode:'demo', bass:0, mid:0, treble:0, energy:0, beat:0, demoT:0, lastIdx:-1,
+  peaks:{ bass:0.15, mid:0.15, treble:0.1, energy:0.1 }, prevBass:0, lastBeatT:-9 };
+let actx = null, analyser = null, freq = null, tdata = null, mediaSrc = null, audioEl = null;
+let camKick = 0, camKickS = 0;
+
+function envelope(key, norm, dt){
+  const [atk, rel, cap] = ENV[key]; const target = Math.max(0, Math.min(1, norm))*cap;
+  const k = target > au[key] ? atk : rel; const f = 1 - Math.pow(1 - k, dt*60);
+  au[key] += (target - au[key])*f;
+}
+function triggerBeat(strength){ au.beat = Math.max(au.beat, 0.78*strength); camKick = Math.max(camKick, strength); }
+function demoSignals(t){
+  const bt = t*112/60, idx = Math.floor(bt), ph = bt - idx;
+  const quiet = (Math.floor(idx/8) % 4) === 3;                  // 每 32 拍最后 8 拍近静音
+  const kick = quiet ? 0 : Math.exp(-ph*7);
+  const snare = (!quiet && idx % 2 === 1) ? Math.exp(-ph*6) : 0;
+  const hat = quiet ? 0.04 : Math.exp(-((bt*2) % 1)*12)*0.8;
+  const pad = 0.25 + 0.15*Math.sin(t*0.4);
+  if (idx !== au.lastIdx){ au.lastIdx = idx; if (!quiet) triggerBeat(idx % 4 === 0 ? 1.0 : 0.62); }
+  return { bass:kick*0.95 + pad*0.12, mid:snare*0.8 + pad*0.45, treble:hat*0.75 + 0.06,
+           energy:(kick*0.5 + snare*0.3 + hat*0.2)*(quiet ? 0.3 : 1) + pad*0.3 };
+}
+function bandAvg(lo, hi){
+  const ny = actx.sampleRate/2, n = freq.length;
+  const a = Math.max(0, Math.floor(lo/ny*n)), b = Math.min(n - 1, Math.ceil(hi/ny*n));
+  let s = 0; for (let i = a; i <= b; i++) s += freq[i]; return s/((b - a + 1)*255);
+}
+function liveSignals(dt, now){
+  analyser.getByteFrequencyData(freq); analyser.getByteTimeDomainData(tdata);
+  let rms = 0; for (let i = 0; i < tdata.length; i++){ const v = (tdata[i] - 128)/128; rms += v*v; }
+  const raw = { bass:bandAvg(30, 150), mid:bandAvg(180, 2200), treble:bandAvg(5000, 12000), energy:Math.sqrt(rms/tdata.length) };
+  const out = {};
+  for (const k in raw){
+    au.peaks[k] = Math.max(raw[k], au.peaks[k]*Math.pow(0.9975, dt*60), 0.04);
+    out[k] = Math.max(0, (raw[k]/au.peaks[k] - 0.35)/0.65);
+  }
+  const flux = raw.bass - au.prevBass; au.prevBass = raw.bass;
+  if (flux > 0.035 && raw.bass/au.peaks.bass > 0.78 && now - au.lastBeatT > 0.27){
+    au.lastBeatT = now; triggerBeat(Math.min(1, raw.bass/au.peaks.bass));
+  }
+  return out;
+}
+async function ensureCtx(){ if (!actx){ actx = new AudioContext(); analyser = actx.createAnalyser(); analyser.fftSize = 2048;
+  analyser.smoothingTimeConstant = 0.55; freq = new Uint8Array(analyser.frequencyBinCount); tdata = new Uint8Array(analyser.fftSize); }
+  if (actx.state === 'suspended') await actx.resume(); }
+async function useFile(file){
+  await ensureCtx();
+  if (!audioEl){ audioEl = new Audio(); audioEl.loop = true; mediaSrc = actx.createMediaElementSource(audioEl);
+    mediaSrc.connect(analyser); analyser.connect(actx.destination); }
+  audioEl.src = URL.createObjectURL(file); await audioEl.play(); setSource('file');
+}
+async function useMic(){
+  await ensureCtx();
+  try { const s = await navigator.mediaDevices.getUserMedia({ audio:true });
+    actx.createMediaStreamSource(s).connect(analyser); setSource('mic'); }
+  catch (e){ alert('无法打开麦克风：' + e.message); }
+}
+
+// =====================================================================
+// 相机：球坐标轨道（预设基线 + 用户拖拽 + 自动公转）+ 主拍收缩
+// =====================================================================
+function perspective(fovy, aspect, near, far){
+  const f = 1/Math.tan(fovy/2), nf = 1/(near - far);
+  return new Float32Array([f/aspect,0,0,0, 0,f,0,0, 0,0,(far + near)*nf,-1, 0,0,2*far*near*nf,0]);
+}
+function lookAt(e, c){
+  let z = [e[0]-c[0], e[1]-c[1], e[2]-c[2]]; let l = Math.hypot(...z); z = z.map(v => v/l);
+  let x = [z[2], 0, -z[0]]; l = Math.hypot(...x) || 1; x = x.map(v => v/l);
+  const y = [z[1]*x[2] - z[2]*x[1], z[2]*x[0] - z[0]*x[2], z[0]*x[1] - z[1]*x[0]];
+  const d = (a, b) => a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+  return new Float32Array([x[0],y[0],z[0],0, x[1],y[1],z[1],0, x[2],y[2],z[2],0, -d(x,e),-d(y,e),-d(z,e),1]);
+}
+const qs = new URLSearchParams(location.search);
+const ctl = { yaw:+(qs.get('yaw') || 0), pitch:+(qs.get('pitch') || 0), zoom:+(qs.get('zoom') || 1), drag:false, lx:0, ly:0 };
+canvas.addEventListener('pointerdown', e => { ctl.drag = true; ctl.lx = e.clientX; ctl.ly = e.clientY;
+  canvas.setPointerCapture(e.pointerId); canvas.classList.add('drag'); });
+canvas.addEventListener('pointermove', e => { if (!ctl.drag) return;
+  ctl.yaw -= (e.clientX - ctl.lx)*0.006; ctl.pitch += (e.clientY - ctl.ly)*0.006;
+  ctl.lx = e.clientX; ctl.ly = e.clientY; });
+const endDrag = () => { ctl.drag = false; canvas.classList.remove('drag'); };
+canvas.addEventListener('pointerup', endDrag); canvas.addEventListener('pointercancel', endDrag);
+canvas.addEventListener('wheel', e => { e.preventDefault(); ctl.zoom = Math.min(2.5, Math.max(0.35, ctl.zoom*Math.exp(e.deltaY*0.001))); }, { passive:false });
+const resetView = () => { ctl.yaw = 0; ctl.pitch = 0; ctl.zoom = 1; };
+canvas.addEventListener('dblclick', resetView);
+
+// =====================================================================
+// 状态 / UI
+// =====================================================================
+const st = { preset:13, time:0, burst:1, shield:true, auto:true, intensity:0.85, point:1, speed:1, color:1.1, bloom:0.62 };
+if (qs.has('p')) st.preset = Math.max(13, Math.min(MAX_ID, +qs.get('p') || 13));
+if (qs.has('t')){ au.demoT = +qs.get('t') || 0; st.time = au.demoT; }
+const presetOf = id => PRESETS.find(p => p.id === id);
+const btnA = document.getElementById('presetBtnsA'), btnB = document.getElementById('presetBtnsB');
+PRESETS.forEach((p, i) => { const b = document.createElement('button'); b.textContent = `${p.id} ${p.name}`;
+  if (p.batch === 'B') b.classList.add('new');
+  b.dataset.p = p.id; b.onclick = () => setPreset(p.id); (p.batch === 'A' ? btnA : btnB).appendChild(b); });
+function setPreset(id){
+  st.preset = id; st.burst = 1;
+  document.querySelectorAll('[data-p]').forEach(b => b.classList.toggle('on', +b.dataset.p === id));
+  const p = presetOf(id);
+  document.getElementById('info').textContent = `#${p.id} ${p.name} · ${p.en}\n${p.map.split('  ').join('\n')}`;
+}
+function setSource(m){ au.mode = m;
+  if (audioEl && m !== 'file') audioEl.pause();
+  document.querySelectorAll('[data-src]').forEach(b => b.classList.toggle('on', b.dataset.src === m)); }
+document.querySelectorAll('[data-src]').forEach(b => b.onclick = () => {
+  const m = b.dataset.src;
+  if (m === 'file') document.getElementById('audioFile').click();
+  else if (m === 'mic') useMic(); else setSource(m);
+});
+document.getElementById('audioFile').onchange = e => e.target.files[0] && useFile(e.target.files[0]);
+document.getElementById('coverBtn').onclick = () => document.getElementById('coverFile').click();
+document.getElementById('coverFile').onchange = e => { const f = e.target.files[0]; if (!f) return;
+  const img = new Image(); img.onload = () => setCover(img); img.src = URL.createObjectURL(f); };
+for (const k of ['intensity', 'point', 'speed', 'color', 'bloom']){
+  const el = document.getElementById(k); el.oninput = () => { st[k] = +el.value; }; }
+const lyricsEl = document.getElementById('lyrics');
+const shieldChk = document.getElementById('shieldChk'), lyricChk = document.getElementById('lyricChk'), autoChk = document.getElementById('autoChk');
+shieldChk.onchange = () => { st.shield = shieldChk.checked; };
+lyricChk.onchange = () => { lyricsEl.style.display = lyricChk.checked ? '' : 'none'; };
+autoChk.onchange = () => { st.auto = autoChk.checked; };
+
+const meterBox = document.getElementById('meters'), meterEls = {};
+for (const k of ['bass', 'mid', 'treble', 'energy', 'beat']){
+  const d = document.createElement('div'); d.className = 'meter';
+  d.innerHTML = `<b>${k}</b><div class="bar"><i></i></div>`; meterBox.appendChild(d); meterEls[k] = d.querySelector('i'); }
+
+const LINES = ['不要太得意', '除非有我关照你', '天天吃饭不容易', '还要保持 Good Fit', '要开飞机要电视机要 CD 机'];
+lyricsEl.innerHTML = LINES.map(l => `<div>${l}</div>`).join('');
+if (qs.get('lyrics') === '0'){ lyricsEl.style.display = 'none'; lyricChk.checked = false; }
+if (qs.get('ui') === '0'){ document.getElementById('panel').style.display = 'none'; document.getElementById('hint').style.display = 'none'; }
+if (qs.get('audio') === 'mute') setSource('mute');
+if (qs.get('shield') === '0'){ st.shield = false; shieldChk.checked = false; }
+if (qs.get('auto') === '0'){ st.auto = false; autoChk.checked = false; }
+
+addEventListener('keydown', e => {
+  const n = parseInt(e.key, 10); if (n >= 1 && n <= 9) setPreset(12 + n);
+  const k = e.key.toLowerCase();
+  if (k === '[') setPreset(st.preset <= 13 ? MAX_ID : st.preset - 1);
+  if (k === ']') setPreset(st.preset >= MAX_ID ? 13 : st.preset + 1);
+  if (k === 'm') setSource('mute'); if (k === 'd') setSource('demo');
+  if (k === 'r') resetView();
+  if (k === 'h'){ const p = document.getElementById('panel'); p.style.display = p.style.display === 'none' ? '' : 'none'; }
+  if (k === 'l'){ lyricChk.checked = !lyricChk.checked; lyricChk.onchange(); }
+  if (k === 's'){ shieldChk.checked = !shieldChk.checked; shieldChk.onchange(); }
+});
+setPreset(st.preset);
+window.__sollinFx = { setPreset, setSource, state:st, audio:au, ctl, PRESETS };
+
+// =====================================================================
+// 主循环
+// =====================================================================
+let last = performance.now(), wall = 0, autoT = 0;
+function frame(now){
+  const dt = Math.min(0.05, (now - last)/1000); last = now; wall += dt;
+  st.time += dt*st.speed;
+  if (st.auto && !ctl.drag) autoT += dt;
+
+  let sig;
+  if (au.mode === 'demo'){ au.demoT += dt; sig = demoSignals(au.demoT); }
+  else if ((au.mode === 'file' || au.mode === 'mic') && analyser) sig = liveSignals(dt, wall);
+  else sig = { bass:0, mid:0, treble:0, energy:0 };
+  for (const k in ENV) envelope(k, sig[k], dt);
+  au.beat *= Math.pow(0.5, dt/0.16);
+  st.burst *= Math.exp(-dt*3.2);
+  camKick *= Math.exp(-dt*7.0); camKickS += (camKick - camKickS)*Math.min(1, dt*30);
+  const lyLines = lyricsEl.children, cur = Math.floor(wall/4) % LINES.length;
+  for (let i = 0; i < lyLines.length; i++) lyLines[i].classList.toggle('cur', i === cur);
+  for (const k in meterEls) meterEls[k].style.width = `${Math.min(100, au[k]/0.82*100)}%`;
+
+  const pr = presetOf(st.preset), cam = pr.cam;
+  const yaw = cam.yaw + ctl.yaw + cam.orbit*autoT + Math.sin(autoT*0.05)*cam.sway;
+  const pitch = Math.max(-1.45, Math.min(1.45, cam.pitch + ctl.pitch));
+  const r = cam.r*ctl.zoom*(1 - camKickS*0.05);
+  const eye = [cam.look[0] + r*Math.cos(pitch)*Math.sin(yaw), cam.look[1] + r*Math.sin(pitch), cam.look[2] + r*Math.cos(pitch)*Math.cos(yaw)];
+  const fov = (45 - camKickS*1.26)*Math.PI/180;
+  const view = lookAt(eye, cam.look), proj = perspective(fov, canvas.width/canvas.height, 0.1, 100);
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, RT.scene.fb); gl.viewport(0, 0, RT.scene.w, RT.scene.h);
+  gl.clearColor(0.039, 0.043, 0.067, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE); gl.disable(gl.DEPTH_TEST);
+  const P = pointProg; gl.useProgram(P.p);
+  gl.uniformMatrix4fv(P.u.uView, false, view); gl.uniformMatrix4fv(P.u.uProj, false, proj);
+  if (P.u.uCamPos) gl.uniform3fv(P.u.uCamPos, eye);
+  const set1 = (n, v) => { if (P.u[n]) gl.uniform1f(P.u[n], v); };
+  set1('uTime', st.time); set1('uBass', au.bass); set1('uMid', au.mid); set1('uTreble', au.treble);
+  set1('uEnergy', au.energy); set1('uBeat', au.beat); set1('uPreset', st.preset);
+  set1('uK', st.intensity*1.6); set1('uPoint', st.point); set1('uBurst', st.burst);
+  set1('uShield', st.shield ? pr.shield : 0); set1('uSizeK', canvas.height*0.03);
+  set1('uColorBoost', st.color); set1('uAlpha', 0.9);
+  gl.uniform3fv(P.u.uCoverA, coverA); gl.uniform3fv(P.u.uCoverB, coverB); gl.uniform3fv(P.u.uAccent, [0.957, 0.824, 0.541]);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, coverTex); gl.uniform1i(P.u.uCover, 0);
+  gl.bindVertexArray(pointVao); gl.drawArrays(gl.POINTS, 0, COUNT);
+  gl.disable(gl.BLEND);
+
+  gl.bindVertexArray(quadVao);
+  const pass = (prog, target, setup) => { gl.useProgram(prog.p);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, target ? target.fb : null);
+    gl.viewport(0, 0, target ? target.w : canvas.width, target ? target.h : canvas.height);
+    setup(prog.u); gl.drawArrays(gl.TRIANGLES, 0, 3); };
+  const bindTex = (unit, tex, loc) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, tex); gl.uniform1i(loc, unit); };
+  pass(extractProg, RT.h1, u => { bindTex(0, RT.scene.tex, u.uTex); gl.uniform2f(u.uTexel, 1/RT.scene.w, 1/RT.scene.h); gl.uniform1f(u.uThresh, 0.12); });
+  pass(blurProg, RT.h2, u => { bindTex(0, RT.h1.tex, u.uTex); gl.uniform2f(u.uDir, 1/RT.h1.w, 0); });
+  pass(blurProg, RT.h1, u => { bindTex(0, RT.h2.tex, u.uTex); gl.uniform2f(u.uDir, 0, 1/RT.h1.h); });
+  pass(extractProg, RT.q1, u => { bindTex(0, RT.h1.tex, u.uTex); gl.uniform2f(u.uTexel, 1/RT.h1.w, 1/RT.h1.h); gl.uniform1f(u.uThresh, 0.0); });
+  pass(blurProg, RT.q2, u => { bindTex(0, RT.q1.tex, u.uTex); gl.uniform2f(u.uDir, 1.5/RT.q1.w, 0); });
+  pass(blurProg, RT.q1, u => { bindTex(0, RT.q2.tex, u.uTex); gl.uniform2f(u.uDir, 0, 1.5/RT.q1.h); });
+  pass(compProg, null, u => { bindTex(0, RT.scene.tex, u.uScene); bindTex(1, RT.h1.tex, u.uB1); bindTex(2, RT.q1.tex, u.uB2);
+    gl.uniform1f(u.uStrength, st.bloom); });
+  gl.bindVertexArray(null);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

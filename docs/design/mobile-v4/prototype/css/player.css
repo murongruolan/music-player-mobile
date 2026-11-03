@@ -1,0 +1,179 @@
+/* 全屏播放器与 9 套皮肤。播放器始终是深色舞台，不跟随亮色主题。 */
+.player{position:absolute;inset:0;z-index:60;color:#fff;overflow:hidden;background:#07080D;
+  --pt1:#fff;--pt2:rgba(255,255,255,.66);--pt3:rgba(255,255,255,.4);--pline:rgba(255,255,255,.16)}
+.player.enter{animation:slideUp 460ms var(--ease-out)}
+.player.closing{animation:slideDown 300ms var(--ease-std) forwards}
+
+/* ---------- 背景层 ---------- */
+.pbg{position:absolute;inset:0;overflow:hidden}
+.pbg .blur{position:absolute;inset:-25%;filter:blur(70px) saturate(1.5);transform:scale(1.2)}
+.pbg .flow i{position:absolute;width:520px;height:520px;border-radius:50%;filter:blur(80px);opacity:.8;mix-blend-mode:screen;animation:flow 22s ease-in-out infinite alternate}
+.pbg .flow i:nth-child(1){left:-180px;top:-120px;animation-duration:19s}
+.pbg .flow i:nth-child(2){right:-220px;top:180px;animation-duration:24s;animation-delay:-7s}
+.pbg .flow i:nth-child(3){left:-60px;bottom:-260px;animation-duration:21s;animation-delay:-12s}
+.pbg.static .flow i{animation:none}
+@keyframes flow{0%{transform:translate(0,0) scale(1) rotate(0)}50%{transform:translate(90px,60px) scale(1.25) rotate(40deg)}100%{transform:translate(-70px,110px) scale(.9) rotate(-30deg)}}
+/* 抖动噪点：防止大面积渐变出现色带 */
+.pbg::after{content:"";position:absolute;inset:0;opacity:.08;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E")}
+.pbg .shade{position:absolute;inset:0;background:rgba(5,6,10,var(--shade,.45))}
+.pbg.lightTone .shade{background:rgba(255,255,255,var(--shade,.08))}
+
+/* ---------- 通用结构 ---------- */
+.pw{position:absolute;inset:0;display:flex;flex-direction:column;padding:50px 0 34px}
+.ptop{height:52px;display:flex;align-items:center;padding:0 8px;flex:none}
+.ptop .mid{flex:1;text-align:center;line-height:1.25}
+.ptop .mid small{display:block;font-size:11px;color:var(--pt3);letter-spacing:.06em}
+.ptop .mid b{font-size:13.5px;font-weight:600}
+.player .ib{color:#fff}
+.player .ib:active{background:rgba(255,255,255,.1)}
+.pmid{flex:1;min-height:0;position:relative;display:flex;flex-direction:column}
+.pinfo{display:flex;align-items:center;gap:10px;padding:0 24px}
+.pinfo .tx{flex:1;min-width:0}
+.pinfo .t{font-size:22px;font-weight:750;letter-spacing:-.01em}
+.pinfo .a{font-size:15px;color:var(--pt2);margin-top:4px;display:flex;align-items:center;gap:8px;white-space:nowrap;overflow:hidden}
+.pinfo .qb{color:var(--accent);opacity:1}
+.pinfo .heart{color:var(--pt2)}
+.pinfo .heart.on{color:var(--accent)}
+
+/* 进度条：拖动时轨道变粗、拇指弹性放大（Bouncing Slider） */
+.prog{padding:18px 24px 0;flex:none}
+.prog .tr{height:20px;position:relative;cursor:pointer;touch-action:none}
+.prog .tr::before{content:"";position:absolute;left:0;right:0;top:8px;height:4px;border-radius:2px;background:var(--pline);transition:top var(--d-base) var(--ease-spring),height var(--d-base) var(--ease-spring)}
+.prog .buf,.prog .fill{position:absolute;left:0;top:8px;height:4px;border-radius:2px;transition:top var(--d-base) var(--ease-spring),height var(--d-base) var(--ease-spring)}
+.prog .buf{background:rgba(255,255,255,.22);width:70%}
+.prog .fill{background:#fff}
+.prog .th{position:absolute;top:10px;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:6px;background:#fff;box-shadow:0 0 12px rgba(255,255,255,.6);transition:transform var(--d-base) var(--ease-spring)}
+.prog.drag .tr::before,.prog.drag .buf,.prog.drag .fill{top:6px;height:8px}
+.prog.drag .th{transform:scale(1.5)}
+.prog .tm{display:flex;justify-content:space-between;font:600 11.5px var(--font-num);color:var(--pt3);margin-top:2px}
+.prog .tm .qb{color:var(--accent);opacity:1}
+
+.ctl{display:flex;align-items:center;justify-content:space-between;padding:14px 22px 0;flex:none}
+.ctl .ib svg{width:26px;height:26px}
+.ctl .big{width:76px;height:76px;border-radius:38px;background:#fff;color:#0B0C12;display:flex;align-items:center;justify-content:center;transition:transform 220ms var(--ease-spring);box-shadow:0 10px 30px rgba(0,0,0,.35)}
+.ctl .big:active{transform:scale(.9)}
+.ctl .big svg{width:34px;height:34px}
+.ctl .sk svg{width:34px;height:34px}
+.ctl .md{color:var(--pt2)}
+.ctl .md.on{color:var(--accent)}
+.aux{display:flex;justify-content:space-between;padding:14px 26px 0;flex:none}
+.aux .ib{color:var(--pt2)}
+.aux .ib svg{width:22px;height:22px}
+.aux .ib.on{color:var(--accent)}
+
+/* ---------- 歌词（通用引擎） ---------- */
+.lyr{position:relative;flex:1;min-height:0;overflow:hidden;
+  -webkit-mask-image:linear-gradient(transparent 0,#000 18%,#000 72%,transparent 100%);mask-image:linear-gradient(transparent 0,#000 18%,#000 72%,transparent 100%)}
+.lyr-in{position:absolute;left:0;right:0;top:0;padding:0 28px;transition:transform 720ms var(--ease-spring)}
+.ll{padding:10px 0;font-size:var(--lfs,24px);font-weight:750;line-height:1.32;color:rgba(255,255,255,.34);transition:color 300ms,filter 400ms,opacity 400ms,transform 500ms var(--ease-out);transform-origin:left center;cursor:pointer}
+.lyr.blurOn .ll{filter:blur(1.4px)}
+.lyr.blurOn .ll.near{filter:blur(.6px)}
+.ll.on{color:#fff;filter:none!important;transform:scale(1.02)}
+.ll .tr{display:block;font-size:var(--ltfs,15px);font-weight:550;color:rgba(255,255,255,.4);margin-top:4px}
+.ll.on .tr{color:rgba(255,255,255,.72)}
+.ll .ro{display:block;font-size:12.5px;font-weight:500;color:rgba(255,255,255,.35);margin-bottom:2px;letter-spacing:.02em}
+/* 逐字填充：背景渐变 + 文字裁切；跨行时 inline 背景按"连续一行"计算，正好是卡拉 OK 效果 */
+.ll.on .w{background:linear-gradient(90deg,#fff calc(var(--p,0)*100%),rgba(255,255,255,.38) calc(var(--p,0)*100% + .01%));-webkit-background-clip:text;background-clip:text;color:transparent}
+.glowOn .ll.on .w{text-shadow:none;filter:drop-shadow(0 0 14px color-mix(in srgb,var(--accent) 55%,transparent))}
+.lyr .back{position:absolute;right:20px;bottom:18%;z-index:3;height:30px;padding:0 12px;border-radius:15px;background:rgba(255,255,255,.14);backdrop-filter:blur(10px);font-size:12px;display:none;align-items:center;gap:4px}
+.lyr.manual .back{display:flex}
+.lyr.manual .lyr-in{transition:none}
+
+/* ---------- 皮肤：封面 ---------- */
+.sk-cover .art{flex:1;display:flex;align-items:center;justify-content:center;min-height:0}
+.sk-cover .art .cv{width:326px;height:326px;border-radius:22px;box-shadow:0 30px 70px rgba(0,0,0,.5);transition:transform 520ms var(--ease-spring)}
+.player.paused .sk-cover .art .cv{transform:scale(.86)}
+.sk-cover.lyr-mode .mini-head{display:flex}
+.mini-head{display:none;align-items:center;gap:12px;padding:6px 24px 4px}
+.mini-head .cv{width:56px;height:56px;border-radius:12px}
+.mini-head .t{font-size:16px;font-weight:700}
+.mini-head .a{font-size:13px;color:var(--pt2);margin-top:2px}
+
+/* 唱片 */
+.vinyl-wrap{flex:1;display:flex;align-items:center;justify-content:center;position:relative;min-height:0}
+.vinyl{width:300px;height:300px;border-radius:50%;position:relative;
+  background:radial-gradient(circle,transparent 61px,rgba(255,255,255,.04) 62px,transparent 64px),
+    repeating-radial-gradient(circle,#111216 0 2px,#16171c 2px 3px),#0d0e11;
+  box-shadow:0 0 0 8px rgba(255,255,255,.04),0 30px 70px rgba(0,0,0,.6);animation:spin 7s linear infinite}
+.vinyl::before{content:"";position:absolute;inset:0;border-radius:50%;background:conic-gradient(from 30deg,transparent 0 10%,rgba(255,255,255,.12) 14%,transparent 20% 60%,rgba(255,255,255,.08) 64%,transparent 70%)}
+.vinyl .cv{position:absolute;left:50%;top:50%;width:124px;height:124px;margin:-62px 0 0 -62px;border-radius:50%}
+.vinyl .hole{position:absolute;left:50%;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:6px;background:#07080d;box-shadow:0 0 0 2px rgba(255,255,255,.2);z-index:2}
+.player.paused .vinyl{animation-play-state:paused}
+@keyframes spin{to{transform:rotate(360deg)}}
+.arm{position:absolute;top:-6px;right:calc(50% - 168px);width:24px;height:200px;transform-origin:12px 18px;transform:rotate(-6deg);transition:transform 700ms var(--ease-out);z-index:3}
+.player.paused .arm{transform:rotate(-30deg)}
+.arm::before{content:"";position:absolute;left:4px;top:4px;width:16px;height:16px;border-radius:8px;background:#d9dbe2;box-shadow:0 0 0 5px rgba(255,255,255,.12)}
+.arm::after{content:"";position:absolute;left:10px;top:18px;width:4px;height:160px;border-radius:2px;background:linear-gradient(#e7e8ee,#9ea2ad);box-shadow:2px 0 6px rgba(0,0,0,.4)}
+.arm i{position:absolute;left:3px;bottom:2px;width:18px;height:28px;border-radius:4px;background:#c7c9d1;transform:rotate(18deg)}
+.lines3{padding:16px 28px 0;text-align:center;height:92px;flex:none}
+.lines3 div{font-size:14px;color:var(--pt3);line-height:1.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:all 400ms}
+.lines3 .c{font-size:17px;font-weight:700;color:#fff}
+
+/* 逐字（卡拉OK） */
+.sk-karaoke .lyr{-webkit-mask-image:linear-gradient(transparent 0,#000 12%,#000 70%,transparent 100%);mask-image:linear-gradient(transparent 0,#000 12%,#000 70%,transparent 100%)}
+.sk-karaoke .ll{--lfs:30px;padding:12px 0}
+
+/* 沉浸 */
+.sk-immersive .art{flex:1;display:flex;align-items:center;justify-content:center;min-height:0}
+.sk-immersive .art .cv{width:300px;height:300px;border-radius:30px;box-shadow:0 40px 90px rgba(0,0,0,.55);animation:breathe 3.6s ease-in-out infinite}
+.player.paused .sk-immersive .art .cv{animation-play-state:paused;transform:scale(.94)}
+@keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+
+/* 极简 */
+.sk-minimal{background:#0B0C12}
+.sk-minimal .ll{--lfs:17px;font-weight:550;padding:8px 0}
+.sk-minimal .ll.on{color:var(--accent)}
+.sk-minimal .mini-head{display:flex;padding:10px 24px 14px}
+.sk-minimal .mini-head .cv{width:64px;height:64px}
+
+/* 声波 */
+.pulse{flex:1;display:flex;align-items:center;justify-content:center;position:relative;min-height:0}
+.pulse .ring{position:absolute;width:210px;height:210px;border-radius:50%;border:1.5px solid color-mix(in srgb,var(--accent) 70%,#fff);opacity:0;animation:ring 2.6s var(--ease-out) infinite}
+.pulse .ring:nth-child(2){animation-delay:.85s}.pulse .ring:nth-child(3){animation-delay:1.7s}
+.player.paused .pulse .ring{animation-play-state:paused}
+.pulse .cv{width:210px;height:210px;border-radius:50%;box-shadow:0 0 0 6px rgba(255,255,255,.06),0 0 80px var(--accent-glow);animation:spin 24s linear infinite}
+.player.paused .pulse .cv{animation-play-state:paused}
+.spec{display:flex;align-items:flex-end;justify-content:center;gap:5px;height:56px;padding:0 30px;flex:none}
+.spec i{flex:1;max-width:9px;border-radius:4px 4px 2px 2px;background:linear-gradient(var(--accent),color-mix(in srgb,var(--accent) 20%,transparent));height:8%;transition:height 120ms linear}
+
+/* 写真 */
+.sk-poster .photo{position:absolute;inset:0;background-size:cover}
+.sk-poster .photo::after{content:"";position:absolute;inset:0;background:linear-gradient(rgba(0,0,0,.25) 0,rgba(0,0,0,.2) 25%,rgba(0,0,0,.45) 45%,rgba(0,0,0,.85) 80%)}
+.sk-poster .lyr{-webkit-mask-image:linear-gradient(transparent 0,#000 30%,#000 80%,transparent);mask-image:linear-gradient(transparent 0,#000 30%,#000 80%,transparent)}
+.sk-poster .ll{--lfs:34px;font-weight:850;letter-spacing:-.01em}
+.sk-poster .ll.on .w{filter:drop-shadow(0 0 18px rgba(255,255,255,.4))}
+
+/* 舞台 */
+.stage-l{flex:1;display:flex;flex-direction:column;justify-content:center;padding:0 30px;text-align:center;min-height:0}
+.stage-l .prev{font-size:16px;color:var(--pt3);transform:translateY(-6px);transition:all 500ms}
+.stage-l .now{font-size:40px;font-weight:850;line-height:1.25;margin:22px 0;letter-spacing:-.01em;animation:stageIn 600ms var(--ease-spring)}
+.stage-l .now .w{background:linear-gradient(90deg,var(--accent) calc(var(--p,0)*100%),rgba(255,255,255,.3) calc(var(--p,0)*100% + .01%));-webkit-background-clip:text;background-clip:text;color:transparent}
+.stage-l .nx{font-size:17px;color:var(--pt2)}
+.stage-l .seclbl{font-size:11px;letter-spacing:.24em;color:var(--accent);font-weight:700}
+@keyframes stageIn{from{transform:translateY(30px) scale(.92);opacity:0}to{transform:none;opacity:1}}
+.sk-stage .hidebar{opacity:.0;transition:opacity 400ms}
+.sk-stage.reveal .hidebar{opacity:1}
+
+/* 粒子 */
+.fxc{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+.sk-particles .pmid{pointer-events:none}
+.sk-particles .pmid .chips,.sk-particles .pmid .lines3{pointer-events:auto}
+.sk-particles .chips{padding:8px 24px;justify-content:center}
+.sk-particles .chip{background:rgba(255,255,255,.08);color:rgba(255,255,255,.7);height:30px;font-size:12px}
+.sk-particles .chip.on{background:var(--accent-soft);color:var(--accent);border-color:color-mix(in srgb,var(--accent) 40%,transparent)}
+
+/* 播放器里的 Sheet（深色） */
+.player-sheet .it .lb b{color:#F3F4F8}
+
+/* 皮肤缩略图 */
+.skin-pv{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px}
+.skin-pv .c{width:42px;height:42px;border-radius:9px}
+.skin-pv .l{width:60%;height:4px;border-radius:2px;background:rgba(255,255,255,.25)}
+.skin-pv .l.a{background:#fff}
+
+/* 播放器与播放器内 Sheet 固定使用深色令牌，不受亮色主题影响 */
+.player,.sheet.dark{--t1:#F3F4F8;--t2:#A6ABBB;--t3:#6C7186;--t4:#454A5C;--s1:#14151D;--s2:#22242F;--s3:#2C2F3C;--line:rgba(255,255,255,.07);--line-strong:rgba(255,255,255,.12);--bg:#0A0B11;color:var(--t1)}
+.sheet.dark .grp{background:rgba(255,255,255,.04)}
+.sheet.dark .row:active{background:rgba(255,255,255,.05)}
+.sheet.dark .chip.on,.player .chip.on{color:var(--accent)}
