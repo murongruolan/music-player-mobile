@@ -21,6 +21,9 @@ class MePage extends StatelessWidget {
     final app = context.app;
     final pal = context.pal;
     final otd = songs[12];
+    // 登录后展示真实资料（AppState.account），演示 / 截图回落 mock
+    final acc = app.account;
+    final name = acc?.nickname ?? '阿栗';
     return TabPage(
       title: '我的',
       controller: tabScroll[4],
@@ -32,16 +35,19 @@ class MePage extends StatelessWidget {
             onTap: () => push(context, const AccountPage()),
             padding: const EdgeInsets.all(18),
             child: Row(children: [
-              const Avatar('栗', size: 64),
+              Avatar(name.isEmpty ? 'L' : name.characters.first, size: 64),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('阿栗', style: ts(19, w: FontWeight.w700, c: pal.t1)),
+                  Text(name, style: ts(19, w: FontWeight.w700, c: pal.t1)),
                   const SizedBox(height: 3),
-                  Text('UID 10086427 · ali@example.com', style: ts(12.5, c: pal.t2)),
+                  Text(acc == null ? 'UID 10086427 · ali@example.com' : 'UID ${acc.uid} · ${acc.email}', style: ts(12.5, c: pal.t2)),
                   const SizedBox(height: 8),
                   Row(children: [
-                    const Badge2('已激活', acc: true, icon: 'crown'),
+                    if (acc != null && !acc.isActivated)
+                      const Badge2('未激活', icon: 'crown')
+                    else
+                      const Badge2('已激活', acc: true, icon: 'crown'),
                     for (final id in app.platLogin.keys) Padding(padding: const EdgeInsets.only(left: 6), child: PlatBadge(platformBy(id), size: 22)),
                   ]),
                 ]),
