@@ -242,9 +242,15 @@ class AppState extends ChangeNotifier {
 
   Song songById(int id) => id >= 0 && id < songs.length ? songs[id] : Song.placeholder;
 
+  /// 测试音源模式（--dart-define=LYRA_TEST_SOURCE=true）：本地实机验证播放链路用，
+  /// 配合 TestScriptResolver（见 lib/audio/test_source_resolver.dart）放行播放拦截。CI / 正式包不生效。
+  /// 注意 bool.fromEnvironment 只认字面 "true"，这里用 String 解析以兼容 =1 写法。
+  static const _testSourceFlag = String.fromEnvironment('LYRA_TEST_SOURCE');
+  static bool get testSource => _testSourceFlag == 'true' || _testSourceFlag == '1';
+
   /// 能不能真正播放。联网模式下音源解析（脚本运行时 / 平台取流）还没接入，先拦下来并提示，
-  /// 不再用计时器假装在播放。
-  bool get canPlay => !online;
+  /// 不再用计时器假装在播放。测试音源模式放行。
+  bool get canPlay => !online || testSource;
   bool _blockPlay() {
     if (canPlay) return false;
     notice?.call('暂时还不能播放：音源解析尚未接入', 'info');
@@ -382,6 +388,9 @@ class AppState extends ChangeNotifier {
     if (engine == null) return;
     if (engineActive) {
       unawaited(engine!.setPlaying(playing));
+      // 通知栏 / 线控 / 蓝牙的键路由依据 playbackState.playing；不刷新的话
+      // audio_service 会与真实状态脱节（实测 PLAY 键被当 pause 处理、按钮图标不切换）
+      engine!.updateNotification(playing: playing, liked: liked.contains(cur));
     } else if (playing) {
       _enginePlayCurrent(); // 引擎还没加载过任何曲目：按播放 = 从当前歌开始真实播放
     }
