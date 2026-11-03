@@ -577,7 +577,10 @@ void openImportSource(BuildContext context) {
           }),
           Item(icon: 'folder', color: 'orange', label: '从文件导入', sub: '选择本地 .js 文件', onTap: () {
             Navigator.of(c).pop();
-            if (context.appRead.online) return _pickScriptFile(context);
+            if (context.appRead.online) {
+              _pickScriptFile(context);
+              return;
+            }
             toast('已打开文件选择器', 'folder');
           }),
           Item(icon: 'paste', color: 'violet', label: '粘贴内容', sub: '直接粘贴脚本代码', onTap: () {

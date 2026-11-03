@@ -1,6 +1,5 @@
 // 封面取色：从真实封面图里取主色，给播放器的流光背景、声波 / 粒子等按色相着色的效果用。
 // 没有封面（mock 歌曲）或还没取到时，退回按歌曲色相生成的颜色（coverColors）。
-import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/painting.dart';
