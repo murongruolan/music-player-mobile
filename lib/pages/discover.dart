@@ -6,7 +6,9 @@ import 'package:flutter/material.dart';
 import '../core/state.dart';
 import '../core/tokens.dart';
 import '../data/mock.dart';
+import '../data/mock.dart' as mock show banners;
 import '../data/models.dart';
+import '../platform/models.dart' show CatalogItem, PlaylistCategory;
 import '../platform/registry.dart';
 import '../shell/shell.dart';
 import '../ui/cover.dart';
@@ -19,6 +21,8 @@ import 'detail.dart';
 import 'misc.dart';
 import 'remote.dart';
 import 'scan.dart';
+
+part 'discover_online.dart';
 
 class PlatFeat {
   final int lv, like, mine, fav;
@@ -164,8 +168,19 @@ class _LoginStripState extends State<_LoginStrip> with SingleTickerProviderState
 }
 
 // ============ Banner（86% 宽，4.5s 轮播，触摸暂停） ============
+/// Banner 一页。[cover] 为空时用按色相生成的渐变。
+class BannerItem {
+  final String kicker, title, desc;
+  final double hue;
+  final String? cover;
+  final void Function(BuildContext) onTap;
+  const BannerItem(this.kicker, this.title, this.desc, this.hue, this.onTap, {this.cover});
+}
+
 class BannerCarousel extends StatefulWidget {
-  const BannerCarousel({super.key});
+  /// 为空时用演示数据。
+  final List<BannerItem>? items;
+  const BannerCarousel({super.key, this.items});
   @override
   State<BannerCarousel> createState() => _BannerCarouselState();
 }
@@ -193,6 +208,8 @@ class _BannerCarouselState extends State<BannerCarousel> {
   @override
   Widget build(BuildContext context) {
     final pal = context.pal;
+    final banners = widget.items ?? [for (final (k, b) in mock.banners.indexed) BannerItem(b.kicker, b.title, b.desc, b.hue, (c) => push(c, PlaylistPage(id: k)))];
+    if (banners.isEmpty) return const SizedBox.shrink();
     return Column(children: [
       SizedBox(
         height: 168,
@@ -215,10 +232,11 @@ class _BannerCarouselState extends State<BannerCarousel> {
                   padding: const EdgeInsets.symmetric(horizontal: 6),
                   child: Press(
                     scale: .98,
-                    onTap: () => push(context, PlaylistPage(id: k % banners.length)),
+                    onTap: () => b.onTap(context),
                     child: Cover(
                       hue: b.hue,
                       variant: k % banners.length,
+                      url: b.cover,
                       width: double.infinity,
                       height: 168,
                       radius: 22,
@@ -228,8 +246,8 @@ class _BannerCarouselState extends State<BannerCarousel> {
                         child: Column(mainAxisAlignment: MainAxisAlignment.end, crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: const Color(0x33FFFFFF), borderRadius: BorderRadius.circular(8)), child: Text(b.kicker, style: ts(11, w: FontWeight.w700, c: Colors.white))),
                           const SizedBox(height: 6),
-                          Text(b.title, style: ts(22, w: FontWeight.w800, c: Colors.white)),
-                          Text(b.desc, style: ts(12.5, c: const Color(0xCCFFFFFF))),
+                          Text(b.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: ts(22, w: FontWeight.w800, c: Colors.white)),
+                          Text(b.desc, maxLines: 1, overflow: TextOverflow.ellipsis, style: ts(12.5, c: const Color(0xCCFFFFFF))),
                         ]),
                       ),
                     ),
@@ -947,122 +965,3 @@ class MvCard extends StatelessWidget {
 Widget platBadgeOf(Platform p, [double s = 22]) => PlatBadge(p, size: s);
 IconData icOf(String n) => ic(n);
 
-// ============ 联网模式：各平台公开内容（未登录可用） ============
-// 对齐桌面端 publicPlatform：此刻热门（第一个榜单的前 10 首）· 推荐歌单 12 个 · 排行榜 9 个；
-// 下面是真实的本机数据（我的歌单、听歌统计）。
-class _OnlineDiscover extends StatefulWidget {
-  const _OnlineDiscover();
-  @override
-  State<_OnlineDiscover> createState() => _OnlineDiscoverState();
-}
-
-typedef _Feed = ({DiscoverFeed feed, List<int> hot});
-
-class _OnlineDiscoverState extends State<_OnlineDiscover> {
-  String? plat;
-  late Future<_Feed> f;
-
-  Future<_Feed> _fetch(AppState app) => app.content.discover(app.plat).then((d) => (feed: d, hot: [for (final t in d.hot) registerTrack(app, t)]));
-
-  Future<void> _refresh() async {
-    final app = context.appRead;
-    app.content.invalidate(app.plat);
-    final nf = _fetch(app);
-    setState(() => f = nf);
-    try {
-      await nf;
-    } catch (_) {}
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final app = context.app;
-    final pal = context.pal;
-    if (plat != app.plat) {
-      plat = app.plat;
-      f = _fetch(app);
-    }
-    final code = PlatformHub.codeOf(app.plat);
-    final pls = app.myPlaylists;
-    final week = app.cloud.stats.summary(7);
-    return TabPage(
-      title: '发现',
-      controller: tabScroll[0],
-      onRefresh: _refresh,
-      actions: [
-        IBtn('scan', onTap: () => pushFull(context, const ScanPage())),
-        IBtn('bell', dot: app.unread > 0, onTap: () => push(context, const AnnouncementsPage())),
-        const SizedBox(width: 4),
-        Avatar(avatarText(app), onTap: () => app.update(() => app.tab = 4)),
-      ],
-      children: [
-        const Padding(padding: EdgeInsets.fromLTRB(Tk.pad, 2, Tk.pad, 4), child: SourceBar()),
-        Rise(
-          0,
-          QuickGrid([
-            ('grid', '歌单广场', () => push(context, PlaylistSquarePage(platform: code))),
-            ('chart', '排行榜', () => push(context, LeaderboardsPage(platform: code))),
-            ('library', '音乐库', () => app.update(() => app.tab = 3)),
-            ('clock', '听歌统计', () => push(context, const StatsPage())),
-          ]),
-        ),
-        FutureBuilder<_Feed>(
-          key: ValueKey('feed$plat'),
-          future: f,
-          builder: (c, s) {
-            if (s.connectionState != ConnectionState.done) return const Padding(padding: EdgeInsets.only(top: 22), child: ListSkeleton(rows: 5));
-            if (s.hasError) {
-              return EmptyState('wifi', '${app.platform.name}的内容没有加载出来', desc: '${platformError(s.error!)}\n可以下拉刷新，或在上方换一个平台。', action: Btn.sec('重试', icon: 'refresh', small: true, onTap: _refresh));
-            }
-            final d = s.data!.feed, hot = s.data!.hot;
-            final board = d.hotBoard;
-            return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              if (hot.isNotEmpty) ...[
-                Sec('此刻热门', more: board == null ? null : '完整榜单', onMore: board == null ? null : () => openCatalog(context, board)),
-                if (board != null) Hint('${board.title} · ${app.platform.name}', padding: const EdgeInsets.fromLTRB(Tk.pad, 0, Tk.pad, 6)),
-                CardBox(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Column(children: [
-                    for (final (i, id) in hot.indexed) SongRow(songs[id], num: i, list: 'all', listName: board?.title ?? '此刻热门', swipe: false, tail: HeartBtn(id)),
-                  ]),
-                ),
-              ],
-              if (d.playlists.isNotEmpty) ...[
-                Sec('推荐歌单', more: '歌单广场', onMore: () => push(context, PlaylistSquarePage(platform: code))),
-                HScroll(height: 196, children: [for (final x in d.playlists) PlCard(cardOf(x), onTap: () => openCatalog(context, x))]),
-              ],
-              if (d.boards.isNotEmpty) ...[
-                Sec('排行榜', more: '全部', onMore: () => push(context, LeaderboardsPage(platform: code))),
-                HScroll(height: 160, gap: 12, children: [for (final b in d.boards) BoardCard(b)]),
-              ],
-              if (d.errors.isNotEmpty) Hint('部分内容没有加载出来：${d.errors.join('；')}', padding: const EdgeInsets.fromLTRB(Tk.pad, 12, Tk.pad, 0)),
-            ]);
-          },
-        ),
-        Sec('我的歌单', more: pls.isEmpty ? null : '全部', onMore: () => app.update(() {
-              app.tab = 3;
-              app.libSeg = '歌单';
-            })),
-        if (pls.isEmpty)
-          const Hint('还没有歌单。可以在「音乐库 → 歌单」新建、收藏平台歌单，或开启云同步拉取桌面端的歌单。', padding: EdgeInsets.symmetric(horizontal: Tk.pad))
-        else
-          HScroll(height: 196, children: [for (final p in pls.take(10)) PlCard(p, sub: '${p.kind == 'collected' ? p.count : p.ids.length} 首', onTap: () => push(context, PlaylistPage(id: p.id)))]),
-        Sec('本周', more: '统计', onMore: () => push(context, const StatsPage())),
-        CardBox(
-          onTap: () => push(context, const StatsPage()),
-          child: Row(children: [
-            Expanded(child: _kv(pal, '收藏', '${app.liked.length}', '首')),
-            Expanded(child: _kv(pal, '聆听', (week.ms / 3600000).toStringAsFixed(1), '小时')),
-            Expanded(child: _kv(pal, '播放', '${week.plays}', '次')),
-          ]),
-        ),
-      ],
-    );
-  }
-
-  Widget _kv(Pal pal, String k, String v, String u) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(k, style: ts(12, c: pal.t3)),
-        const SizedBox(height: 4),
-        Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [Text(v, style: ts(22, w: FontWeight.w800, c: pal.t1, num: true)), const SizedBox(width: 2), Text(u, style: ts(12, c: pal.t3))]),
-      ]);
-}

@@ -20,7 +20,8 @@ import 'package:lyra/ui/kit.dart';
 import 'package:lyra/widgets/sheets.dart';
 import 'package:lyra/pages/remote.dart';
 import 'package:lyra/pages/search.dart';
-import 'package:lyra/platform/models.dart' show CatalogType;
+import 'package:lyra/platform/models.dart' show CatalogType, PlaylistCategory;
+import 'package:lyra/pages/discover.dart';
 import 'support/fake_platform.dart';
 
 http.Response ok(Object? data) => http.Response(jsonEncode({'code': 0, 'message': 'ok', 'requestId': 'r', 'data': data}), 200, headers: {'content-type': 'application/json; charset=utf-8'});
@@ -73,6 +74,12 @@ Future<void> _settle(WidgetTester tester) async {
   for (var i = 0; i < 6; i++) {
     await tester.pump(const Duration(milliseconds: 200));
   }
+}
+
+/// 没有异常；有的话把完整诊断（出错的组件和源码位置）放进失败信息。
+void _noError(WidgetTester tester, [String? what]) {
+  final e = tester.takeException();
+  expect(e, isNull, reason: '${what ?? ''}\n${e is FlutterError ? e.toStringDeep() : e}');
 }
 
 BuildContext _ctx(WidgetTester tester) => tester.element(find.byType(Shell));
@@ -169,21 +176,36 @@ void main() {
     await _done(tester, app);
   });
 
-  testWidgets('联网模式：发现页显示平台内容（此刻热门 / 推荐歌单 / 排行榜）', (tester) async {
+  testWidgets('联网模式：发现页按原型结构显示平台内容', (tester) async {
     final app = await _boot(tester);
     await _settle(tester);
-    expect(find.text('此刻热门'), findsOneWidget);
-    expect(find.text('wy 歌曲 1000'), findsOneWidget);
+    // 原型：登录卡 + Banner + 快捷入口 + 精选 / 榜单 / 歌单 + 平台推荐区
+    expect(find.text('登录网易云音乐'), findsOneWidget);
+    expect(find.byType(BannerCarousel), findsOneWidget);
+    expect(find.text('每日混音'), findsOneWidget);
+    expect(find.text('精选'), findsOneWidget);
+    expect(find.text('wy 歌曲 1000', skipOffstage: false), findsWidgets);
     // 热门歌曲登记进了歌曲目录，可以收藏
     final id = songs.indexWhere((s) => s.key == 'wy:s1000');
     expect(id, greaterThanOrEqualTo(0));
     app.toggleLike(id);
     expect(app.library.read().favorites.any((t) => t.id == 'wy:s1000'), isTrue);
+    for (final t in ['榜单', '歌单', '精选']) {
+      app.update(() => app.homeTab = t);
+      await _settle(tester);
+      _noError(tester, t);
+    }
+    // 滚到底，平台推荐区全部构建一遍
+    await tester.drag(find.byType(ListView).first, const Offset(0, -6000));
+    await _settle(tester);
+    _noError(tester);
     // 切平台
     app.switchPlatform('kuwo');
     await _settle(tester);
-    expect(find.text('kw 歌曲 1000'), findsOneWidget);
-    expect(tester.takeException(), isNull);
+    await tester.drag(find.byType(ListView).first, const Offset(0, 8000));
+    await _settle(tester);
+    expect(find.text('kw 歌曲 1000', skipOffstage: false), findsWidgets);
+    _noError(tester);
     await _done(tester, app);
   });
 
@@ -194,12 +216,14 @@ void main() {
       const RemoteCollectionPage(platform: 'kg', type: CatalogType.leaderboard, id: 'b1'),
       const RemoteCollectionPage(platform: 'wy', type: CatalogType.artist, id: 'a1'),
       const PlaylistSquarePage(platform: 'wy'),
+      const PlaylistSquarePage(platform: 'tx', category: PlaylistCategory('c2', '摇滚')),
       const LeaderboardsPage(platform: 'mg'),
     ];
     for (final p in pages) {
       push(_ctx(tester), p);
       await _settle(tester);
-      expect(tester.takeException(), isNull, reason: p.runtimeType.toString());
+      _noError(tester, p.runtimeType.toString());
+      if (p is LeaderboardsPage) expect(find.byType(BoardBigCard), findsWidgets);
       if (p is RemoteCollectionPage && p.id == 'p9') {
         expect(find.text('tx 详情 p9'), findsWidgets);
         expect(find.text('tx 歌曲 1000'), findsOneWidget);
@@ -209,11 +233,11 @@ void main() {
         expect(c, isNotNull);
         expect(app.library.read().playlists.firstWhere((x) => x.externalId == 'p9').kind, 'collected');
       }
-      if (p is PlaylistSquarePage) {
+      if (p is PlaylistSquarePage && p.category == null) {
         expect(find.text('华语'), findsOneWidget);
         await tester.tap(find.text('华语'));
         await _settle(tester);
-        expect(tester.takeException(), isNull);
+        _noError(tester);
       }
       contentNav.currentState!.pop();
       await _settle(tester);
@@ -221,20 +245,33 @@ void main() {
     await _done(tester, app);
   });
 
-  testWidgets('联网模式：搜索走平台接口，失败回退网易', (tester) async {
+  testWidgets('联网模式：搜索按原型结构（全部平台 · 综合 · 各类型）', (tester) async {
     final app = await _boot(tester);
     app.update(() => app.tab = 1);
     await _settle(tester);
     expect(find.text('热搜一'), findsOneWidget);
     await tester.tap(find.text('热搜一'));
     await _settle(tester);
+    // 默认「全部平台 · 综合」：五个平台的结果交替合并
+    expect(find.text('最佳匹配 · 艺术家'), findsOneWidget);
     expect(find.text('wy 歌曲 100'), findsOneWidget);
-    // 切类型
-    await tester.tap(find.text('歌单').last);
+    expect(find.text('tx 歌曲 100'), findsOneWidget);
+    for (final t in ['歌曲', '专辑', '艺术家', 'MV', '综合']) {
+      await tester.tap(find.text(t).first);
+      await _settle(tester);
+      _noError(tester, t);
+    }
+    // 单个平台
+    await tester.tap(find.text('QQ').first);
     await _settle(tester);
-    expect(find.text('wy playlist 0'), findsOneWidget);
+    expect(find.text('tx 歌曲 100'), findsOneWidget);
+    expect(find.text('wy 歌曲 100'), findsNothing);
+    // 切类型
+    await tester.tap(find.text('歌单').first);
+    await _settle(tester);
+    expect(find.text('tx playlist 0'), findsOneWidget);
     expect(find.byType(SearchPage), findsOneWidget);
-    expect(tester.takeException(), isNull);
+    _noError(tester);
     await _done(tester, app);
   });
 }

@@ -6,7 +6,7 @@ import '../core/state.dart';
 import '../core/tokens.dart';
 import '../data/mock.dart';
 import '../data/models.dart';
-import '../platform/models.dart' show SearchType, PTrack, CatalogItem;
+import '../platform/models.dart' show SearchType, SearchResult, PTrack, CatalogItem, Plat, PlatformException;
 import '../platform/registry.dart';
 import '../player/player.dart';
 import '../shell/nav.dart';
@@ -19,6 +19,8 @@ import 'detail.dart';
 import 'discover.dart';
 import 'remote.dart';
 import 'scan.dart';
+
+part 'search_online.dart';
 
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
@@ -123,8 +125,8 @@ class _SearchPageState extends State<SearchPage> {
             ),
         ]),
       ),
-      if (!app.online) const Sec('按风格探索', size: 16),
-      if (!app.online) Padding(
+      const Sec('按风格探索', size: 16),
+      Padding(
         padding: const EdgeInsets.symmetric(horizontal: Tk.pad),
         child: GridView.count(
           crossAxisCount: 2,
@@ -173,7 +175,7 @@ class _SearchPageState extends State<SearchPage> {
             Icon(ic('search'), color: pal.accText, size: 20),
             const SizedBox(width: 12),
             Expanded(child: Text('搜索「$q」', style: ts(15, w: FontWeight.w700, c: pal.accText))),
-            Text(context.appRead.online ? platformBy(rplat == 'all' ? context.appRead.plat : rplat).name : rplat == 'all' ? '全部平台' : platformBy(rplat).name, style: ts(12, c: pal.t3)),
+            Text(rplat == 'all' ? '全部平台' : platformBy(rplat).name, style: ts(12, c: pal.t3)),
           ]),
         ),
       ),
@@ -242,7 +244,7 @@ class _SearchPageState extends State<SearchPage> {
                   onSubmitted: go,
                   style: ts(15, c: pal.t1),
                   cursorColor: pal.acc,
-                  decoration: InputDecoration(isCollapsed: true, border: InputBorder.none, hintText: '在 ${rplat == 'all' ? (app.online ? app.platform.name : '全部平台') : platformBy(rplat).name} 中搜索', hintStyle: ts(15, c: pal.t3)),
+                  decoration: InputDecoration(isCollapsed: true, border: InputBorder.none, hintText: '在 ${rplat == 'all' ? '全部平台' : platformBy(rplat).name} 中搜索', hintStyle: ts(15, c: pal.t3)),
                 ),
               ),
               if (tc.text.isNotEmpty)
@@ -346,7 +348,7 @@ class _Results extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = context.app;
-    if (app.online) return _OnlineResults(key: ValueKey('r$q'), q: q, plat: rplat == 'all' ? app.plat : rplat, onPlat: onPlat, onClear: onClear);
+    if (app.online) return _OnlineResults(key: ValueKey('r$q'), q: q, plat: rplat, type: type, onType: onType, onPlat: onPlat, onQuery: onQuery, onClear: onClear);
     final pal = context.pal;
     final ql = q.toLowerCase();
     var res = songs.where((s) => '${s.title}${s.artist}${s.album}'.toLowerCase().contains(ql)).toList();
@@ -568,350 +570,3 @@ class _AlbumR extends StatelessWidget {
   }
 }
 
-// ============ 联网模式：平台搜索 ============
-
-/// 当前平台的热搜。
-class _HotSearch extends StatefulWidget {
-  final String plat;
-  final ValueChanged<String> onPick;
-  const _HotSearch({required this.plat, required this.onPick});
-  @override
-  State<_HotSearch> createState() => _HotSearchState();
-}
-
-class _HotSearchState extends State<_HotSearch> {
-  late Future<List<String>> f = context.appRead.content.hotSearch(widget.plat);
-
-  @override
-  void didUpdateWidget(_HotSearch o) {
-    super.didUpdateWidget(o);
-    if (o.plat != widget.plat) f = context.appRead.content.hotSearch(widget.plat);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final pal = context.pal;
-    final p = platformBy(widget.plat);
-    return FutureBuilder<List<String>>(
-      future: f,
-      builder: (c, s) {
-        final l = s.data ?? const <String>[];
-        if (s.connectionState != ConnectionState.done) return const Padding(padding: EdgeInsets.only(top: 18), child: ListSkeleton(rows: 4));
-        if (s.hasError || l.isEmpty) return Hint(s.hasError ? '${p.name}热搜没有加载出来：${platformError(s.error!)}' : '${p.name}暂时没有热搜', padding: const EdgeInsets.fromLTRB(Tk.pad, 18, Tk.pad, 0));
-        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Sec('热搜榜', size: 16, trailing: Row(children: [PlatBadge(p, size: 16), const SizedBox(width: 5), Text(p.name, style: ts(12, c: pal.t3)), const SizedBox(width: 6)])),
-          CardBox(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Column(children: [
-              for (final (i, h) in l.take(20).indexed)
-                Press(
-                  onTap: () => widget.onPick(h),
-                  child: SizedBox(
-                    height: 48,
-                    child: Row(children: [
-                      const SizedBox(width: 16),
-                      SizedBox(width: 26, child: Text('${i + 1}', style: ts(15, w: FontWeight.w700, c: i < 3 ? pal.accText : pal.t3, num: true))),
-                      Expanded(child: Text(h, maxLines: 1, overflow: TextOverflow.ellipsis, style: ts(14.5, w: FontWeight.w500, c: pal.t1))),
-                      if (i == 0) const Badge2('热', acc: true),
-                      const SizedBox(width: 16),
-                    ]),
-                  ),
-                ),
-            ]),
-          ),
-        ]);
-      },
-    );
-  }
-}
-
-/// 输入时的平台联想（停顿 300ms 再请求）。
-class _RemoteSuggest extends StatefulWidget {
-  final String q, plat;
-  final ValueChanged<String> onPick;
-  final TextSpan Function(String, TextStyle) hl;
-  const _RemoteSuggest({super.key, required this.q, required this.plat, required this.onPick, required this.hl});
-  @override
-  State<_RemoteSuggest> createState() => _RemoteSuggestState();
-}
-
-class _RemoteSuggestState extends State<_RemoteSuggest> {
-  Timer? _t;
-  List<String> items = const [];
-  String asked = '';
-
-  @override
-  void initState() {
-    super.initState();
-    _schedule();
-  }
-
-  @override
-  void didUpdateWidget(_RemoteSuggest o) {
-    super.didUpdateWidget(o);
-    if (o.q != widget.q) _schedule();
-  }
-
-  void _schedule() {
-    _t?.cancel();
-    _t = Timer(const Duration(milliseconds: 300), () async {
-      final q = widget.q;
-      asked = q;
-      try {
-        final r = await context.appRead.content.suggest(widget.plat, q);
-        if (mounted && asked == q) setState(() => items = r.where((x) => x.trim().isNotEmpty && x != q).take(8).toList());
-      } catch (_) {
-        if (mounted && asked == q) setState(() => items = const []);
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _t?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final pal = context.pal;
-    return Column(children: [
-      for (final t in items)
-        Press(
-          onTap: () => widget.onPick(t),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: Tk.pad),
-            child: SizedBox(
-              height: 48,
-              child: Row(children: [
-                Icon(ic('search'), color: pal.t3, size: 18),
-                const SizedBox(width: 12),
-                Expanded(child: Text.rich(widget.hl(t, ts(15, c: pal.t1)), maxLines: 1, overflow: TextOverflow.ellipsis)),
-              ]),
-            ),
-          ),
-        ),
-    ]);
-  }
-}
-
-const _typeNames = {SearchType.song: '歌曲', SearchType.playlist: '歌单', SearchType.album: '专辑', SearchType.artist: '歌手', SearchType.mv: 'MV'};
-
-class _OnlineResults extends StatefulWidget {
-  final String q, plat;
-  final ValueChanged<String> onPlat;
-  final VoidCallback onClear;
-  const _OnlineResults({super.key, required this.q, required this.plat, required this.onPlat, required this.onClear});
-  @override
-  State<_OnlineResults> createState() => _OnlineResultsState();
-}
-
-class _Bucket {
-  final songs = <int>[];
-  final mvs = <PTrack>[];
-  final items = <CatalogItem>[];
-  int page = 0, total = 0;
-  bool busy = false, hasMore = true;
-  String? error, usedPlat, fallbackNote;
-  bool get empty => songs.isEmpty && mvs.isEmpty && items.isEmpty;
-}
-
-class _OnlineResultsState extends State<_OnlineResults> {
-  static const _limit = 30;
-  SearchType type = SearchType.song;
-  final _b = <String, _Bucket>{};
-
-  _Bucket get cur => _b.putIfAbsent('${widget.plat}|${type.name}', _Bucket.new);
-
-  Set<SearchType> get _types => context.appRead.content.of(widget.plat)?.searchTypes ?? const {SearchType.song};
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
-  }
-
-  @override
-  void didUpdateWidget(_OnlineResults o) {
-    super.didUpdateWidget(o);
-    if (o.plat != widget.plat) {
-      if (!_types.contains(type)) type = SearchType.song;
-      WidgetsBinding.instance.addPostFrameCallback((_) => _load());
-    }
-  }
-
-  void _pick(SearchType t) {
-    setState(() => type = t);
-    _load();
-  }
-
-  Future<void> _load() async {
-    if (!mounted) return;
-    final b = cur, t = type, plat = widget.plat;
-    if (b.busy || !b.hasMore) return;
-    final app = context.appRead;
-    setState(() {
-      b.busy = true;
-      b.error = null;
-    });
-    try {
-      final o = await app.content.search(plat, widget.q, t, page: b.page + 1, limit: _limit);
-      if (!mounted) return;
-      final r = o.result;
-      var added = 0;
-      if (t == SearchType.mv) {
-        final seen = {for (final x in b.mvs) x.id};
-        for (final x in r.songs) {
-          if (seen.add(x.id)) {
-            b.mvs.add(x);
-            added++;
-          }
-        }
-      } else if (t == SearchType.song) {
-        for (final x in r.songs) {
-          final id = registerTrack(app, x);
-          if (!b.songs.contains(id)) {
-            b.songs.add(id);
-            added++;
-          }
-        }
-      } else {
-        final seen = {for (final x in b.items) '${x.platform}${x.id}'};
-        for (final x in r.items) {
-          if (seen.add('${x.platform}${x.id}')) {
-            b.items.add(x);
-            added++;
-          }
-        }
-      }
-      setState(() {
-        b.page++;
-        b.total = r.total;
-        b.hasMore = r.hasMore && added > 0;
-        b.busy = false;
-        b.usedPlat = o.platform;
-        if (o.fallbackFrom != null) b.fallbackNote = '${appPlatform(o.fallbackFrom!).name}搜索失败（${o.error}），下面是${appPlatform(o.platform).name}的结果';
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        b.error = platformError(e);
-        b.busy = false;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final app = context.app;
-    final pal = context.pal;
-    final q = widget.q;
-    final hl = highlighter(q, pal.accText);
-    final top = MediaQuery.of(context).padding.top;
-    final types = [for (final t in SearchType.values) if (_types.contains(t)) t];
-    final b = cur;
-    final ql = q.toLowerCase();
-    // 本机音乐库里的匹配（收藏、歌单里的歌），不在平台结果里的才显示
-    final lib = type == SearchType.song ? <int>{...app.liked, for (final p in app.myPlaylists) ...p.ids} : const <int>{};
-    final local = [for (final id in lib) if (id < songs.length && !b.songs.contains(id) && '${songs[id].title} ${songs[id].artist} ${songs[id].album}'.toLowerCase().contains(ql)) songs[id]].take(3).toList();
-    final body = <Widget>[
-      if (b.fallbackNote != null) Hint(b.fallbackNote!, padding: const EdgeInsets.fromLTRB(Tk.pad, 4, Tk.pad, 4)),
-      if (local.isNotEmpty && b.page <= 1) ...[
-        const Sec('音乐库里', size: 16),
-        for (final s in local) SongRow(s, list: 'all', listName: '搜索「$q」', hl: hl),
-        const Sec('平台结果', size: 16),
-      ],
-      if (b.empty && b.busy) const ListSkeleton(),
-      if (b.empty && !b.busy && b.error != null) EmptyState('info', '搜索失败', desc: b.error, action: Btn.sec('重试', icon: 'refresh', small: true, onTap: _load)),
-      if (b.empty && !b.busy && b.error == null && !b.hasMore) EmptyState('search', '${appPlatform(b.usedPlat ?? PlatformHub.codeOf(widget.plat)).name}没有找到「$q」相关的${_typeNames[type]}', desc: '换个关键词，或切到其它平台试试。'),
-      for (final id in b.songs) SongRow(songs[id], key: ValueKey('s$id'), list: 'all', listName: '搜索「$q」', hl: hl),
-      for (final m in b.mvs) _MvRow(m, hl: hl),
-      for (final c in b.items) CatalogRow(c, key: ValueKey('c${c.platform}${c.id}'), hl: hl),
-      if (!b.empty && b.hasMore) AutoLoad(key: ValueKey('more${widget.plat}${type.name}${b.page}${b.error}'), onLoad: _load, busy: b.busy, error: b.error),
-    ];
-    return ListView(padding: EdgeInsets.only(top: top, bottom: 170), children: [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(Tk.pad, 10, 8, 4),
-        child: Row(children: [Expanded(child: Text('「$q」', maxLines: 1, overflow: TextOverflow.ellipsis, style: ts(24, w: FontWeight.w800, c: pal.t1))), IBtn('close', onTap: widget.onClear)]),
-      ),
-      // 类型 Tab
-      SizedBox(
-        height: 44,
-        child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 12), children: [
-          for (final t in types)
-            Press(
-              onTap: () => _pick(t),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  AnimatedDefaultTextStyle(duration: Tk.fast, style: ts(15, w: t == type ? FontWeight.w800 : FontWeight.w500, c: t == type ? pal.t1 : pal.t2), child: Text(_typeNames[t]!)),
-                  const SizedBox(height: 4),
-                  AnimatedContainer(duration: Tk.base, width: t == type ? 18 : 0, height: 3, decoration: BoxDecoration(color: pal.acc, borderRadius: BorderRadius.circular(2))),
-                ]),
-              ),
-            ),
-        ]),
-      ),
-      // 平台
-      SizedBox(
-        height: 46,
-        child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.fromLTRB(Tk.pad, 6, Tk.pad, 6), children: [
-          for (final (i, p) in platforms.indexed)
-            Padding(
-              padding: EdgeInsets.only(left: i == 0 ? 0 : 8),
-              child: Press(
-                onTap: () => widget.onPlat(p.id),
-                child: AnimatedContainer(
-                  duration: Tk.base,
-                  height: 34,
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  decoration: BoxDecoration(color: widget.plat == p.id ? pal.accSoft : pal.s2, borderRadius: BorderRadius.circular(17), border: Border.all(color: widget.plat == p.id ? pal.acc.withValues(alpha: .35) : Colors.transparent)),
-                  child: Row(children: [PlatBadge(p, size: 18), const SizedBox(width: 5), Text(p.short, style: ts(13, c: widget.plat == p.id ? pal.accText : pal.t1))]),
-                ),
-              ),
-            ),
-        ]),
-      ),
-      if (b.total > 0) Hint('约 ${b.total} 个结果', padding: const EdgeInsets.fromLTRB(Tk.pad, 0, Tk.pad, 4)),
-      ...body,
-    ]);
-  }
-}
-
-/// MV 结果行（MV 播放还没接入，点开只提示）。
-class _MvRow extends StatelessWidget {
-  final PTrack m;
-  final TextSpan Function(String, TextStyle) hl;
-  const _MvRow(this.m, {required this.hl});
-  @override
-  Widget build(BuildContext context) {
-    final pal = context.pal;
-    return Press(
-      onTap: () => toast('MV 播放还没有接入', 'video'),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(Tk.pad, 6, Tk.pad, 6),
-        child: Row(children: [
-          Cover(
-            hue: (m.id.hashCode.abs() % 360).toDouble(),
-            variant: 1,
-            width: 128,
-            height: 72,
-            radius: 12,
-            url: m.cover,
-            child: m.duration > 0
-                ? Align(alignment: Alignment.bottomRight, child: Container(margin: const EdgeInsets.all(5), padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1), decoration: BoxDecoration(color: const Color(0x8C000000), borderRadius: BorderRadius.circular(5)), child: Text(fmtTime(m.duration.toDouble()), style: ts(10, c: Colors.white, num: true))))
-                : null,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text.rich(hl(m.title, ts(14, w: FontWeight.w600, c: pal.t1)), maxLines: 2, overflow: TextOverflow.ellipsis),
-              const SizedBox(height: 3),
-              Text(m.artist, maxLines: 1, overflow: TextOverflow.ellipsis, style: ts(12, c: pal.t3)),
-            ]),
-          ),
-        ]),
-      ),
-    );
-  }
-}
