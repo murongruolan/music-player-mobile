@@ -76,6 +76,12 @@ Future<void> _settle(WidgetTester tester) async {
   }
 }
 
+/// 没有异常；有的话把完整诊断（出错的组件和源码位置）放进失败信息。
+void _noError(WidgetTester tester, [String? what]) {
+  final e = tester.takeException();
+  expect(e, isNull, reason: '${what ?? ''}\n${e is FlutterError ? e.toStringDeep() : e}');
+}
+
 BuildContext _ctx(WidgetTester tester) => tester.element(find.byType(Shell));
 
 void main() {
@@ -187,19 +193,19 @@ void main() {
     for (final t in ['榜单', '歌单', '精选']) {
       app.update(() => app.homeTab = t);
       await _settle(tester);
-      expect(tester.takeException(), isNull, reason: t);
+      _noError(tester, t);
     }
     // 滚到底，平台推荐区全部构建一遍
     await tester.drag(find.byType(ListView).first, const Offset(0, -6000));
     await _settle(tester);
-    expect(tester.takeException(), isNull);
+    _noError(tester);
     // 切平台
     app.switchPlatform('kuwo');
     await _settle(tester);
     await tester.drag(find.byType(ListView).first, const Offset(0, 8000));
     await _settle(tester);
     expect(find.text('kw 歌曲 1000', skipOffstage: false), findsWidgets);
-    expect(tester.takeException(), isNull);
+    _noError(tester);
     await _done(tester, app);
   });
 
@@ -216,7 +222,7 @@ void main() {
     for (final p in pages) {
       push(_ctx(tester), p);
       await _settle(tester);
-      expect(tester.takeException(), isNull, reason: p.runtimeType.toString());
+      _noError(tester, p.runtimeType.toString());
       if (p is LeaderboardsPage) expect(find.byType(BoardBigCard), findsWidgets);
       if (p is RemoteCollectionPage && p.id == 'p9') {
         expect(find.text('tx 详情 p9'), findsWidgets);
@@ -231,7 +237,7 @@ void main() {
         expect(find.text('华语'), findsOneWidget);
         await tester.tap(find.text('华语'));
         await _settle(tester);
-        expect(tester.takeException(), isNull);
+        _noError(tester);
       }
       contentNav.currentState!.pop();
       await _settle(tester);
@@ -253,19 +259,19 @@ void main() {
     for (final t in ['歌曲', '专辑', '艺术家', 'MV', '综合']) {
       await tester.tap(find.text(t).first);
       await _settle(tester);
-      expect(tester.takeException(), isNull, reason: t);
+      _noError(tester, t);
     }
     // 单个平台
-    await tester.tap(find.text('酷狗').first);
+    await tester.tap(find.text('QQ').first);
     await _settle(tester);
-    expect(find.text('kg 歌曲 100'), findsOneWidget);
+    expect(find.text('tx 歌曲 100'), findsOneWidget);
     expect(find.text('wy 歌曲 100'), findsNothing);
     // 切类型
     await tester.tap(find.text('歌单').first);
     await _settle(tester);
-    expect(find.text('kg playlist 0'), findsOneWidget);
+    expect(find.text('tx playlist 0'), findsOneWidget);
     expect(find.byType(SearchPage), findsOneWidget);
-    expect(tester.takeException(), isNull);
+    _noError(tester);
     await _done(tester, app);
   });
 }
