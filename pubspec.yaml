@@ -9,6 +9,10 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # 网络请求：官方包，支持 Web，自带 MockClient 便于测试
+  http: ^1.2.2
+  # 令牌 / 设备 ID 存系统钥匙串（iOS Keychain、Android Keystore 加密）
+  flutter_secure_storage: ^11.2.0
 
 dev_dependencies:
   flutter_test:

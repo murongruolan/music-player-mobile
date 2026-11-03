@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../data/mock.dart';
 import '../data/models.dart';
+import '../net/net.dart';
 import 'tokens.dart';
 
 class Settings {
@@ -78,7 +79,13 @@ class AppState extends ChangeNotifier {
   int get unread => announcements.where((a) => !readAnn.contains(a.id)).length;
   bool isRead(Announcement a) => readAnn.contains(a.id);
 
-  AppState() {
+  /// 网络层。测试 / 截图不传（为 null），页面里通过 [api] 取用。
+  final Net? net;
+  StreamSubscription<SessionEnd>? _sessionSub;
+  Net get api => net ?? (throw StateError('AppState 没有注入 Net'));
+
+  AppState({this.net}) {
+    _sessionSub = net?.session.onEnd.listen(sessionEnded);
     for (final p in platforms) {
       scriptOrder[p.id] = scripts.where((s) => s.platforms.contains(p.id)).map((s) => s.id).toList();
     }
@@ -296,8 +303,17 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 会话结束（主动退出或令牌失效）→ 回到登录页。失效提示由 main.dart 弹出。
+  void sessionEnded(SessionEnd reason) {
+    if (!authed) return;
+    authed = false;
+    authPage = 'login';
+    notifyListeners();
+  }
+
   @override
   void dispose() {
+    _sessionSub?.cancel();
     _clock?.cancel();
     pos.dispose();
     super.dispose();

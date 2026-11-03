@@ -7,18 +7,22 @@ import 'auth/auth.dart';
 import 'core/shots.dart';
 import 'core/state.dart';
 import 'core/tokens.dart';
+import 'net/net.dart';
 import 'shell/shell.dart';
 import 'ui/kit.dart';
 import 'widgets/sheets.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   registerSheets();
   SystemChrome.setSystemUIOverlayStyle(overlayStyle(true));
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-  final app = AppState();
   final shot = shotFromUrl();
+  // 截图模式不碰钥匙串和真实后端
+  final net = shot != null ? await Net.memory() : await Net.create();
+  net.session.onEnd.where((r) => r == SessionEnd.expired).listen((_) => toast('登录已失效，请重新登录', 'lock'));
+  final app = AppState(net: net);
   if (shot != null) applyShotState(app, shot);
   runApp(LyraApp(state: app, shot: shot));
 }
