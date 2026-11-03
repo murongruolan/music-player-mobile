@@ -7,6 +7,7 @@ import 'storage.dart';
 class ApiConfig {
   static const defaultBaseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: 'https://player-api.0996996.xyz/api/v1');
   static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.1.0');
+  static const buildNumber = String.fromEnvironment('BUILD_NUMBER', defaultValue: '1');
   static const _overrideKey = 'api.baseUrl.override.v1';
 
   final KvStore _store;
