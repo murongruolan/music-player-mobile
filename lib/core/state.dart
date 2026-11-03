@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import '../audio/audio_engine.dart';
 import '../data/mock.dart';
 import '../data/models.dart';
 import '../net/net.dart';
@@ -97,13 +98,23 @@ class AppState extends ChangeNotifier {
   /// 是否连着真实后端（false = mock 演示模式：测试、截图）。
   bool get online => net != null;
 
+  /// 真实播放引擎。测试 / 截图不传（为 null），走模拟时钟；页面无感知。
+  final AudioEngine? engine;
+  double engineDuration = 0; // 引擎返回的实际曲目时长（秒）；0 = 尚未加载
+
+  /// 播放链路错误出口（气泡提示等），由 main.dart 注入；state 不直接依赖 UI。
+  void Function(String message)? onEngineError;
+
+  /// 引擎已加载音源，进度 / 时长 / 播放态以引擎为准。
+  bool get engineActive => engine != null && engine!.loaded;
+
   /// 当前登录的 Lyra 账号；未登录或 mock 模式下为 null。
   Account? account;
 
   /// 赞助用户才能用云同步 / 云备份 / 云端统计。mock 模式下视为已赞助，方便演示。
   bool get isSponsor => net == null || (account?.isSponsor ?? false);
 
-  AppState({this.net}) {
+  AppState({this.net, this.engine}) {
     _sessionSub = net?.session.onEnd.listen(sessionEnded);
     _userSub = net?.session.onUser.listen((u) {
       if (u == null) return;
@@ -114,6 +125,55 @@ class AppState extends ChangeNotifier {
       scriptOrder[p.id] = scripts.where((s) => s.platforms.contains(p.id)).map((s) => s.id).toList();
     }
     _clock = Timer.periodic(const Duration(milliseconds: 50), (_) => _tick());
+    _bindEngine();
+  }
+
+  // ---------- 音频引擎（真实播放；测试 / 截图为 null，走模拟时钟） ----------
+  void _bindEngine() {
+    final e = engine;
+    if (e == null) return;
+    e.onPosition = (p) => pos.value = p;
+    e.onDuration = (d) {
+      if (engineDuration != d) update(() => engineDuration = d); // song getter 的实际时长变了
+    };
+    e.onPlaying = (p) {
+      if (playing != p) update(() => playing = p); // 通知栏 / 线控改的状态同步回 UI
+    };
+    e.onCompleted = () => _step(1); // 单曲循环由引擎 LoopMode.one 自循环，不会走到这
+    e.onError = (msg) => onEngineError?.call(msg);
+    e.onMediaAction = (a) {
+      // 通知栏按钮 / 耳机线控 / 蓝牙控制统一路由
+      switch (a) {
+        case 'play':
+          if (!playing) toggle();
+        case 'pause':
+          if (playing) toggle();
+        case 'next':
+          next();
+        case 'prev':
+          prev();
+        case 'like':
+          update(() => toggleLike(cur));
+      }
+    };
+  }
+
+  /// 引擎加载完成后的收尾：套用速度并刷新通知栏（带真实收藏态）。
+  void _engineAfterLoad() {
+    final e = engine!;
+    if (!e.loaded) return;
+    e.setSpeed(speed);
+    e.updateNotification(playing: playing, liked: liked.contains(cur));
+  }
+
+  /// 把 UI 均衡器（10 段曲线 + 开关）下发到设备 EQ；非 Android 平台引擎内部静默跳过。
+  void applyEqToEngine() {
+    if (engineActive) unawaited(engine!.applyEq(eqOn, eq));
+  }
+
+  /// 加载当前曲目到引擎（engineActive 时才调）。
+  void _enginePlayCurrent() {
+    unawaited(engine!.playSong(songs[cur], autoplay: playing, loopOne: mode == 'one').then((_) => _engineAfterLoad()));
   }
 
   // ---------- 派生 ----------
@@ -122,7 +182,13 @@ class AppState extends ChangeNotifier {
     return Pal.of(dark, accents[accent]);
   }
 
-  Song get song => songs[cur];
+  Song get song {
+    final s = songs[cur];
+    // 真实播放：用引擎返回的实际时长替换 mock 时长，进度条 / 歌词换算才不会越界。
+    final d = engineDuration.round();
+    if (engineActive && d > 0 && d != s.dur) return s.copyWith(dur: d);
+    return s;
+  }
   Song songById(int id) => songs[id];
 
   /// 给 [Cloud] 等协作对象用的 notifyListeners。
@@ -200,6 +266,7 @@ class AppState extends ChangeNotifier {
     _last = now;
     if (!playing) return;
     cloud.onPlayTick(cur, dt);
+    if (engineActive) return; // 真实进度由引擎回调驱动，这里只负责听歌统计
     var p = pos.value + dt * speed;
     if (p >= song.dur) {
       if (mode == 'one') {
@@ -220,8 +287,10 @@ class AppState extends ChangeNotifier {
     if (!queue.contains(id)) queue.insert(math.min(queue.indexOf(cur) + 1, queue.length), id);
     cur = id;
     pos.value = 0;
+    engineDuration = 0;
     playing = true;
     notifyListeners();
+    if (engineActive) _enginePlayCurrent();
   }
 
   void playAll(String list, {bool shuffle = false, String? name}) {
@@ -231,20 +300,27 @@ class AppState extends ChangeNotifier {
     if (queue.isEmpty) return;
     cur = queue.first;
     pos.value = 0;
+    engineDuration = 0;
     playing = true;
     if (shuffle) mode = 'shuffle';
     notifyListeners();
+    if (engineActive) _enginePlayCurrent();
   }
 
   void toggle() {
     playing = !playing;
     notifyListeners();
+    if (engineActive) unawaited(engine!.setPlaying(playing));
   }
 
   void next() => _step(1);
   void prev() {
     if (pos.value > 3) {
-      pos.value = 0;
+      if (engineActive) {
+        engine!.seek(0); // 真实播放：回到曲目开头（进度由引擎回调刷新）
+      } else {
+        pos.value = 0;
+      }
       notifyListeners();
       return;
     }
@@ -259,16 +335,24 @@ class AppState extends ChangeNotifier {
       cur = queue[(i + d + queue.length) % queue.length];
     }
     pos.value = 0;
+    engineDuration = 0;
+    if (engineActive) _enginePlayCurrent(); // 单曲循环时引擎自循环，不会走到这
     if (notify) notifyListeners();
   }
 
   void seek(double sec) {
-    pos.value = sec.clamp(0, song.dur.toDouble());
+    final d = song.dur.toDouble();
+    if (engineActive) {
+      unawaited(engine!.seek(sec.clamp(0, d))); // 进度由引擎回调刷新
+      return;
+    }
+    pos.value = sec.clamp(0, d);
   }
 
   void cycleMode() {
     const order = ['loop', 'one', 'shuffle', 'order'];
     mode = order[(order.indexOf(mode) + 1) % order.length];
+    if (engineActive) unawaited(engine!.setLoopOne(mode == 'one'));
     notifyListeners();
   }
 
@@ -278,6 +362,8 @@ class AppState extends ChangeNotifier {
     final on = !liked.contains(id);
     on ? liked.add(id) : liked.remove(id);
     notifyListeners();
+    // 通知栏收藏按钮图标跟随收藏态
+    if (engineActive && id == cur) engine!.updateNotification(playing: playing, liked: on);
     return on;
   }
 

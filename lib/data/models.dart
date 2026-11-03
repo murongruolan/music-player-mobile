@@ -8,6 +8,9 @@ class Song {
   final int variant;
   const Song(this.id, this.title, this.artist, this.album, this.dur, this.quality, this.hue, this.variant);
   bool get plainQ => quality == 'HQ' || quality == '128k';
+
+  /// 复制并覆盖部分字段（真实播放时用引擎返回的实际时长替换 mock 时长）。
+  Song copyWith({int? dur}) => Song(id, title, artist, album, dur ?? this.dur, quality, hue, variant);
 }
 
 class Playlist {

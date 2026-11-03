@@ -15,6 +15,13 @@ dependencies:
   flutter_secure_storage: ^11.2.0
   # 非敏感的本地数据（公告已读、同步版本号、听歌统计、埋点队列）；钥匙串不适合放大块数据
   shared_preferences: ^2.3.0
+  # 播放引擎：Android 走 Media3/ExoPlayer，iOS 走 AVPlayer，Web 有官方实现。
+  # Flutter SDK 本身没有媒体播放能力，这是平台播放器的标准封装。
+  just_audio: ^0.10.6
+  # 媒体会话 / 通知栏媒体通知（播放/暂停/上下曲/自定义收藏操作），后台播放。
+  audio_service: ^0.18.19
+  # 音频焦点：来电、其他 App 播放时正确暂停与恢复。
+  audio_session: ^0.2.4
 
 dev_dependencies:
   flutter_test:

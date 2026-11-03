@@ -492,7 +492,10 @@ void openTimer(BuildContext context, {bool dark = false}) {
 void openEq(BuildContext context, {bool dark = false}) {
   showLSheet(context, title: '均衡器', dark: dark, action: Builder(builder: (c) {
     final app = c.app;
-    return Padding(padding: const EdgeInsets.only(right: 8), child: LSwitch(app.eqOn, (v) => app.update(() => app.eqOn = v)));
+    return Padding(padding: const EdgeInsets.only(right: 8), child: LSwitch(app.eqOn, (v) => app.update(() {
+        app.eqOn = v;
+        app.applyEqToEngine();
+      })));
   }), builder: (c) {
     final app = c.app;
     final pal = c.pal;
@@ -511,6 +514,7 @@ void openEq(BuildContext context, {bool dark = false}) {
                   app.update(() {
                     app.eqPreset = p;
                     app.eq = [...eqPresets[p]!];
+                    app.applyEqToEngine();
                   });
                 }),
               ),
@@ -534,6 +538,7 @@ void openEq(BuildContext context, {bool dark = false}) {
                           void set(double dy) => app.update(() {
                                 app.eq[i] = ((1 - dy / h) * 24 - 12).clamp(-12, 12).roundToDouble();
                                 app.eqPreset = '自定义';
+                                app.applyEqToEngine();
                               });
                           return GestureDetector(
                             onVerticalDragUpdate: (d) => set(d.localPosition.dy),
