@@ -1,6 +1,6 @@
 // 粒子舞台：桌面端 3D 点云预设的移动端精简版（Canvas，2600 点）——星系 / 事件视界 / 全息地球 / 陀螺核心。
 // 单指拖动 360° 旋转；「朝向相机」的光环在屏幕空间绘制，任何角度都正对镜头。
-// 正式版建议改用 FragmentProgram 复用桌面端 GLSL（sollin-fx-proposals/presets.three.vert.glsl）。
+// 正式版建议改用 FragmentProgram 复用桌面端 GLSL（docs/design/fx-presets/presets.three.vert.glsl）。
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../core/state.dart';
