@@ -116,4 +116,15 @@ void main() {
       expect(calls.single.url.path.endsWith('/auth/devices/7'), isTrue);
     });
   });
+
+  test('资料 / 激活拿到的 user 写入会话缓存（离线启动和会员判断用）', () async {
+    handler = (r) async => ok({'user': userJson(nickname: '新昵称', activated: true)});
+    final seen = <String?>[];
+    net.session.onUser.listen((u) => seen.add(u?['nickname'] as String?));
+    await AccountApi(net.client).redeemCode('CODE');
+    await Future<void>.delayed(Duration.zero);
+    expect(net.session.user!['nickname'], '新昵称');
+    expect(seen, ['新昵称']);
+    expect(net.auth.cached!.isSponsor, isTrue);
+  });
 }

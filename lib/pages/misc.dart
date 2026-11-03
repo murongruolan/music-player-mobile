@@ -375,7 +375,7 @@ class DevicesPage extends StatefulWidget {
 
 class _DevicesPageState extends State<DevicesPage> {
   List<DeviceRecord> devices = const [];
-  int maxDevices = 5;
+  int maxDevices = 10;
   bool loading = false;
 
   @override
@@ -384,9 +384,8 @@ class _DevicesPageState extends State<DevicesPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
-  /// 演示 / 截图（net == null 或还没拉到数据）时回落到 mock 的 loginDevices。
-  List<DeviceRecord> get _view =>
-      devices.isNotEmpty ? devices : [for (final (i, d) in loginDevices.indexed) _mock(d, i)];
+  /// 演示 / 截图（net == null）时用 mock 的 loginDevices；连着后端时只显示接口数据（加载中 / 失败为空，不显示假设备）。
+  List<DeviceRecord> get _view => context.appRead.online ? devices : [for (final (i, d) in loginDevices.indexed) _mock(d, i)];
 
   DeviceRecord _mock(Device d, int i) => DeviceRecord(
         id: i,
@@ -451,7 +450,13 @@ class _DevicesPageState extends State<DevicesPage> {
     final list = _view;
     return SubPage(title: '登录设备', children: [
       Hint('最多同时登录 $maxDevices 台设备。移除后该设备需要重新登录。', padding: const EdgeInsets.fromLTRB(Tk.pad, 0, Tk.pad, 12)),
-      Group(children: [
+      if (list.isEmpty)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 40),
+          child: Center(child: loading ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)) : Text('没有拿到设备列表，返回后重试', style: ts(13.5, c: pal.t3))),
+        )
+      else
+        Group(children: [
         for (final d in list)
           Item(
             lead: Container(width: 30, height: 30, decoration: BoxDecoration(color: d.isCurrent ? settingTiles['green'] : settingTiles['gray'], borderRadius: BorderRadius.circular(9)), child: Icon(ic(d.isTv ? 'tv' : d.isDesktop ? 'grid' : 'phone'), size: 18, color: Colors.white)),
