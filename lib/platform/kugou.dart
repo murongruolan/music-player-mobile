@@ -71,6 +71,8 @@ KrcText decodeKrc(String content) {
   } catch (e) {
     throw PlatformException(Plat.kg, '酷狗歌词解码失败', e);
   }
+  // archive 的 zlib 遇到坏数据会返回空而不是抛错（Node 的 inflateSync 会抛）
+  if (decoded.trim().isEmpty) throw const PlatformException(Plat.kg, '酷狗歌词解码失败');
   var translation = '', romanization = '';
   final language = RegExp(r'\[language:([\w=\\/+]+)\]').firstMatch(decoded);
   if (language != null) {

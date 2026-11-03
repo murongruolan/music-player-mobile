@@ -59,7 +59,8 @@ const _mobileUa = 'QQMusic 14090508(android 12)';
 /// QQ 音乐 musics.fcg 的 sign 参数（桌面端 zzcSign）：对请求体 JSON 原文做 SHA1 后挑位 + 异或 + base64。
 String zzcSign(String text) {
   final h = sha1Hex(text);
-  String pick(List<int> indexes) => indexes.map((i) => h[i]).join();
+  // JS 里 h[40] 越界是 undefined，join 后是空串；Dart 越界会抛错，这里照 JS 处理
+  String pick(List<int> indexes) => indexes.map((i) => i < h.length ? h[i] : '').join();
   final part1 = pick(const [23, 14, 6, 36, 16, 40, 7, 19]);
   final part2 = pick(const [16, 1, 32, 12, 19, 27, 8, 5]);
   const scramble = [89, 39, 179, 150, 218, 82, 58, 252, 177, 52, 186, 123, 120, 64, 242, 133, 143, 161, 121, 179];
