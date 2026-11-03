@@ -139,6 +139,24 @@ class LibraryStore implements LibraryBinding {
     return p;
   }
 
+  /// 已收藏的平台歌单（按平台代码 + 平台歌单 id 找）。
+  Playlist? collectedOf(String platform, String externalId) =>
+      _app.myPlaylists.where((p) => p.kind == 'collected' && p.platform == platform && p.externalId == externalId).firstOrNull;
+
+  /// 收藏平台歌单：只记平台 + 歌单 id（与桌面端一致，歌曲各端打开时自己拉）。已收藏的直接返回。
+  Playlist collect({required String platform, required String externalId, required String name, String? cover, String description = '', int? total}) {
+    final hit = collectedOf(platform, externalId);
+    if (hit != null) return hit;
+    final now = DateTime.now().toUtc();
+    final id = _app.myPlaylists.fold<int>(199, (m, p) => p.id > m ? p.id : m) + 1;
+    final key = '$platform-$externalId';
+    _plRaw[id] = CloudPlaylist(id: key, name: name, description: description, cover: cover, kind: 'collected', platform: platform, externalId: externalId, total: total, updatedAt: now, createdAt: now);
+    final p = Playlist(id, name.isEmpty ? '未命名歌单' : name, count: total ?? 0, hue: _hue(key), variant: key.hashCode.abs() % 4, mine: true, tag: '收藏', key: key, platform: platform, externalId: externalId, kind: 'collected', updatedAt: now, createdAt: now, cover: cover);
+    _app.myPlaylists.add(p);
+    _changed();
+    return p;
+  }
+
   /// 把歌加进歌单（已在里面的跳过）。返回实际新增数量。
   int addToPlaylist(int playlistId, Iterable<int> songIds) {
     final i = _app.myPlaylists.indexWhere((p) => p.id == playlistId);
