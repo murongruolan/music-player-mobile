@@ -10,7 +10,6 @@ import '../sync/sync_doc.dart';
 import '../sync/sync_engine.dart';
 import '../ui/icons.dart';
 import '../ui/kit.dart';
-import '../widgets/sheets.dart';
 import 'common.dart';
 import 'misc.dart';
 import 'settings.dart';
