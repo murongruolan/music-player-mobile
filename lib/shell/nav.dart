@@ -357,7 +357,7 @@ class _BottomNavState extends State<BottomNav> with TickerProviderStateMixin {
         iconW,
         if (showText) ...[
           const SizedBox(height: 3),
-          AnimatedOpacity(duration: Tk.fast, opacity: bar == 'cutout' && on ? 0 : 1, child: Text(label, style: ts(10.5, w: FontWeight.w600, c: color))),
+          AnimatedOpacity(duration: Tk.fast, opacity: bar == 'cutout' && on ? 0 : 1, child: Text(label, maxLines: 1, softWrap: false, overflow: TextOverflow.clip, style: ts(10.5, w: FontWeight.w600, c: color))),
         ],
         if (bar == 'cutout') const SizedBox(height: 9),
       ]);

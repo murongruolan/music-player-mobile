@@ -177,13 +177,6 @@ void main() {
   });
 
   testWidgets('联网模式：发现页按原型结构显示平台内容', (tester) async {
-    // 布局溢出等错误打印完整诊断（含出错组件的源码位置）
-    final orig = FlutterError.onError;
-    FlutterError.onError = (d) {
-      debugPrint('FLUTTER ERROR DETAILS:\n${d.toString()}');
-      orig?.call(d);
-    };
-    addTearDown(() => FlutterError.onError = orig);
     final app = await _boot(tester);
     await _settle(tester);
     // 原型：登录卡 + Banner + 快捷入口 + 精选 / 榜单 / 歌单 + 平台推荐区
