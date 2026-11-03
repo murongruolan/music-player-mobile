@@ -9,7 +9,7 @@
 //   其他请求等它的结果（后端刷新令牌会轮换，并发刷新会被当成重放，吊销全部会话）。
 //   刷新令牌失效（40102）→ 清掉会话并通过 [Session.onEnd] 通知上层回到登录页。
 //   只看业务码 40101，不看 HTTP 401：密码错误也是 HTTP 401，但业务码是 40001。
-// - 限流：请求先过 [RateLimiter]；收到 42901 / 429 进入冷却。
+// - 限流：客户端不主动限速；收到 42901 / 429 后该类请求冷却一段时间（见 [RateLimiter]）。
 // - GET：相同请求在途时合并成一个；可选内存缓存（cacheTtl）和断网时回退旧数据（staleOnError）；
 //   网络错误 / 超时 / 5xx / 限流时自动重试（最多 2 次，指数退避 + 抖动）。
 //   POST / PUT / DELETE 默认不重试（可能不幂等），需要的话显式传 retry: true。
@@ -86,7 +86,7 @@ class ApiClient {
         _now = now ?? DateTime.now,
         _sleep = sleep ?? ((d) => Future<void>.delayed(d)),
         _rand = random ?? Random(),
-        limiter = limiter ?? RateLimiter.standard(now: now, sleep: sleep, random: random),
+        limiter = limiter ?? RateLimiter(now: now, random: random),
         log = log ?? (kDebugMode ? debugPrint : null) {
     // 退出 / 会话失效时丢掉缓存，避免下一个账号看到上一个账号的数据。
     _sessionSub = session.onChanged.listen((t) {
@@ -209,6 +209,8 @@ class ApiClient {
       final t = AuthTokens.fromLogin(asJson(data), now: _now());
       if (!t.isValid) throw const ApiException(ApiErrorKind.parse, '刷新令牌返回的数据不完整');
       await session.save(t); // 先落盘再用：旧刷新令牌此刻已经作废了
+      final user = asJson(data).objOrNull('user');
+      if (user != null) await session.saveUser(user);
       log?.call('[api] 令牌已刷新');
     } on ApiException catch (e) {
       // 断网 / 超时 / 5xx / 限流：会话保留，下次再试。其余（40102、40101、参数错误、设备被移除 403 等）都视为会话失效。
@@ -244,7 +246,7 @@ class ApiClient {
   Future<Object?> _send(String method, String path, Uri uri, {Object? body, String? token, Duration? timeout}) async {
     final buckets = ['global', if (path.startsWith('/auth/')) 'auth'];
     try {
-      await limiter.acquire(buckets);
+      limiter.check(buckets);
     } on RateLimitedLocally catch (e) {
       throw ApiException(ApiErrorKind.rateLimited, '操作太频繁了，请稍后再试', retryAfter: e.retryAfter);
     }

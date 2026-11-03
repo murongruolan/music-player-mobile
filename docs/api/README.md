@@ -12,7 +12,7 @@ lib/net/                网络层（一般不用改）
   api_error.dart        ApiException + ApiCode（后端错误码）
   auth_service.dart     登录 / 刷新 / 退出 + Account 模型（net.auth）
   session.dart          令牌与持久化，onEnd 通知会话结束
-  rate_limiter.dart     客户端令牌桶 + 被限流后的冷却
+  rate_limiter.dart     被限流（42901 / 429）后的冷却
   api_config.dart       接口地址（--dart-define=API_BASE_URL 或运行时覆盖）、超时
   json.dart             JsonRead：j.str / integer / boolean / time / obj / list …，字段缺失不崩
   device.dart           上报的设备信息（deviceId 首次启动生成并持久化）
@@ -78,10 +78,9 @@ try {
 
 ## 请求频率
 
-后端每天 10 万次请求额度，`/auth/*` 每 IP 每分钟 60 次。封装里：
+后端每天 10 万次请求额度，`/auth/*` 每 IP 每分钟 60 次。客户端**不主动限速**，只做这些：
 
-- 全局令牌桶 4 次/秒（突发 8），`/auth/*` 30 次/分钟（突发 5）。超出时排队，排队超过 10 秒报 `rateLimited`。
-- 收到 42901 / 429：该桶冷却 2 秒起、指数增长到 60 秒（加抖动），冷却期内的请求不发出去直接报 `rateLimited`。
+- 收到 42901 / 429：该类请求（`/auth/*` 或其余）冷却 2 秒起、连续被限流时翻倍到 60 秒（加抖动），冷却期内的请求不发出去，直接报 `rateLimited`。
 - GET 在网络错误 / 超时 / 5xx 时自动重试 2 次（0.4 秒、0.8 秒起，加抖动）；冷却不超过 5 秒的限流也会等完再重试。POST / PUT / DELETE 不重试，确实幂等的接口可以传 `retry: true`。
 - 相同的 GET 在途时只发一次。
 
@@ -93,7 +92,10 @@ try {
 - 统计上报用 `/stats/track-batch` 攒批发送，不要一条一发。
 - 同步优先用 WebSocket（`/sync/ws`），不要短间隔轮询 `/sync/pull`。
 
+## 接口地址
+
+默认 `https://player-api.0996996.xyz/api/v1`。构建时可用 `--dart-define=API_BASE_URL=...` 覆盖，运行时可调用 `api.config.setOverride(url)`。
+
 ## 已知问题
 
-- `*.workers.dev` 在中国大陆被 SNI 阻断，正式使用需要给后端绑定自定义域名，然后用 `--dart-define=API_BASE_URL=https://域名/api/v1` 构建，或调用 `api.config.setOverride(url)`。
-- 后端没有返回 CORS 头，Flutter Web（含 CI 截图）调不通接口；手机端不受影响。
+- 后端还没有返回 CORS 头，Flutter Web（含 CI 截图）调不通接口；手机端不受影响。截图模式本来就不连后端。

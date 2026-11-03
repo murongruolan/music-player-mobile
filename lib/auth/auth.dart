@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../core/state.dart';
 import '../core/tokens.dart';
+import '../net/net.dart';
 import '../ui/brand.dart';
 import '../ui/cover.dart';
 import '../ui/icons.dart';
@@ -252,12 +253,34 @@ class _LoginPageState extends State<LoginPage> {
     });
   }
 
-  void _login() {
+  Future<void> _login() async {
+    if (busy) return;
+    final app = context.appRead;
     final e = <String, String>{};
-    if (id.text.trim().isEmpty) e['id'] = '请输入邮箱或用户 ID';
-    if (pwd.text.length < 6) e['pwd'] = '密码至少 6 位';
+    if (!_isEmail.hasMatch(id.text.trim())) e['id'] = id.text.trim().isEmpty ? '请输入邮箱' : '邮箱格式不正确';
+    if (pwd.text.isEmpty) e['pwd'] = '请输入密码';
     if (e.isNotEmpty) return _err(e);
-    _busy(_enter);
+    if (!app.online) return _busy(_enter); // mock 演示模式
+    FocusScope.of(context).unfocus();
+    setState(() => busy = true);
+    try {
+      final a = await app.api.auth.login(id.text.trim(), pwd.text, remember: remember);
+      if (!mounted) return;
+      pwd.clear();
+      app.signedIn(a);
+    } on ApiException catch (ex) {
+      if (!mounted) return;
+      if (ex.code == ApiCode.badParam && ex.httpStatus == 401) {
+        _err({'pwd': ex.userMessage}); // 账号或密码错误
+      } else if (ex.code == ApiCode.forbidden) {
+        // 设备数量已达上限 / 账号已被禁用：文案较长，用弹窗
+        showLDialog(context, icon: 'lock', title: '无法登录', body: ex.userMessage, actions: [('知道了', BtnKind.pri, null)]);
+      } else {
+        toast(ex.userMessage, ex.isNetwork ? 'wifi' : 'info'); // 失败次数过多被锁定、网络错误等
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
   }
 
   void _enter() {
@@ -303,7 +326,7 @@ class _LoginPageState extends State<LoginPage> {
       ]);
     } else if (!reg) {
       form = Column(key: const ValueKey('login'), crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        LField(controller: id, label: '邮箱或用户 ID', icon: 'user', error: err['id'], shake: err.containsKey('id') ? shake : 0, onChanged: (_) => setState(() => err.remove('id'))),
+        LField(controller: id, label: '邮箱', icon: 'mail', keyboard: TextInputType.emailAddress, error: err['id'], shake: err.containsKey('id') ? shake : 0, onChanged: (_) => setState(() => err.remove('id'))),
         const SizedBox(height: 12),
         LField(controller: pwd, label: '密码', icon: 'lock', password: true, error: err['pwd'], shake: err.containsKey('pwd') ? shake : 0, onChanged: (_) => setState(() => err.remove('pwd'))),
         const SizedBox(height: 10),

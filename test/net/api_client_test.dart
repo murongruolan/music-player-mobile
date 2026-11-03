@@ -231,19 +231,12 @@ void main() {
   });
 
   group('RateLimiter', () {
-    test('令牌用完后按速率排队', () async {
-      final t = FakeTime();
-      final l = RateLimiter(specs: {'global': const BucketSpec(capacity: 2, refillEvery: Duration(seconds: 1))}, now: t.now, sleep: t.sleep);
-      for (var i = 0; i < 5; i++) {
-        await l.acquire(['global']);
-      }
-      expect(t.slept, const Duration(seconds: 3));
-    });
-
     test('冷却时间指数增长，成功后清零', () {
       final t = FakeTime();
-      final l = RateLimiter(specs: {'global': BucketSpec.perSecond(4, burst: 8)}, now: t.now, sleep: t.sleep, random: Random(1));
+      final l = RateLimiter(now: t.now, random: Random(1));
       final d1 = l.penalize('global');
+      expect(() => l.check(['global']), throwsA(isA<RateLimitedLocally>()));
+      expect(() => l.check(['auth']), returnsNormally);
       t.advance(const Duration(minutes: 5));
       final d2 = l.penalize('global');
       expect(d1.inMilliseconds, inInclusiveRange(2000, 2500));
@@ -253,12 +246,48 @@ void main() {
       expect(l.penalize('global').inMilliseconds, inInclusiveRange(2000, 2500));
     });
 
-    test('等待超过 maxWait 直接报限流', () async {
-      final t = FakeTime();
-      final l = RateLimiter(specs: {'global': const BucketSpec(capacity: 1, refillEvery: Duration(minutes: 1))}, now: t.now, sleep: t.sleep);
-      await l.acquire(['global']);
-      await expectLater(l.acquire(['global']), throwsA(isA<RateLimitedLocally>()));
+    test('客户端不主动限速：连续请求不排队', () async {
+      handler = (r) async => ok(1);
+      for (var i = 0; i < 30; i++) {
+        await net.client.post('/p', auth: false);
+      }
+      expect(calls.length, 30);
+      expect(ft.slept, Duration.zero);
     });
+  });
+
+  test('启动恢复：刷新令牌并更新缓存的账号信息', () async {
+    await login('old');
+    handler = (r) async => ok({...tokens('new', 'r2'), 'user': {'uid': '7', 'email': 'x@y.z', 'nickname': '新', 'isActivated': true, 'membershipRank': 1}});
+    final a = await net.auth.resume();
+    expect(a!.nickname, '新');
+    expect(a.isSponsor, isTrue);
+    final again = Session(net.store);
+    await again.restore();
+    expect(again.user!['uid'], '7');
+  });
+
+  test('启动恢复：刷新令牌失效 → 返回 null 并清会话', () async {
+    await login('old');
+    handler = (r) async => err(401, 40102, '刷新令牌无效');
+    expect(await net.auth.resume(), isNull);
+    expect(net.session.isLoggedIn, isFalse);
+  });
+
+  test('启动恢复：断网时保留会话和缓存账号', () async {
+    handler = (r) async => ok(tokens('a1', 'r1'));
+    await net.auth.login('a@b.c', 'pw');
+    handler = (r) async => throw http.ClientException('offline');
+    final a = await net.auth.resume();
+    expect(a!.email, 'a@b.c');
+    expect(net.session.isLoggedIn, isTrue);
+  });
+
+  test('不保持登录：令牌不落盘', () async {
+    handler = (r) async => ok(tokens('a1', 'r1'));
+    await net.auth.login('a@b.c', 'pw', remember: false);
+    expect(net.session.isLoggedIn, isTrue);
+    expect(await net.store.read('auth.tokens.v1'), isNull);
   });
 
   test('Session 持久化与恢复', () async {

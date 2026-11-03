@@ -19,10 +19,10 @@ Future<void> main() async {
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   final shot = shotFromUrl();
-  // 截图模式不碰钥匙串和真实后端
-  final net = shot != null ? await Net.memory() : await Net.create();
-  net.session.onEnd.where((r) => r == SessionEnd.expired).listen((_) => toast('登录已失效，请重新登录', 'lock'));
-  final app = AppState(net: net);
+  // 截图模式不连后端，页面全部用 mock 数据
+  final net = shot != null ? null : await Net.create();
+  net?.session.onEnd.where((r) => r == SessionEnd.expired).listen((_) => toast('登录已失效，请重新登录', 'lock'));
+  final app = AppState(net: net)..restoreSession();
   if (shot != null) applyShotState(app, shot);
   runApp(LyraApp(state: app, shot: shot));
 }

@@ -51,15 +51,24 @@ enum SessionEnd {
 
 class Session {
   static const _key = 'auth.tokens.v1';
+  static const _userKey = 'auth.user.v1';
   final KvStore _store;
   AuthTokens? _tokens;
+  Json? _user;
+
+  /// false = 不保持登录：令牌只放内存，App 退出后需要重新登录。
+  bool _persist = true;
   final _ended = StreamController<SessionEnd>.broadcast();
   final _changed = StreamController<AuthTokens?>.broadcast();
+  final _userChanged = StreamController<Json?>.broadcast();
 
   Session(this._store);
 
   AuthTokens? get tokens => _tokens;
   bool get isLoggedIn => _tokens?.isValid ?? false;
+
+  /// 最近一次登录 / 刷新 / 拉资料拿到的 user 对象（离线启动时用它显示账号信息）。
+  Json? get user => _user;
 
   /// 会话结束（退出 / 失效）。上层监听它跳回登录页。
   Stream<SessionEnd> get onEnd => _ended.stream;
@@ -67,26 +76,53 @@ class Session {
   /// 令牌变化（登录、刷新、清除）。
   Stream<AuthTokens?> get onChanged => _changed.stream;
 
-  /// 启动时从本地恢复。
-  Future<void> restore() async => _tokens = AuthTokens.fromStored(await _store.read(_key));
+  /// user 对象变化。
+  Stream<Json?> get onUser => _userChanged.stream;
 
-  /// 登录成功 / 刷新成功后调用；先落盘再生效。
-  Future<void> save(AuthTokens t) async {
-    await _store.write(_key, jsonEncode(t.toJson()));
+  /// 启动时从本地恢复。
+  Future<void> restore() async {
+    _tokens = AuthTokens.fromStored(await _store.read(_key));
+    if (_tokens == null) return;
+    try {
+      final raw = await _store.read(_userKey);
+      _user = raw == null ? null : asJson(jsonDecode(raw));
+    } catch (_) {
+      _user = null;
+    }
+  }
+
+  /// 登录成功 / 刷新成功后调用；先落盘再生效。[persist] 只在登录时传（保持登录开关），刷新沿用。
+  Future<void> save(AuthTokens t, {bool? persist}) async {
+    if (persist != null) _persist = persist;
+    if (_persist) {
+      await _store.write(_key, jsonEncode(t.toJson()));
+    } else {
+      await _store.delete(_key);
+    }
     _tokens = t;
     _changed.add(t);
+  }
+
+  Future<void> saveUser(Json user) async {
+    _user = user;
+    if (_persist) await _store.write(_userKey, jsonEncode(user));
+    _userChanged.add(user);
   }
 
   Future<void> clear(SessionEnd reason) async {
     final had = _tokens != null;
     _tokens = null;
+    _user = null;
     await _store.delete(_key);
+    await _store.delete(_userKey);
     _changed.add(null);
+    _userChanged.add(null);
     if (had || reason == SessionEnd.logout) _ended.add(reason);
   }
 
   void dispose() {
     _ended.close();
     _changed.close();
+    _userChanged.close();
   }
 }
