@@ -4,12 +4,16 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../core/state.dart';
 import '../core/tokens.dart';
+import '../api/device_login_api.dart';
 import '../data/mock.dart';
+import '../net/net.dart';
+import '../widgets/sheets.dart';
 import '../ui/cover.dart';
 import '../ui/icons.dart';
 import '../ui/kit.dart';
 import 'detail.dart';
 import '../shell/shell.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 
 class ScanPage extends StatefulWidget {
   final bool match;
@@ -51,6 +55,7 @@ class _ScanPageState extends State<ScanPage> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    if (context.app.online) return _OnlineScan(match: widget.match);
     final pal = context.pal.forceDark;
     final mq = MediaQuery.of(context);
     return PalScope(
@@ -325,4 +330,145 @@ class _Rings extends CustomPainter {
 
   @override
   bool shouldRepaint(_Rings o) => o.t != t;
+}
+
+// ============ 联网模式：扫码登录（真实） ============
+// 扫电视 / 车机 / 桌面端上的二维码（内容 {"type":"sollin-login","code":"382914"}），或手动输入 6 位授权码，
+// 确认后调用 POST /auth/device/confirm，对方设备轮询到授权即完成登录。
+// 听歌识曲需要识曲服务，后端暂无接口。
+class _OnlineScan extends StatefulWidget {
+  final bool match;
+  const _OnlineScan({required this.match});
+  @override
+  State<_OnlineScan> createState() => _OnlineScanState();
+}
+
+class _OnlineScanState extends State<_OnlineScan> {
+  final cam = MobileScannerController(formats: const [BarcodeFormat.qrCode], detectionSpeed: DetectionSpeed.noDuplicates);
+  bool busy = false, handled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.match) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        Navigator.of(context).pop();
+        openPendingFeature(context, '听歌识曲', '识别正在播放的歌需要识曲服务，后端暂时没有对应接口。');
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    cam.dispose();
+    super.dispose();
+  }
+
+  void _onDetect(BarcodeCapture c) {
+    if (handled) return;
+    for (final b in c.barcodes) {
+      final code = DeviceLoginApi.parseCode(b.rawValue ?? '');
+      if (code != null) {
+        handled = true;
+        cam.stop();
+        _confirm(code);
+        return;
+      }
+    }
+  }
+
+  Future<void> _manual() async {
+    final tc = TextEditingController();
+    final r = await showLSheet<String>(context, title: '输入授权码', sub: '电视 / 车机 / 桌面端屏幕上的 6 位数字', builder: (c) => Padding(
+          padding: const EdgeInsets.symmetric(horizontal: Tk.pad),
+          child: Column(children: [
+            LField(controller: tc, label: '6 位授权码', icon: 'key', keyboard: TextInputType.number, autofocus: true),
+            const SizedBox(height: 14),
+            Btn('下一步', block: true, onTap: () => Navigator.of(c).pop(tc.text.trim())),
+          ]),
+        ));
+    final code = DeviceLoginApi.parseCode(r ?? '');
+    if (r == null || r.isEmpty) return;
+    if (code == null) return toast('授权码是 6 位数字', 'info');
+    handled = true;
+    await cam.stop();
+    _confirm(code);
+  }
+
+  void _confirm(String code) {
+    showLDialog(context, icon: 'tv', title: '登录到这台设备？', body: '授权码 $code\n确认后，这台设备会登录你的 Lyra 账号，并出现在「登录设备」里。请确认是你自己的设备。', actions: [
+      ('拒绝', BtnKind.sec, () => _send(code, false)),
+      ('确认登录', BtnKind.pri, () => _send(code, true)),
+    ]);
+  }
+
+  Future<void> _send(String code, bool grant) async {
+    final app = context.appRead;
+    setState(() => busy = true);
+    try {
+      await DeviceLoginApi(app.api.client).confirm(code, grant: grant);
+      toast(grant ? '已授权，那台设备马上就会登录' : '已拒绝这次登录', grant ? 'check' : 'info');
+      if (mounted) Navigator.of(context).pop();
+    } on ApiException catch (e) {
+      toast(e.code == ApiCode.badParam ? '授权码已过期或已被使用，请在对方设备上刷新二维码' : e.userMessage, 'info');
+      if (mounted) {
+        setState(() => handled = false);
+        await cam.start();
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pal = context.pal.forceDark;
+    final mq = MediaQuery.of(context);
+    return PalScope(
+      pal: pal,
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: Stack(children: [
+          if (!widget.match)
+            Positioned.fill(
+              child: MobileScanner(
+                controller: cam,
+                onDetect: _onDetect,
+                errorBuilder: (c, e) => Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Text(e.errorCode == MobileScannerErrorCode.permissionDenied ? '没有相机权限。请在系统设置里允许 Lyra 使用相机，或点下方「输入授权码」。' : '相机打不开（${e.errorCode.name}），可以点下方「输入授权码」。', textAlign: TextAlign.center, style: ts(14, c: Colors.white, h: 1.6)),
+                  ),
+                ),
+              ),
+            ),
+          Center(child: Container(width: 250, height: 250, decoration: BoxDecoration(border: Border.all(color: pal.acc, width: 3), borderRadius: BorderRadius.circular(26)))),
+          Positioned(
+            top: mq.padding.top + 6,
+            left: 8,
+            right: 8,
+            child: Row(children: [
+              IBtn('close', color: Colors.white, onTap: () => Navigator.of(context).pop()),
+              const Spacer(),
+              IBtn('zap', color: Colors.white, onTap: () => cam.toggleTorch()),
+            ]),
+          ),
+          Positioned(
+            left: 24,
+            right: 24,
+            bottom: mq.padding.bottom + 40,
+            child: Column(children: [
+              Text('扫描电视 / 车机 / 桌面端上的登录二维码', textAlign: TextAlign.center, style: ts(15, w: FontWeight.w700, c: Colors.white)),
+              const SizedBox(height: 6),
+              Text('扫码后需要你在手机上确认，对方才会登录', textAlign: TextAlign.center, style: ts(12.5, c: const Color(0xB3FFFFFF))),
+              const SizedBox(height: 18),
+              Btn.sec('输入授权码', icon: 'key', onTap: busy ? null : _manual),
+            ]),
+          ),
+          if (busy) const Positioned.fill(child: ColoredBox(color: Color(0x66000000), child: Center(child: CircularProgressIndicator()))),
+        ]),
+      ),
+    );
+  }
 }

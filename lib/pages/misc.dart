@@ -8,6 +8,7 @@ import '../core/state.dart';
 import '../core/tokens.dart';
 import '../data/mock.dart';
 import '../data/models.dart';
+import '../net/api_config.dart';
 import '../net/net.dart';
 import '../shell/shell.dart';
 import '../ui/brand.dart';
@@ -161,7 +162,9 @@ class _DownloadPageState extends State<DownloadPage> {
     final pal = context.pal;
     final s = app.set;
     return SubPage(title: '下载管理', children: [
-      Padding(padding: const EdgeInsets.fromLTRB(Tk.pad, 0, 0, 6), child: Text('正在下载 · 2', style: ts(12.5, w: FontWeight.w600, c: pal.t3))),
+      if (app.online) const EmptyState('download', '暂无下载任务', desc: '下载需要先接入音源解析，接入后可以在歌曲的「···」里下载。'),
+      if (!app.online) Padding(padding: const EdgeInsets.fromLTRB(Tk.pad, 0, 0, 6), child: Text('正在下载 · 2', style: ts(12.5, w: FontWeight.w600, c: pal.t3))),
+      if (!app.online)
       for (final (id, p, t) in const [(13, .62, '12.4 / 20.1 MB'), (20, .18, '6.0 / 33.6 MB')])
         SizedBox(
           height: 70,
@@ -251,22 +254,22 @@ class _AccountPageState extends State<AccountPage> {
     final app = context.app;
     final pal = context.pal;
     final acc = app.account;
-    final name = acc?.nickname ?? '阿栗';
-    final activated = acc?.isActivated ?? true;
+    final name = acc?.nickname ?? (app.online ? 'Lyra 用户' : '阿栗');
+    final activated = acc?.isActivated ?? !app.online;
     final memberName = (acc?.membershipName.isNotEmpty ?? false) ? acc!.membershipName : (acc == null ? '已激活 · 永久' : '已激活');
     return SubPage(title: '账号中心', children: [
       Column(children: [
         Avatar(name.isEmpty ? 'L' : name.characters.first, size: 84),
         const SizedBox(height: 12),
         Text(name, style: ts(20, w: FontWeight.w700, c: pal.t1)),
-        Text(acc == null ? 'UID 10086427 · ali@example.com' : 'UID ${acc.uid} · ${acc.email}', style: ts(12.5, c: pal.t2, num: true)),
+        Text(acc == null ? (app.online ? '' : 'UID 10086427 · ali@example.com') : 'UID ${acc.uid} · ${acc.email}', style: ts(12.5, c: pal.t2, num: true)),
         const SizedBox(height: 10),
         Badge2(memberName, acc: activated, icon: 'crown', color: activated ? null : pal.warn),
         const SizedBox(height: 18),
       ]),
       Group(title: '资料', children: [
         Item(icon: 'user', color: 'blue', label: '昵称与头像', val: name, onTap: () => _editNickname(context)),
-        Item(icon: 'mail', color: 'orange', label: '邮箱', val: acc?.email ?? 'ali@example.com'),
+        Item(icon: 'mail', color: 'orange', label: '邮箱', val: acc?.email ?? (app.online ? '' : 'ali@example.com')),
         Item(icon: 'lock', color: 'gray', label: '修改密码', sub: '重置密码接口暂未开放，可从登录页「忘记密码」入口查看进度', onTap: () => toast('重置密码接口暂未开放', 'info')),
         Item(icon: 'link', color: 'cyan', label: 'QQ 绑定', val: (acc?.qq?.isNotEmpty ?? false) ? '已绑定 ${acc!.qq}' : '未绑定', onTap: () => _editQQ(context)),
       ]),
@@ -275,7 +278,7 @@ class _AccountPageState extends State<AccountPage> {
         Item(icon: 'crown', color: 'pink', label: '会员权益', val: '6 项', onTap: () => toast('Hi-Res 下载 · 粒子皮肤 · 云同步 …', 'crown')),
       ]),
       Group(title: '安全', children: [
-        Item(icon: 'phone', color: 'violet', label: '登录设备', val: deviceCount < 0 ? '${loginDevices.length} 台' : '$deviceCount 台', onTap: () => push(context, const DevicesPage())),
+        Item(icon: 'phone', color: 'violet', label: '登录设备', val: deviceCount < 0 ? (app.online ? null : '${loginDevices.length} 台') : '$deviceCount 台', onTap: () => push(context, const DevicesPage())),
         Item(icon: 'scan', color: 'teal', label: '扫码登录电视 / 车机 / 桌面端', onTap: () => pushFull(context, const ScanPage())),
       ]),
       Group(children: [
@@ -483,6 +486,11 @@ class _CloudPageState extends State<CloudPage> {
   Widget build(BuildContext context) {
     final app = context.app;
     final pal = context.pal;
+    if (app.online) {
+      return SubPage(title: '音乐云盘', children: [
+        const EmptyState('cloud', 'WebDAV 云盘接入中', desc: '连接坚果云 / Alist / Nextcloud / 群晖，直接播放 NAS 上的音乐、备份收藏和歌单。\n浏览和播放需要本地播放器接入后才能用，正在开发。'),
+      ]);
+    }
     return SubPage(title: '音乐云盘', actions: [IBtn('plus', onTap: () => _davAdd(context))], children: [
       CardBox(
         margin: const EdgeInsets.fromLTRB(Tk.pad, 0, Tk.pad, 12),
@@ -557,6 +565,18 @@ class _CloudPageState extends State<CloudPage> {
 
 class AboutPage extends StatelessWidget {
   const AboutPage({super.key});
+
+  Future<void> _checkUpdate(BuildContext context) async {
+    final app = context.appRead;
+    toast('正在检查更新…', 'refresh');
+    await app.checkUpdate();
+    final r = app.updateInfo;
+    if (!context.mounted) return;
+    if (r == null) return toast('检查失败，请稍后重试', 'info');
+    final l = r.latest;
+    if (!r.hasUpdate || l == null) return toast('已是最新版本 v${ApiConfig.appVersion}', 'check');
+    showLDialog(context, icon: 'download', title: '发现新版本 v${l.version}', body: l.notes.isEmpty ? '当前 v${ApiConfig.appVersion}' : l.notes, actions: [('稍后', BtnKind.sec, null), ('立即更新', BtnKind.pri, () => openUpdateUrl(l.url))]);
+  }
   @override
   Widget build(BuildContext context) {
     final app = context.app;
@@ -567,15 +587,19 @@ class AboutPage extends StatelessWidget {
         const AppLogo(size: 72),
         const SizedBox(height: 14),
         Text('Lyra', style: ts(20, w: FontWeight.w800, c: pal.t1)),
-        Text('v2.4.0 (2401) · 稳定版', style: ts(12.5, c: pal.t2)),
+        Text(app.online ? 'v${ApiConfig.appVersion} (${ApiConfig.buildNumber})' : 'v2.4.0 (2401) · 稳定版', style: ts(12.5, c: pal.t2)),
         const SizedBox(height: 22),
       ]),
       Group(children: [
-        Item(icon: 'refresh', color: 'green', label: '检查更新', val: '有新版本', onTap: () => showLDialog(context, icon: 'download', title: '发现新版本 v2.5.0', body: '· 新增 4 套皮肤\n· 底部搜索栏\n· 修复若干问题', actions: [('稍后', BtnKind.sec, null), ('立即更新', BtnKind.pri, () => toast('正在下载更新包…', 'download'))])),
+        if (app.online)
+          Item(icon: 'refresh', color: 'green', label: '检查更新', val: app.updateInfo?.hasUpdate == true ? '有新版本 v${app.updateInfo!.latest?.version ?? ''}' : null, onTap: () => _checkUpdate(context))
+        else
+          Item(icon: 'refresh', color: 'green', label: '检查更新', val: '有新版本', onTap: () => showLDialog(context, icon: 'download', title: '发现新版本 v2.5.0', body: '· 新增 4 套皮肤\n· 底部搜索栏\n· 修复若干问题', actions: [('稍后', BtnKind.sec, null), ('立即更新', BtnKind.pri, () => toast('正在下载更新包…', 'download'))])),
         Item(icon: 'bell', color: 'orange', label: '公告历史', onTap: () => push(context, const AnnouncementsPage())),
         Item(icon: 'info', color: 'blue', label: '使用须知', onTap: () => pushFull(context, const DisclaimerPage(readOnly: true))),
-        Item(icon: 'info', color: 'red', label: '版本停用页（演示）', onTap: () => pushFull(context, const VersionDisabledPage())),
+        if (!app.online) Item(icon: 'info', color: 'red', label: '版本停用页（演示）', onTap: () => pushFull(context, const VersionDisabledPage())),
       ]),
+      if (!app.online)
       Group(title: '诊断', children: [
         Item(icon: 'bug', color: 'red', label: '崩溃报告', val: '0 条', onTap: () => toast('没有崩溃记录', 'check')),
         Item(icon: 'bug', color: 'gray', label: '自动上报崩溃', sw: app.set.crash, onSw: (v) => app.update(() => app.set.crash = v)),

@@ -6,8 +6,17 @@ class Song {
   final int dur; // 秒
   final double hue;
   final int variant;
-  const Song(this.id, this.title, this.artist, this.album, this.dur, this.quality, this.hue, this.variant);
+
+  /// 真实歌曲的全局标识 `<平台代码>:<平台歌曲 id>`（mock 歌曲为 null）。
+  final String? key;
+
+  /// 封面地址（没有时用按色相生成的渐变封面）。
+  final String? cover;
+  const Song(this.id, this.title, this.artist, this.album, this.dur, this.quality, this.hue, this.variant, {this.key, this.cover});
   bool get plainQ => quality == 'HQ' || quality == '128k';
+
+  /// 没有正在播放的歌时给预览 / 占位用（设置页的背景、歌词预览等）。
+  static const placeholder = Song(-1, 'Lyra', '', '', 0, '', 260, 2);
 }
 
 class Playlist {
@@ -19,7 +28,18 @@ class Playlist {
   final int variant;
   final bool mine;
   final String? tag;
-  const Playlist(this.id, this.title, {this.by = '', required this.count, this.playCount = '', required this.hue, required this.variant, this.mine = false, this.tag});
+
+  /// 真实歌单的歌曲（歌曲目录里的 id）。mock 歌单为空，用 [count] 显示数量。
+  final List<int> ids;
+
+  /// 真实歌单的云端 id、类型（created 自建 / collected 收藏的平台歌单）与平台来源。
+  final String? key, platform, externalId;
+  final String kind;
+  final DateTime? updatedAt, createdAt;
+  final String? cover;
+  const Playlist(this.id, this.title, {this.by = '', required this.count, this.playCount = '', required this.hue, required this.variant, this.mine = false, this.tag, this.ids = const [], this.key, this.platform, this.externalId, this.kind = 'created', this.updatedAt, this.createdAt, this.cover});
+
+  bool get isReal => key != null;
 }
 
 class LyricLine {

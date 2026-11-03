@@ -28,6 +28,12 @@ class Cloud with WidgetsBindingObserver {
   bool _observing = false;
 
   Cloud(this._app) {
+    if (_app.net != null) {
+      _library = _app.library;
+      _app.library.onLocalChange = () => libraryChanged();
+      _sources = _app.sources;
+      _app.sources.onLocalChange = () => sourcesChanged();
+    }
     stats = ListeningStats(_app.net?.prefs, _app.notify);
     _settingsDoc = SettingsDoc(() => exportSettings(_app), (j) {
       if (importSettings(_app, j)) {
@@ -39,11 +45,24 @@ class Cloud with WidgetsBindingObserver {
     if (n != null) engine = _buildEngine(n);
   }
 
-  SyncEngine _buildEngine(Net n) => SyncEngine(
-        client: n.client,
-        prefs: n.prefs,
-        docs: [_settingsDoc, LibraryDoc(_library), FavoritesDoc(_library), PlaylistsDoc(_library), StatsDoc(stats), SourcesDoc(_sources)],
-      );
+  SyncEngine _buildEngine(Net n) {
+    final lib = LibraryDoc(_library), favs = FavoritesDoc(_library), pls = PlaylistsDoc(_library), src = SourcesDoc(_sources);
+    final e = SyncEngine(client: n.client, prefs: n.prefs, docs: [_settingsDoc, lib, favs, pls, StatsDoc(stats), src]);
+    // 内容层的本机修改 → 对应文档的防抖推送（只有实时文档会真的推，其余由用户手动上传）
+    _libraryChanged = () {
+      lib.onLocalChange?.call();
+      favs.onLocalChange?.call();
+      pls.onLocalChange?.call();
+    };
+    _sourcesChanged = () => src.onLocalChange?.call();
+    return e;
+  }
+
+  void Function()? _libraryChanged, _sourcesChanged;
+
+  /// 内容层（音乐库 / 音源脚本）本机修改后调用。
+  void libraryChanged() => _libraryChanged?.call();
+  void sourcesChanged() => _sourcesChanged?.call();
 
   /// 各文档（界面上列出来用）。
   List<SyncDoc> get docs => engine?.docs.values.toList() ?? const [];
@@ -52,6 +71,10 @@ class Cloud with WidgetsBindingObserver {
   /// 启动时调用（main 里）：读本地统计、注册前后台监听。
   Future<void> init() async {
     await stats.load();
+    if (_app.net != null) {
+      await _app.library.load();
+      await _app.sources.load();
+    }
     _settingsFp = fingerprint(_settingsDoc.export());
     if (_app.net != null && !_observing) {
       WidgetsBinding.instance.addObserver(this);
@@ -90,8 +113,14 @@ class Cloud with WidgetsBindingObserver {
     if (_statSong != songId) {
       _statSong = songId;
       final s = _app.songById(songId);
-      // 目前歌曲都是 mock：source 记为 mock，只在本机统计，不上传
-      stats.begin(key: 'mock:${s.id}', source: 'mock', songId: '${s.id}', name: s.title, artist: s.artist, album: s.album, durationSec: s.dur);
+      final key = s.key;
+      if (key != null && key.contains(':')) {
+        final i = key.indexOf(':');
+        stats.begin(key: key, source: key.substring(0, i), songId: key.substring(i + 1), name: s.title, artist: s.artist, album: s.album, durationSec: s.dur);
+      } else {
+        // mock 歌曲：source 记为 mock，只在本机统计，不上传
+        stats.begin(key: 'mock:${s.id}', source: 'mock', songId: '${s.id}', name: s.title, artist: s.artist, album: s.album, durationSec: s.dur);
+      }
     }
     stats.tick(sec);
   }

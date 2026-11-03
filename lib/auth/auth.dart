@@ -3,9 +3,15 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../api/registration_api.dart';
 import '../core/state.dart';
 import '../core/tokens.dart';
+import '../api/device_login_api.dart';
+import '../api/password_api.dart';
+import '../api/update_api.dart';
+import '../net/api_config.dart';
 import '../net/net.dart';
 import '../ui/brand.dart';
 import '../ui/cover.dart';
@@ -458,7 +464,7 @@ class _LoginPageState extends State<LoginPage> {
           padding: const EdgeInsets.symmetric(vertical: 14),
           child: Row(children: [const Expanded(child: Divider(color: Color(0x26FFFFFF))), Padding(padding: const EdgeInsets.symmetric(horizontal: 10), child: Text('或', style: ts(12, c: const Color(0x80FFFFFF)))), const Expanded(child: Divider(color: Color(0x26FFFFFF)))]),
         ),
-        Btn('已登录的设备扫码', icon: 'scan', kind: BtnKind.ghost, block: true, onTap: () => toast('用已登录的手机扫电视 / 桌面上的二维码即可', 'scan')),
+        Btn('用已登录的设备授权', icon: 'scan', kind: BtnKind.ghost, block: true, onTap: () => app.online ? openDeviceCodeLogin(context) : toast('用已登录的手机扫电视 / 桌面上的二维码即可', 'scan')),
       ]);
     } else {
       final sc = pwScore(rpwd.text);
@@ -517,7 +523,7 @@ class _LoginPageState extends State<LoginPage> {
             ]),
           ),
           const SizedBox(height: 16),
-          Center(child: Press(onTap: () => app.update(() => app.authPage = 'versionDisabled'), child: Text('演示：版本停用页', style: ts(11.5, c: const Color(0x4DFFFFFF))))),
+          if (!app.online) Center(child: Press(onTap: () => app.update(() => app.authPage = 'versionDisabled'), child: Text('演示：版本停用页', style: ts(11.5, c: const Color(0x4DFFFFFF))))),
         ]),
       ),
     );
@@ -938,20 +944,62 @@ class _ForgotPageState extends State<ForgotPage> {
     }
   }
 
-  void _send() {
-    if (cd > 0) return;
-    if (!_isEmail.hasMatch(email.text)) return _err({'email': '先填写正确的邮箱'});
-    if (!capOk) {
-      capKey.currentState?.fail('请先完成人机验证');
-      return;
-    }
+  void _startCd() {
     setState(() => cd = 60);
-    toast('验证码已发送', 'mail');
+    cdt?.cancel();
     cdt = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) return t.cancel();
       setState(() => cd--);
       if (cd <= 0) t.cancel();
     });
+  }
+
+  Future<void> _send() async {
+    if (cd > 0) return;
+    if (!_isEmail.hasMatch(email.text.trim())) return _err({'email': '先填写正确的邮箱'});
+    final app = context.appRead;
+    if (!app.online) {
+      if (!capOk) {
+        capKey.currentState?.fail('请先完成人机验证');
+        return;
+      }
+      _startCd();
+      toast('验证码已发送', 'mail');
+      return;
+    }
+    try {
+      await PasswordApi(app.api.client).forgot(email.text);
+      if (!mounted) return;
+      _startCd();
+      toast('如果该邮箱已注册，验证码已发送（10 分钟内有效）', 'mail');
+    } on ApiException catch (e) {
+      toast(e.userMessage, 'info');
+    }
+  }
+
+  Future<void> _reset() async {
+    final app = context.appRead;
+    setState(() => busy = true);
+    try {
+      await PasswordApi(app.api.client).reset(email: email.text, code: code.text, password: p1.text);
+      if (!mounted) return;
+      setState(() {
+        busy = false;
+        st = 2;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => busy = false);
+      if (e.code == ApiCode.badParam && e.message.contains('验证码')) {
+        // 验证码错误 / 过期：回到第一步重新获取
+        setState(() => st = 0);
+        _err({'code': e.userMessage});
+      } else if (e.code == ApiCode.badParam) {
+        _err({'p1': e.userMessage}); // 密码强度不够等
+      } else {
+        toast(e.userMessage, 'info');
+      }
+    }
   }
 
   @override
@@ -967,15 +1015,17 @@ class _ForgotPageState extends State<ForgotPage> {
         Text('验证邮箱后即可重新设置密码', style: ts(13, c: const Color(0x99FFFFFF))),
         const SizedBox(height: 16),
         LField(controller: email, label: '注册邮箱', icon: 'mail', ok: _isEmail.hasMatch(email.text), error: err['email'], shake: shake),
+        if (!app.online) ...[
+          const SizedBox(height: 12),
+          Captcha(key: capKey, onPass: (v) => setState(() => capOk = v)),
+        ],
         const SizedBox(height: 12),
-        Captcha(key: capKey, onPass: (v) => setState(() => capOk = v)),
-        const SizedBox(height: 12),
-        LField(controller: code, label: '邮箱验证码', icon: 'key', error: err['code'], shake: shake, suffix: cd > 0 ? '${cd}s' : '获取验证码', onSuffix: _send),
+        LField(controller: code, label: '邮箱验证码', icon: 'key', keyboard: TextInputType.number, error: err['code'], shake: shake, suffix: cd > 0 ? '${cd}s' : '获取验证码', onSuffix: _send),
         const SizedBox(height: 18),
         Btn('下一步', block: true, busy: busy, onTap: () {
           final e = <String, String>{};
-          if (!_isEmail.hasMatch(email.text)) e['email'] = '邮箱格式不正确';
-          if (!capOk) {
+          if (!_isEmail.hasMatch(email.text.trim())) e['email'] = '邮箱格式不正确';
+          if (!capOk && !app.online) {
             if (e.isNotEmpty) return _err(e);
             capKey.currentState?.fail('请先完成人机验证');
             return;
@@ -996,14 +1046,18 @@ class _ForgotPageState extends State<ForgotPage> {
         const SizedBox(height: 12),
         LField(controller: p2, label: '再次输入新密码', icon: 'lock', password: true, ok: p2.text.isNotEmpty && p2.text == p1.text, error: err['p2'], shake: shake),
         const SizedBox(height: 10),
-        Text('重设后，其他已登录的设备需要重新登录', style: ts(12, c: const Color(0x80FFFFFF))),
+        Text('重设后，所有已登录的设备都需要重新登录', style: ts(12, c: const Color(0x80FFFFFF))),
         const SizedBox(height: 16),
         Btn('重设密码', block: true, busy: busy, onTap: () {
           final e = <String, String>{};
           if (p1.text.length < 8) e['p1'] = '至少 8 位';
           if (p2.text != p1.text) e['p2'] = '两次输入不一致';
           if (e.isNotEmpty) return _err(e);
-          _go(2);
+          if (app.online) {
+            _reset();
+          } else {
+            _go(2);
+          }
         }),
       ]);
     } else {
@@ -1053,10 +1107,41 @@ class _ForgotPageState extends State<ForgotPage> {
 
 // ======================= 版本停用 =======================
 class VersionDisabledPage extends StatelessWidget {
-  const VersionDisabledPage({super.key});
+  /// 服务端返回的更新信息；为空时是演示页。
+  final UpdateCheck? info;
+  const VersionDisabledPage({super.key, this.info});
   @override
   Widget build(BuildContext context) {
     final pal = context.pal;
+    final l = info?.latest;
+    if (info != null) {
+      return PopScope(
+        canPop: false,
+        child: Scaffold(
+          backgroundColor: pal.bg,
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 36),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Container(width: 88, height: 88, decoration: BoxDecoration(color: pal.warn.withValues(alpha: .14), borderRadius: BorderRadius.circular(28)), child: Icon(ic('info'), size: 42, color: pal.warn)),
+                const SizedBox(height: 22),
+                Text('当前版本已停止服务', style: ts(24, w: FontWeight.w800, c: pal.t1)),
+                const SizedBox(height: 10),
+                Text('v${ApiConfig.appVersion} 已被服务端停用，请更新到 ${l == null ? '最新版本' : 'v${l.version}'}${l?.minVersion != null ? '（最低 v${l!.minVersion}）' : ''}后继续使用。', textAlign: TextAlign.center, style: ts(14, c: pal.t2, h: 1.7)),
+                if (l != null && l.notes.isNotEmpty) ...[
+                  const SizedBox(height: 22),
+                  CardBox(margin: EdgeInsets.zero, child: SizedBox(width: double.infinity, child: Text('v${l.version} 更新内容\n${l.notes}', style: ts(13, c: pal.t2, h: 1.7)))),
+                ],
+                const SizedBox(height: 22),
+                Btn('立即更新', block: true, onTap: () => openUpdateUrl(l?.url)),
+                const SizedBox(height: 12),
+                const Hint('此页面无法跳过', align: TextAlign.center, padding: EdgeInsets.zero),
+              ]),
+            ),
+          ),
+        ),
+      );
+    }
     return PopScope(
       canPop: false,
       child: Scaffold(
@@ -1085,6 +1170,149 @@ class VersionDisabledPage extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// 打开更新包下载地址；打不开时复制到剪贴板。
+Future<void> openUpdateUrl(String? url) async {
+  if (url == null || url.isEmpty) return toast('服务端没有提供下载地址，请联系管理员', 'info');
+  final u = Uri.tryParse(url);
+  var ok = false;
+  try {
+    if (u != null) ok = await launchUrl(u, mode: LaunchMode.externalApplication);
+  } catch (_) {}
+  if (!ok) {
+    await Clipboard.setData(ClipboardData(text: url));
+    toast('下载地址已复制，请在浏览器中打开', 'copy');
+  }
+}
+
+/// 这台手机未登录时：取授权码并轮询，在另一台已登录的设备上（手机「扫一扫 → 输入授权码」或桌面端）确认后自动登录。
+void openDeviceCodeLogin(BuildContext context) {
+  final app = context.appRead;
+  showLSheet(context, title: '用已登录的设备授权', builder: (c) => _DeviceCodeLogin(app: app));
+}
+
+class _DeviceCodeLogin extends StatefulWidget {
+  final AppState app;
+  const _DeviceCodeLogin({required this.app});
+  @override
+  State<_DeviceCodeLogin> createState() => _DeviceCodeLoginState();
+}
+
+class _DeviceCodeLoginState extends State<_DeviceCodeLogin> {
+  String? code, error;
+  int left = 0;
+  Timer? tick, pollT;
+  bool done = false;
+
+  DeviceLoginApi get api => DeviceLoginApi(widget.app.api.client);
+
+  @override
+  void initState() {
+    super.initState();
+    _start();
+  }
+
+  @override
+  void dispose() {
+    tick?.cancel();
+    pollT?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _start() async {
+    tick?.cancel();
+    pollT?.cancel();
+    setState(() {
+      code = null;
+      error = null;
+    });
+    try {
+      final (c, ttl) = await api.requestCode();
+      if (!mounted) return;
+      setState(() {
+        code = c;
+        left = ttl;
+      });
+      tick = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!mounted) return;
+        setState(() => left--);
+        if (left <= 0) _expired();
+      });
+      _schedulePoll();
+    } on ApiException catch (e) {
+      if (mounted) setState(() => error = e.userMessage);
+    }
+  }
+
+  void _schedulePoll() {
+    // 3 秒左右一次，带一点抖动，避免和别的设备同时打到服务端
+    pollT = Timer(Duration(milliseconds: 2600 + DateTime.now().millisecond % 800), _poll);
+  }
+
+  Future<void> _poll() async {
+    final c = code;
+    if (c == null || done || !mounted) return;
+    try {
+      final r = await api.poll(c);
+      if (!mounted) return;
+      switch (r.status) {
+        case DeviceLoginStatus.pending:
+          _schedulePoll();
+        case DeviceLoginStatus.granted:
+          done = true;
+          tick?.cancel();
+          final a = await widget.app.api.auth.signedIn(r.data);
+          if (!mounted) return;
+          Navigator.of(context).pop();
+          widget.app.signedIn(a);
+          toast('登录成功', 'check');
+        case DeviceLoginStatus.denied:
+          tick?.cancel();
+          setState(() => error = '对方设备拒绝了这次登录');
+        case DeviceLoginStatus.expired:
+          _expired();
+      }
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      if (e.isNetwork) return _schedulePoll();
+      tick?.cancel();
+      setState(() => error = e.code == ApiCode.badParam ? '授权码已失效，请重新获取' : e.userMessage);
+    }
+  }
+
+  void _expired() {
+    tick?.cancel();
+    pollT?.cancel();
+    if (mounted) setState(() => error = '授权码已过期，请重新获取');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pal = context.pal;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(Tk.pad, 0, Tk.pad, 8),
+      child: Column(children: [
+        Text('在另一台已登录 Lyra 的设备上授权这台手机', textAlign: TextAlign.center, style: ts(13.5, c: pal.t2, h: 1.6)),
+        const SizedBox(height: 18),
+        if (error != null) ...[
+          Icon(ic('info'), size: 40, color: pal.warn),
+          const SizedBox(height: 10),
+          Text(error!, textAlign: TextAlign.center, style: ts(14, w: FontWeight.w600, c: pal.t1)),
+          const SizedBox(height: 16),
+          Btn('重新获取', block: true, onTap: _start),
+        ] else if (code == null)
+          const Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator())
+        else ...[
+          Text(code!.split('').join(' '), style: ts(40, w: FontWeight.w800, c: pal.t1, num: true, ls: 4)),
+          const SizedBox(height: 6),
+          Text('${left ~/ 60}:${(left % 60).toString().padLeft(2, '0')} 后失效 · 等待授权…', style: ts(12.5, c: pal.t3, num: true)),
+          const SizedBox(height: 16),
+          Text('在已登录的手机上打开「扫一扫 → 输入授权码」，输入上面的数字并确认。', textAlign: TextAlign.center, style: ts(12.5, c: pal.t2, h: 1.6)),
+        ],
+      ]),
     );
   }
 }

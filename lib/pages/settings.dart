@@ -1,6 +1,10 @@
 // 设置页：外观与界面 · 歌词 · 系统歌词 · 播放与音质 · 智能换源 · 平台与解析脚本（含导入音源）。
 // 每项都绑定 AppState.set 的字段，接口对接时把 Settings 持久化即可。
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
+import '../core/script_store.dart';
 import '../core/state.dart';
 import '../core/tokens.dart';
 import '../data/mock.dart';
@@ -339,7 +343,7 @@ class PlaybackPage extends StatelessWidget {
         Item(icon: 'wave', color: 'green', label: '淡入淡出', sub: '切歌与暂停时 400ms 交叉淡化', sw: s.fade, onSw: (v) => u(() => s.fade = v)),
         Item(icon: 'play', color: 'orange', label: '启动时自动播放', sw: s.autoplay, onSw: (v) => u(() => s.autoplay = v)),
         Item(icon: 'up', color: 'pink', label: '启动时打开播放页', sw: s.autoOpen, onSw: (v) => u(() => s.autoOpen = v)),
-        Item(icon: 'cloud', color: 'blue', label: '边听边缓存', sub: '已缓存 1.8 GB · 上限 4 GB', sw: s.cache, onSw: (v) => u(() => s.cache = v)),
+        Item(icon: 'cloud', color: 'blue', label: '边听边缓存', sub: app.online ? '播放过的歌缓存到本机，下次秒开' : '已缓存 1.8 GB · 上限 4 GB', sw: s.cache, onSw: (v) => u(() => s.cache = v)),
       ]),
       Group(title: '高级', children: [
         Item(icon: 'zap', color: 'gold', label: '智能换源', val: s.smart ? '已开启' : '已关闭', onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SmartPage()))),
@@ -515,6 +519,7 @@ class SourcesPage extends StatelessWidget {
     return SubPage(title: '平台与解析脚本', actions: [IBtn('plus', onTap: () => openImportSource(context))], children: [
       _note(pal, 'info', '先选音乐平台，再选该平台的解析脚本。脚本由你自行导入，Lyra 只负责调度和播放，请仅使用你有权访问的内容。'),
       Padding(padding: const EdgeInsets.fromLTRB(Tk.pad + 6, 6, 0, 8), child: Text('当前', style: ts(12.5, w: FontWeight.w600, c: pal.t3))),
+      // 平台登录接入前，联网模式下每个平台都显示「未登录」
       const Padding(padding: EdgeInsets.fromLTRB(Tk.pad, 0, Tk.pad, 18), child: SourceBar()),
       for (final p in platforms)
         Group(children: [
@@ -527,13 +532,23 @@ class SourcesPage extends StatelessWidget {
           for (final sc in app.scriptsOf(p.id))
             Padding(
               padding: const EdgeInsets.only(left: 42),
-              child: Item(
-                label: '${sc.name}  v${sc.ver}',
-                sub: '${sc.qualities.join(' · ')} · 成功率 ${sc.ok}%',
-                trailing: Row(children: [SignalBars(sc.ms), SizedBox(width: 52, child: Text('${sc.ms}ms', textAlign: TextAlign.right, style: ts(12, w: FontWeight.w600, c: pal.t3, num: true)))]),
-              ),
+              child: app.online
+                  ? Item(
+                      label: '${sc.name}  v${sc.ver}',
+                      sub: '${sc.qualities.isEmpty ? '音质以运行结果为准' : sc.qualities.join(' · ')} · 未测速',
+                      onTap: () => _scriptDetail(context, sc.id),
+                    )
+                  : Item(
+                      label: '${sc.name}  v${sc.ver}',
+                      sub: '${sc.qualities.join(' · ')} · 成功率 ${sc.ok}%',
+                      trailing: Row(children: [SignalBars(sc.ms), SizedBox(width: 52, child: Text('${sc.ms}ms', textAlign: TextAlign.right, style: ts(12, w: FontWeight.w600, c: pal.t3, num: true)))]),
+                    ),
             ),
         ]),
+      if (app.online)
+        _note(pal, 'clock', app.scripts.isEmpty
+            ? '还没有导入音源脚本。导入后会保存在本机，赞助用户可在「备份与同步 → 分项同步 → 音源脚本」里和桌面端互通。脚本运行时（解析播放地址）正在接入。'
+            : '已导入 ${app.scripts.length} 个脚本。脚本运行时（解析播放地址、测速）正在接入，目前只保存和同步脚本本身。'),
       Group(children: [Item(icon: 'plus', color: 'blue', label: '导入解析脚本', sub: '从文件、链接或剪贴板导入', onTap: () => openImportSource(context))]),
     ]);
   }
@@ -558,6 +573,7 @@ void openImportSource(BuildContext context) {
           }),
           Item(icon: 'folder', color: 'orange', label: '从文件导入', sub: '选择本地 .js 文件', onTap: () {
             Navigator.of(c).pop();
+            if (context.appRead.online) return toast('请用「从链接导入」或「粘贴内容」导入，文件选择稍后接入', 'info');
             toast('已打开文件选择器', 'folder');
           }),
           Item(icon: 'paste', color: 'violet', label: '粘贴内容', sub: '直接粘贴脚本代码', onTap: () {
@@ -577,11 +593,22 @@ void _scriptLink(BuildContext context) {
           LField(controller: tc, label: '脚本地址（https://…/source.js）', icon: 'link', autofocus: true),
           const SizedBox(height: 14),
           Row(children: [
-            Expanded(child: Btn.sec('粘贴', icon: 'paste', onTap: () => tc.text = 'https://example.com/lyra/source-e.js')),
+            Expanded(child: Btn.sec('粘贴', icon: 'paste', onTap: () async {
+              if (!context.appRead.online) {
+                tc.text = 'https://example.com/lyra/source-e.js';
+                return;
+              }
+              final d = await Clipboard.getData('text/plain');
+              tc.text = d?.text?.trim() ?? '';
+            })),
             const SizedBox(width: 10),
             Expanded(child: Btn('下一步', onTap: () {
               Navigator.of(c).pop();
-              _verify(context);
+              if (context.appRead.online) {
+                _fetchScript(context, tc.text.trim());
+              } else {
+                _verify(context);
+              }
             })),
           ]),
         ]),
@@ -606,11 +633,22 @@ void _scriptPaste(BuildContext context) {
             Row(children: [
               Expanded(child: Btn.sec('取消', onTap: () => Navigator.of(c).pop())),
               const SizedBox(width: 8),
-              Expanded(child: Btn.sec('粘贴脚本', onTap: () => set(() => tc.text = "/**\n * @name 解析脚本 E\n * @version 1.0.0\n * @platforms netease,qq\n * @quality HQ,SQ\n */\nexport async function resolve(song, quality) {\n  // ...\n}"))),
+              Expanded(child: Btn.sec('粘贴脚本', onTap: () async {
+                if (c.appRead.online) {
+                  final d = await Clipboard.getData('text/plain');
+                  set(() => tc.text = d?.text ?? '');
+                  return;
+                }
+                set(() => tc.text = "/**\n * @name 解析脚本 E\n * @version 1.0.0\n * @platforms netease,qq\n * @quality HQ,SQ\n */\nexport async function resolve(song, quality) {\n  // ...\n}");
+              })),
               const SizedBox(width: 8),
               Expanded(child: Btn('导入', onTap: tc.text.isEmpty ? null : () {
                 Navigator.of(c).pop();
-                _verify(context);
+                if (c.appRead.online) {
+                  _verifyReal(context, tc.text);
+                } else {
+                  _verify(context);
+                }
               })),
             ]),
           ]),
@@ -637,4 +675,61 @@ void _verify(BuildContext context) {
       toast('已导入「解析脚本 E」· 共 ${app.scripts.length} 个脚本', 'code');
     }),
   ]);
+}
+
+// ============ 联网模式：真实导入音源脚本 ============
+Future<void> _fetchScript(BuildContext context, String url) async {
+  final u = Uri.tryParse(url);
+  if (u == null || !(u.scheme == 'https' || u.scheme == 'http') || u.host.isEmpty) return toast('请输入 http(s) 开头的脚本地址', 'info');
+  toast('正在下载脚本…', 'download');
+  try {
+    final r = await http.get(u).timeout(const Duration(seconds: 20));
+    if (r.statusCode != 200) return toast('下载失败（HTTP ${r.statusCode}）', 'info');
+    if (r.bodyBytes.length > ScriptStore.maxBytes) return toast('脚本超过 2 MB，不像是音源脚本', 'info');
+    if (!context.mounted) return;
+    _verifyReal(context, utf8.decode(r.bodyBytes, allowMalformed: true), sourceUrl: url);
+  } catch (_) {
+    toast('下载失败，请检查地址和网络', 'wifi');
+  }
+}
+
+void _verifyReal(BuildContext context, String raw, {String? sourceUrl}) {
+  final app = context.appRead;
+  final pal = context.pal;
+  final m = ParsedScript.parse(raw);
+  if (m == null) return toast('这不像是洛雪音源脚本（没有找到 JavaScript 代码）', 'info');
+  final plats = m.platforms.isEmpty ? '未声明（以运行结果为准）' : m.platforms.map((p) => platformBy(p).name).join(' · ');
+  showLDialog(context, icon: 'code', title: '导入这个音源脚本？', content: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    for (final (k, v) in [('名称', m.name), ('版本', m.version.isEmpty ? '-' : m.version), ('作者', m.author.isEmpty ? '-' : m.author), ('平台', plats), ('大小', '${(raw.length / 1024).toStringAsFixed(1)} KB')])
+      Padding(padding: const EdgeInsets.only(bottom: 6), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [SizedBox(width: 44, child: Text(k, style: ts(13, c: pal.t3))), Expanded(child: Text(v, style: ts(13, w: FontWeight.w600, c: pal.t1)))])),
+    if (m.description.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text(m.description, style: ts(12.5, c: pal.t2, h: 1.5))),
+    Padding(padding: const EdgeInsets.only(top: 8), child: Text('脚本由你自行提供并对其合法性负责。', style: ts(11.5, c: pal.t3))),
+  ]), actions: [
+    ('取消', BtnKind.sec, null),
+    ('导入', BtnKind.pri, () {
+      app.sources.add(raw, m, sourceUrl: sourceUrl);
+      toast('已导入「${m.name}」· 共 ${app.scripts.length} 个脚本', 'code');
+    }),
+  ]);
+}
+
+void _scriptDetail(BuildContext context, String id) {
+  final app = context.appRead;
+  final s = app.sources.byId(id);
+  if (s == null) return;
+  showLSheet(context, title: s.name, sub: s.version.isEmpty ? null : 'v${s.version}', builder: (c) => Column(children: [
+        Group(children: [
+          if (s.author.isNotEmpty) Item(icon: 'user', color: 'blue', label: '作者', val: s.author, chev: false),
+          if (s.description.isNotEmpty) Item(icon: 'info', color: 'gray', label: s.description, chev: false),
+          if (s.sourceUrl != null) Item(icon: 'link', color: 'teal', label: '来源', sub: s.sourceUrl, chev: false),
+          Item(icon: 'code', color: 'violet', label: '大小', val: '${(s.rawScript.length / 1024).toStringAsFixed(1)} KB', chev: false),
+        ]),
+        Group(children: [
+          Item(icon: 'trash', color: 'red', label: '删除这个脚本', danger: true, chev: false, onTap: () {
+            Navigator.of(c).pop();
+            app.sources.remove(id);
+            toast('已删除「${s.name}」', 'trash');
+          }),
+        ]),
+      ]));
 }

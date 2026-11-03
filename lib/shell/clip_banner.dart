@@ -8,7 +8,8 @@ import '../ui/cover.dart';
 import '../ui/kit.dart';
 
 Future<void> detectClipboard(AppState app) async {
-  if (!app.set.clipDetect || app.clipSong != null) return;
+  // 分享口令目前是 mock 歌曲编号，联网模式下不识别
+  if (app.online || !app.set.clipDetect || app.clipSong != null) return;
   try {
     final d = await Clipboard.getData('text/plain');
     final m = RegExp(r'【Lyra歌曲·(\d+)·').firstMatch(d?.text ?? '');

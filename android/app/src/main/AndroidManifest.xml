@@ -46,4 +46,11 @@
             <data android:mimeType="text/plain"/>
         </intent>
     </queries>
+    <!-- Android 11+ 打开外部链接（更新下载地址）需要声明 -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
 </manifest>

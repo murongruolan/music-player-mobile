@@ -43,7 +43,7 @@ class PlayerRoute extends PageRouteBuilder<void> {
 }
 
 Future<void> openPlayer(BuildContext context) async {
-  if (_playerOpen) return;
+  if (_playerOpen || !context.appRead.hasSong) return;
   _playerOpen = true;
   final st = context.appRead;
   final pal = context.pal.forceDark;

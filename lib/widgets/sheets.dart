@@ -22,12 +22,24 @@ void registerSheets() {
 
 // ============ 歌曲更多 ============
 void openSongMore(BuildContext context, int id, String ctx, {bool dark = false}) {
-  final s = songs[id];
+  final s = context.appRead.songById(id);
   showLSheet(context, title: '歌曲', dark: dark, builder: (c) {
     final app = c.app;
     final pal = c.pal;
     void close() => Navigator.of(c).pop();
-    final grid = [
+    // 联网模式：取流 / 下载 / 歌词 / 投放都依赖音源解析，先只保留真正能用的操作
+    final onlineGrid = [
+      ('plus', '加入歌单', () {
+        close();
+        openAddToPlaylist(context, id);
+      }),
+      ('copy', '复制歌名', () {
+        close();
+        Clipboard.setData(ClipboardData(text: '${s.title} - ${s.artist}'));
+        toast('已复制「${s.title} - ${s.artist}」', 'copy');
+      }),
+    ];
+    final grid = app.online ? onlineGrid : [
       ('next', '下一首播放', () {
         app.playNext(id);
         close();
@@ -93,6 +105,15 @@ void openSongMore(BuildContext context, int id, String ctx, {bool dark = false})
         ),
       ),
       const SizedBox(height: 8),
+      if (app.online)
+        Group(children: [
+          Item(icon: 'user', color: 'blue', label: '查看歌手', val: s.artist, onTap: () {
+            close();
+            push(context, ArtistPage(id: id));
+          }),
+          if (s.key != null) Item(icon: 'info', color: 'gray', label: '来源', val: s.key, chev: false),
+        ])
+      else
       Group(children: [
         Item(icon: 'album', color: 'violet', label: '查看专辑', val: s.album, onTap: () {
           close();
@@ -132,9 +153,14 @@ void openAddToPlaylist(BuildContext context, int id) {
         Navigator.of(c).pop();
         openNewPlaylist(context);
       }),
-      for (final p in app.myPlaylists)
-        Item(lead: Cover.pl(p, size: 48, radius: 10), label: p.title, sub: '${p.count} 首', onTap: () {
+      for (final p in app.myPlaylists.where((p) => !app.online || p.kind == 'created'))
+        Item(lead: Cover.pl(p, size: 48, radius: 10), label: p.title, sub: '${app.online ? p.ids.length : p.count} 首', onTap: () {
           Navigator.of(c).pop();
+          if (app.online) {
+            final n = app.library.addToPlaylist(p.id, [id]);
+            toast(n > 0 ? '已加入「${p.title}」' : '「${p.title}」里已经有这首歌了', n > 0 ? 'check' : 'info');
+            return;
+          }
           toast('已加入「${p.title}」', 'check');
         }),
     ]);
@@ -156,11 +182,15 @@ void openNewPlaylist(BuildContext context) {
               Expanded(child: LField(controller: tc, label: '歌单名称', icon: 'edit', autofocus: true)),
             ]),
             const SizedBox(height: 10),
-            Item(icon: 'lock', color: 'gray', label: '设为私密', sub: '仅自己可见', sw: private, onSw: (v) => set(() => private = v)),
+            if (!app.online) Item(icon: 'lock', color: 'gray', label: '设为私密', sub: '仅自己可见', sw: private, onSw: (v) => set(() => private = v)),
             const SizedBox(height: 10),
             Btn('创建', block: true, onTap: () {
               final name = tc.text.trim().isEmpty ? '新建歌单' : tc.text.trim();
-              app.update(() => app.myPlaylists.add(Playlist(200 + app.myPlaylists.length, name, count: 0, hue: hue, variant: 2, mine: true)));
+              if (app.online) {
+                app.library.createPlaylist(name, hue);
+              } else {
+                app.update(() => app.myPlaylists.add(Playlist(200 + app.myPlaylists.length, name, count: 0, hue: hue, variant: 2, mine: true)));
+              }
               Navigator.of(c).pop();
               toast('已创建「$name」', 'check');
             }),
@@ -171,6 +201,7 @@ void openNewPlaylist(BuildContext context) {
 
 // ============ 导入歌单：识别平台 → 解析 → 确认 ============
 void openImportPlaylist(BuildContext context) {
+  if (context.appRead.online) return openPendingFeature(context, '导入平台歌单', '解析网易云 / QQ / 酷狗等平台的歌单链接需要接入平台接口，正在开发。');
   final tc = TextEditingController();
   var pid = 'netease';
   var stage = 0; // 0 输入 1 解析中 2 确认
@@ -277,6 +308,9 @@ void openImportPlaylist(BuildContext context) {
 // ============ 平台登录：扫码 / 手机号 / Cookie ============
 void openPlatLogin(BuildContext context, String pid, {String mode = '扫码'}) {
   final p = platformBy(pid);
+  if (context.appRead.online) {
+    return openPendingFeature(context, '登录${p.name}', '平台账号登录（扫码 / 手机号 / Cookie）需要对接${p.name}的接口，正在开发。登录后才能看到每日推荐和你在该平台的歌单。');
+  }
   var m = mode;
   var st = 0; // 0 等待 1 已扫码 2 成功
   Timer? t1, t2;
@@ -414,6 +448,7 @@ class QrPainter extends CustomPainter {
 
 // ============ 分享口令 ============
 void openShareCode(BuildContext context, {int? songId, String? playlistTitle, bool dark = false}) {
+  if (context.appRead.online) return openPendingFeature(context, '分享口令', '分享口令需要服务端生成可被其它设备识别的歌曲 / 歌单链接，目前后端还没有对应接口。');
   final s = songs[songId ?? context.appRead.cur];
   final code = playlistTitle != null ? '【Lyra歌单·7741029】「$playlistTitle」复制这段话，打开 Lyra 即可收听' : '【Lyra歌曲·${s.id + 1}·${s.title}】${s.artist} · 复制这段话，打开 Lyra 即可收听';
   showLSheet(context, title: '分享口令', dark: dark, builder: (c) {
@@ -796,7 +831,7 @@ void openQueue(BuildContext context, {bool dark = true}) {
         child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: Tk.pad, vertical: 5), children: [
           LChip(app.modeName, icon: const {'loop': 'repeat', 'one': 'repeat1', 'shuffle': 'shuffle', 'order': 'order'}[app.mode], on: true, onTap: app.cycleMode),
           const SizedBox(width: 8),
-          LChip('存为歌单', icon: 'plus', onTap: () {
+          if (!app.online) LChip('存为歌单', icon: 'plus', onTap: () {
             app.update(() => app.myPlaylists.add(Playlist(400 + app.myPlaylists.length, app.queueName, count: app.queue.length, hue: app.song.hue, variant: 2, mine: true)));
             toast('已存为歌单「${app.queueName}」', 'check');
           }),
@@ -1111,3 +1146,19 @@ class _LFieldState extends State<LField> with SingleTickerProviderStateMixin {
 
 // ============ 设置页里用到的跳转 ============
 void openSkinsLink(BuildContext context) => push(context, const AppearancePage());
+
+/// 还没接入的功能：说明原因，不假装成功。
+void openPendingFeature(BuildContext context, String title, String why) {
+  showLSheet(context, title: title, builder: (c) => Padding(
+        padding: const EdgeInsets.fromLTRB(Tk.pad, 0, Tk.pad, 8),
+        child: Column(children: [
+          Icon(ic('clock'), size: 40, color: c.pal.t3),
+          const SizedBox(height: 12),
+          Text('这个功能正在接入', style: ts(16, w: FontWeight.w700, c: c.pal.t1)),
+          const SizedBox(height: 6),
+          Text(why, textAlign: TextAlign.center, style: ts(13, c: c.pal.t2, h: 1.6)),
+          const SizedBox(height: 18),
+          Btn('知道了', block: true, onTap: () => Navigator.of(c).pop()),
+        ]),
+      ));
+}

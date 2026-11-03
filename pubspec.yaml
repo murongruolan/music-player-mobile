@@ -15,6 +15,10 @@ dependencies:
   flutter_secure_storage: ^11.2.0
   # 非敏感的本地数据（公告已读、同步版本号、听歌统计、埋点队列）；钥匙串不适合放大块数据
   shared_preferences: ^2.3.0
+  # 打开更新包下载地址 / 外部链接（官方插件）
+  url_launcher: ^6.3.0
+  # 扫码登录：扫电视 / 车机 / 桌面端上的授权二维码
+  mobile_scanner: ^7.0.0
 
 dev_dependencies:
   flutter_test:

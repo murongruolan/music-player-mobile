@@ -4,10 +4,13 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../data/mock.dart';
+import '../api/update_api.dart';
 import '../data/models.dart';
 import '../net/net.dart';
 import 'announcements.dart';
 import 'cloud.dart';
+import 'library_store.dart';
+import 'script_store.dart';
 import 'telemetry.dart';
 import 'tokens.dart';
 
@@ -85,6 +88,30 @@ class AppState extends ChangeNotifier {
 
   /// 埋点（演示模式不上报）。
   late final telemetry = Telemetry(net);
+
+  /// 本机音乐库（联网模式）：我喜欢、歌单、搜索历史，持久化并参与云同步。
+  late final library = LibraryStore(this, net?.prefs);
+
+  /// 导入的音源脚本（联网模式），持久化并可经 lx_sources 云同步。
+  late final sources = ScriptStore(this, net?.prefs);
+
+  /// 最近一次检查更新的结果；[versionBlock] 非空时整个 App 显示「版本停用」页。
+  UpdateCheck? updateInfo, versionBlock;
+
+  /// 启动时检查更新（不需要登录）。失败静默。
+  Future<void> checkUpdate() async {
+    final n = net;
+    if (n == null) return;
+    try {
+      final r = await UpdateApi(n.client).check();
+      updateInfo = r;
+      versionBlock = r.versionDisabled ? r : null;
+      notifyListeners();
+    } on ApiException catch (_) {}
+  }
+
+  /// 给用户的一句话提示（main 里接到 toast）。AppState 不直接依赖 UI。
+  void Function(String msg, String icon)? notice;
   int get unread => anns.unread;
   bool isRead(Announcement a) => anns.isRead(a);
 
@@ -110,6 +137,7 @@ class AppState extends ChangeNotifier {
       account = Account.fromJson(u);
       notifyListeners();
     });
+    if (net != null) _enterRealMode();
     for (final p in platforms) {
       scriptOrder[p.id] = scripts.where((s) => s.platforms.contains(p.id)).map((s) => s.id).toList();
     }
@@ -122,8 +150,38 @@ class AppState extends ChangeNotifier {
     return Pal.of(dark, accents[accent]);
   }
 
-  Song get song => songs[cur];
-  Song songById(int id) => songs[id];
+  /// 联网模式：清掉所有 mock 内容，从空的本机数据开始（音乐库、歌单、脚本、平台登录、播放队列）。
+  /// 全局 `songs` 变成真实歌曲目录（见 [LibraryStore]）。
+  void _enterRealMode() {
+    songs.clear();
+    queue = [];
+    queueName = '';
+    cur = -1;
+    playing = false;
+    pos.value = 0;
+    liked.clear();
+    myPlaylists.clear();
+    scripts.clear();
+    history.clear();
+    platLogin.clear();
+    clipSong = null;
+  }
+
+  /// 有没有正在播放 / 暂停中的歌。没有时迷你播放条隐藏、播放器打不开。
+  bool get hasSong => cur >= 0 && cur < songs.length;
+
+  /// 当前歌曲；没有时返回占位（只用于预览，不会出现在列表里）。
+  Song get song => hasSong ? songs[cur] : Song.placeholder;
+  Song songById(int id) => id >= 0 && id < songs.length ? songs[id] : Song.placeholder;
+
+  /// 能不能真正播放。联网模式下音源解析（脚本运行时 / 平台取流）还没接入，先拦下来并提示，
+  /// 不再用计时器假装在播放。
+  bool get canPlay => !online;
+  bool _blockPlay() {
+    if (canPlay) return false;
+    notice?.call('暂时还不能播放：音源解析尚未接入', 'info');
+    return true;
+  }
 
   /// 给 [Cloud] 等协作对象用的 notifyListeners。
   void notify() => notifyListeners();
@@ -150,7 +208,8 @@ class AppState extends ChangeNotifier {
       final l = scriptsOf(plat);
       return (name: '自动选择', ms: l.isEmpty ? 0 : l.first.ms, ok: 99);
     }
-    final s = scripts.firstWhere((x) => x.id == script, orElse: () => scripts.first);
+    final s = scripts.where((x) => x.id == script).firstOrNull ?? scripts.firstOrNull;
+    if (s == null) return (name: '自动选择', ms: 0, ok: 0);
     return (name: s.name, ms: s.ms, ok: s.ok);
   }
 
@@ -165,6 +224,7 @@ class AppState extends ChangeNotifier {
 
   /// 当前行内进度 0..1（只有行时间时按行时长 × 0.92 均匀插值）。
   double get lineProgress {
+    if (lyrics.isEmpty) return 0;
     final l = lyrics[lyricIndex];
     return ((pos.value + set.loff - l.t) / (l.d * .92)).clamp(0, 1);
   }
@@ -177,6 +237,10 @@ class AppState extends ChangeNotifier {
   }
 
   List<int> listOf(String k) {
+    if (online) {
+      // 联网模式：只有真实数据。热门 / 每日推荐 / 本地音乐要等平台和本地扫描接入
+      return switch (k) { 'like' => liked.toList(), 'hot' || 'daily' || 'local' => <int>[], _ => List.generate(songs.length, (i) => i) };
+    }
     switch (k) {
       case 'hot':
         return [0, 2, 4, 5, 17, 7, 11, 16, 14, 12];
@@ -198,7 +262,7 @@ class AppState extends ChangeNotifier {
     final now = DateTime.now();
     final dt = now.difference(_last).inMicroseconds / 1e6;
     _last = now;
-    if (!playing) return;
+    if (!playing || !hasSong) return;
     cloud.onPlayTick(cur, dt);
     var p = pos.value + dt * speed;
     if (p >= song.dur) {
@@ -213,6 +277,7 @@ class AppState extends ChangeNotifier {
   }
 
   void play(int id, {String? list, String? name}) {
+    if (_blockPlay()) return;
     if (list != null) {
       queue = listOf(list);
       if (name != null) queueName = name;
@@ -225,6 +290,7 @@ class AppState extends ChangeNotifier {
   }
 
   void playAll(String list, {bool shuffle = false, String? name}) {
+    if (_blockPlay()) return;
     queue = listOf(list);
     if (shuffle) queue.shuffle(math.Random(7));
     if (name != null) queueName = name;
@@ -237,6 +303,7 @@ class AppState extends ChangeNotifier {
   }
 
   void toggle() {
+    if (!hasSong) return;
     playing = !playing;
     notifyListeners();
   }
@@ -252,6 +319,7 @@ class AppState extends ChangeNotifier {
   }
 
   void _step(int d, {bool notify = true}) {
+    if (queue.isEmpty) return;
     final i = queue.indexOf(cur);
     if (mode == 'shuffle') {
       cur = queue[(i + 3 + math.Random().nextInt(math.max(1, queue.length - 2))) % queue.length];
@@ -263,6 +331,7 @@ class AppState extends ChangeNotifier {
   }
 
   void seek(double sec) {
+    if (!hasSong) return;
     pos.value = sec.clamp(0, song.dur.toDouble());
   }
 
@@ -278,10 +347,12 @@ class AppState extends ChangeNotifier {
     final on = !liked.contains(id);
     on ? liked.add(id) : liked.remove(id);
     notifyListeners();
+    if (online) library.favoritesChanged();
     return on;
   }
 
   void playNext(int id) {
+    if (_blockPlay()) return;
     queue.remove(id);
     queue.insert(math.min(queue.indexOf(cur) + 1, queue.length), id);
     notifyListeners();
@@ -379,6 +450,7 @@ class AppState extends ChangeNotifier {
     account = null;
     unawaited(anns.reset());
     unawaited(cloud.reset());
+    if (online) unawaited(library.reset());
     if (!authed) return notifyListeners();
     authed = false;
     authPage = 'login';
@@ -392,6 +464,7 @@ class AppState extends ChangeNotifier {
     anns.dispose();
     cloud.dispose();
     telemetry.dispose();
+    library.dispose();
     _clock?.cancel();
     pos.dispose();
     super.dispose();

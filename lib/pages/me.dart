@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/state.dart';
 import '../core/tokens.dart';
 import '../data/mock.dart';
+import '../net/api_config.dart';
 import '../shell/shell.dart';
 import '../ui/cover.dart';
 import '../ui/icons.dart';
@@ -20,10 +21,10 @@ class MePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.app;
     final pal = context.pal;
-    final otd = songs[12];
+    final otd = app.online ? null : songs[12]; // 「那年今日」需要一年以上的聆听记录，联网模式暂不显示
     // 登录后展示真实资料（AppState.account），演示 / 截图回落 mock
     final acc = app.account;
-    final name = acc?.nickname ?? '阿栗';
+    final name = acc?.nickname ?? (app.online ? 'Lyra 用户' : '阿栗');
     return TabPage(
       title: '我的',
       controller: tabScroll[4],
@@ -35,13 +36,13 @@ class MePage extends StatelessWidget {
             onTap: () => push(context, const AccountPage()),
             padding: const EdgeInsets.all(18),
             child: Row(children: [
-              Avatar(name.isEmpty ? 'L' : name.characters.first, size: 64),
+              Avatar(avatarText(app), size: 64),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(name, style: ts(19, w: FontWeight.w700, c: pal.t1)),
                   const SizedBox(height: 3),
-                  Text(acc == null ? 'UID 10086427 · ali@example.com' : 'UID ${acc.uid} · ${acc.email}', style: ts(12.5, c: pal.t2)),
+                  Text(acc == null ? (app.online ? '' : 'UID 10086427 · ali@example.com') : 'UID ${acc.uid} · ${acc.email}', style: ts(12.5, c: pal.t2)),
                   const SizedBox(height: 8),
                   Row(children: [
                     if (acc != null && !acc.isActivated)
@@ -59,7 +60,7 @@ class MePage extends StatelessWidget {
         const SizedBox(height: 12),
         Rise(1, const _WeekCard()),
         const SizedBox(height: 12),
-        Rise(
+        if (otd != null) Rise(
           2,
           CardBox(
             onTap: () => app.play(otd.id, list: 'all'),
@@ -100,7 +101,7 @@ class MePage extends StatelessWidget {
           Item(icon: 'link', color: 'green', label: '平台账号', val: '已登录 ${app.platLogin.length} 个', onTap: () => push(context, const PlatAccountsPage())),
           Item(icon: 'refresh', color: 'blue', label: '账号备份与同步', onTap: () => push(context, const BackupPage())),
           Item(icon: 'bell', color: 'orange', label: '公告', val: app.unread > 0 ? '${app.unread} 条未读' : null, onTap: () => push(context, const AnnouncementsPage())),
-          Item(icon: 'info', color: 'gray', label: '关于与更新', val: 'v2.4.0', onTap: () => push(context, const AboutPage())),
+          Item(icon: 'info', color: 'gray', label: '关于与更新', val: app.online ? 'v${ApiConfig.appVersion}' : 'v2.4.0', onTap: () => push(context, const AboutPage())),
         ]),
       ],
     );
@@ -112,6 +113,8 @@ class _WeekCard extends StatelessWidget {
   const _WeekCard();
   @override
   Widget build(BuildContext context) {
+    final app = context.app;
+    if (app.online) return const _RealWeekCard();
     final pal = context.pal;
     const vals = [42, 65, 38, 80, 54, 96, 71];
     return CardBox(
@@ -155,6 +158,77 @@ class _WeekCard extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Row(children: [for (final d in '一二三四五六日'.split('')) Expanded(child: Text(d, textAlign: TextAlign.center, style: ts(9.5, c: pal.t3)))]),
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+
+/// 本周聆听卡（真实数据）：近 7 天时长、与上 7 天对比、连续聆听天数、最常听的歌手。
+class _RealWeekCard extends StatelessWidget {
+  const _RealWeekCard();
+  @override
+  Widget build(BuildContext context) {
+    final app = context.app;
+    final pal = context.pal;
+    final st = app.cloud.stats;
+    final week = st.summary(7);
+    final prev = st.summary(14).ms - week.ms;
+    final mins = st.dailyMinutes(7);
+    final maxM = mins.fold<int>(1, (a, b) => b > a ? b : a);
+    final plays = st.dailyPlays(366);
+    var streak = 0;
+    for (var i = plays.length - 1; i >= 0 && plays[i] > 0; i--) {
+      streak++;
+    }
+    final top = st.topArtists(7, limit: 1);
+    final delta = prev > 0 ? ((week.ms - prev) / prev * 100).round() : null;
+    final now = DateTime.now();
+    final from = DateTime(now.year, now.month, now.day - 6);
+    const wd = '一二三四五六日';
+    return CardBox(
+      onTap: () => push(context, const StatsPage()),
+      padding: const EdgeInsets.all(16),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('近 7 天聆听 · ${from.month}.${from.day} – ${now.month}.${now.day}', style: ts(12, c: pal.t3)),
+            const SizedBox(height: 6),
+            Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+              CountUp(week.ms / 3600000, decimals: 1, style: ts(30, w: FontWeight.w800, c: pal.t1, num: true)),
+              const SizedBox(width: 3),
+              Text('小时', style: ts(13, c: pal.t3)),
+              if (delta != null) ...[
+                const SizedBox(width: 8),
+                Text('${delta >= 0 ? '↑' : '↓'}${delta.abs()}%', style: ts(12.5, w: FontWeight.w700, c: delta >= 0 ? pal.ok : pal.t3)),
+              ],
+            ]),
+            const SizedBox(height: 8),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              if (streak > 1) Badge2('连续 $streak 天'),
+              if (top.isNotEmpty) Badge2('最爱 · ${top.first.$1}'),
+              if (week.plays == 0) const Badge2('还没有聆听记录'),
+            ]),
+          ]),
+        ),
+        SizedBox(
+          width: 128,
+          height: 76,
+          child: Column(children: [
+            Expanded(
+              child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                for (var i = 0; i < 7; i++)
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 3),
+                      child: FractionallySizedBox(heightFactor: (mins[i] / maxM).clamp(.04, 1.0), child: Container(decoration: BoxDecoration(color: i == 6 ? pal.acc : pal.acc.withValues(alpha: .35), borderRadius: BorderRadius.circular(3)))),
+                    ),
+                  ),
+              ]),
+            ),
+            const SizedBox(height: 4),
+            Row(children: [for (var i = 0; i < 7; i++) Expanded(child: Text(wd[DateTime(now.year, now.month, now.day - 6 + i).weekday - 1], textAlign: TextAlign.center, style: ts(9.5, c: pal.t3)))]),
           ]),
         ),
       ]),
