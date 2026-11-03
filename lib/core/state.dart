@@ -7,6 +7,7 @@ import '../data/mock.dart';
 import '../api/update_api.dart';
 import '../data/models.dart';
 import '../net/net.dart';
+import '../platform/registry.dart';
 import 'announcements.dart';
 import 'cloud.dart';
 import 'library_store.dart';
@@ -130,7 +131,10 @@ class AppState extends ChangeNotifier {
   /// 赞助用户才能用云同步 / 云备份 / 云端统计。mock 模式下视为已赞助，方便演示。
   bool get isSponsor => net == null || (account?.isSponsor ?? false);
 
-  AppState({this.net}) {
+  /// 各音乐平台的公开内容（发现页、搜索、歌单 / 榜单详情）。测试可以注入假平台。
+  final PlatformHub content;
+
+  AppState({this.net, PlatformHub? content}) : content = content ?? PlatformHub() {
     _sessionSub = net?.session.onEnd.listen(sessionEnded);
     _userSub = net?.session.onUser.listen((u) {
       if (u == null) return;

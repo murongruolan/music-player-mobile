@@ -19,6 +19,12 @@ dependencies:
   url_launcher: ^6.3.0
   # 扫码登录：扫电视 / 车机 / 桌面端上的授权二维码
   mobile_scanner: ^7.0.0
+  # 平台接口签名 / 加密（网易 weapi·eapi、QQ zzcSign、酷狗签名、酷我 AES）与歌词解码（酷狗 KRC zlib）
+  crypto: ^3.0.3
+  pointycastle: ^4.0.0
+  archive: ^4.0.0
+  # 公告 Markdown 解析（官方 dart-lang/markdown，渲染自己做）
+  markdown: ^7.2.0
 
 dev_dependencies:
   flutter_test:

@@ -16,6 +16,7 @@ import '../core/tokens.dart';
 import '../data/models.dart';
 import '../ui/icons.dart';
 import '../ui/kit.dart';
+import '../ui/markdown.dart';
 
 bool _showing = false;
 
@@ -203,8 +204,8 @@ class _AnnPopupState extends State<_AnnPopup> {
                         Padding(padding: const EdgeInsets.only(right: 8), child: Text(cur.title, style: ts(19, w: FontWeight.w800, c: pal.t1, h: 1.35))),
                         const SizedBox(height: 10),
                         ConstrainedBox(
-                          constraints: BoxConstraints(maxHeight: h * .34),
-                          child: SingleChildScrollView(padding: const EdgeInsets.only(right: 8), child: Text(cur.body, style: ts(14, c: pal.t2, h: 1.7))),
+                          constraints: BoxConstraints(maxHeight: h * .46),
+                          child: SingleChildScrollView(padding: const EdgeInsets.only(right: 8), child: MarkdownView(cur.body, style: ts(14, c: pal.t2, h: 1.7))),
                         ),
                       ],
                     ),
