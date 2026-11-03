@@ -17,6 +17,7 @@ import 'common.dart';
 import 'detail.dart';
 import 'misc.dart';
 import 'scan.dart';
+import 'settings.dart';
 
 class PlatFeat {
   final int lv, like, mine, fav;
@@ -48,6 +49,7 @@ class DiscoverPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = context.app;
+    if (app.online) return const _OnlineDiscover();
     final logged = app.isIn(app.plat);
     final mods = <Widget>[];
     for (final m in app.homeMods) {
@@ -943,3 +945,78 @@ class MvCard extends StatelessWidget {
 // 便于其它页面引用的平台推荐类型
 Widget platBadgeOf(Platform p, [double s = 22]) => PlatBadge(p, size: s);
 IconData icOf(String n) => ic(n);
+
+// ============ 联网模式：平台内容接入前的发现页 ============
+// 推荐歌单、榜单、每日推荐、新歌等都来自各音乐平台的接口，平台直连还没有接入，
+// 这里不再展示 mock 内容，只放真实数据（我的音乐库、听歌统计）和说明。
+class _OnlineDiscover extends StatelessWidget {
+  const _OnlineDiscover();
+  @override
+  Widget build(BuildContext context) {
+    final app = context.app;
+    final pal = context.pal;
+    final pls = app.myPlaylists;
+    final week = app.cloud.stats.summary(7);
+    return TabPage(
+      title: '发现',
+      controller: tabScroll[0],
+      actions: [
+        IBtn('scan', onTap: () => pushFull(context, const ScanPage())),
+        IBtn('bell', dot: app.unread > 0, onTap: () => push(context, const AnnouncementsPage())),
+        const SizedBox(width: 4),
+        Avatar(avatarText(app), onTap: () => app.update(() => app.tab = 4)),
+      ],
+      children: [
+        const Padding(padding: EdgeInsets.fromLTRB(Tk.pad, 2, Tk.pad, 12), child: SourceBar()),
+        Rise(
+          0,
+          CardBox(
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Container(width: 42, height: 42, decoration: BoxDecoration(color: pal.accSoft, borderRadius: BorderRadius.circular(13)), child: Icon(ic('compass'), color: pal.accText)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('${app.platform.name}内容接入中', style: ts(15, w: FontWeight.w700, c: pal.t1)),
+                  const SizedBox(height: 4),
+                  Text('推荐歌单、榜单、每日推荐和新歌需要连接各音乐平台，这部分正在开发。你在桌面端的收藏和歌单可以通过云同步出现在「音乐库」。', style: ts(12.5, c: pal.t2, h: 1.55)),
+                ]),
+              ),
+            ]),
+          ),
+        ),
+        Rise(
+          1,
+          QuickGrid([
+            ('library', '音乐库', () => app.update(() => app.tab = 3)),
+            ('chart', '听歌统计', () => push(context, const StatsPage())),
+            ('refresh', '备份与同步', () => push(context, const BackupPage())),
+            ('globe', '音源脚本', () => push(context, const SourcesPage())),
+          ]),
+        ),
+        Sec('我的歌单', more: pls.isEmpty ? null : '全部', onMore: () => app.update(() {
+              app.tab = 3;
+              app.libSeg = '歌单';
+            })),
+        if (pls.isEmpty)
+          const Hint('还没有歌单。可以在「音乐库 → 歌单」新建，或开启云同步拉取桌面端的歌单。', padding: EdgeInsets.symmetric(horizontal: Tk.pad))
+        else
+          HScroll(height: 196, children: [for (final p in pls.take(10)) PlCard(p, sub: '${p.ids.isEmpty ? p.count : p.ids.length} 首', onTap: () => push(context, PlaylistPage(id: p.id)))]),
+        Sec('本周', more: '统计', onMore: () => push(context, const StatsPage())),
+        CardBox(
+          onTap: () => push(context, const StatsPage()),
+          child: Row(children: [
+            Expanded(child: _kv(pal, '收藏', '${app.liked.length}', '首')),
+            Expanded(child: _kv(pal, '聆听', (week.ms / 3600000).toStringAsFixed(1), '小时')),
+            Expanded(child: _kv(pal, '播放', '${week.plays}', '次')),
+          ]),
+        ),
+      ],
+    );
+  }
+
+  Widget _kv(Pal pal, String k, String v, String u) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(k, style: ts(12, c: pal.t3)),
+        const SizedBox(height: 4),
+        Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [Text(v, style: ts(22, w: FontWeight.w800, c: pal.t1, num: true)), const SizedBox(width: 2), Text(u, style: ts(12, c: pal.t3))]),
+      ]);
+}

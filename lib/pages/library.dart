@@ -28,6 +28,9 @@ class _LibraryPageState extends State<LibraryPage> {
     final pal = context.pal;
     final seg = app.libSeg;
     final body = <Widget>[];
+    final online = app.online;
+    final syncSt = online ? app.cloud.status?.value : null;
+    final synced = !online || (app.isSponsor && app.set.cloudSync);
     if (seg == '我喜欢') {
       body.addAll([
         CardBox(
@@ -43,26 +46,34 @@ class _LibraryPageState extends State<LibraryPage> {
                 Row(children: [
                   CountUp(app.liked.length.toDouble(), style: ts(12.5, c: pal.t2, num: true)),
                   Text(' 首 · ', style: ts(12.5, c: pal.t2)),
-                  Icon(ic('cloud'), size: 13, color: pal.ok),
-                  Text(' 已同步', style: ts(12.5, c: pal.ok)),
-                  Text(' · 刚刚', style: ts(12.5, c: pal.t2)),
+                  Icon(ic(synced ? 'cloud' : 'device'), size: 13, color: synced ? pal.ok : pal.t3),
+                  Text(synced ? ' 云同步' : ' 仅本机', style: ts(12.5, c: synced ? pal.ok : pal.t3)),
+                  if (!online) Text(' · 刚刚', style: ts(12.5, c: pal.t2)) else if (synced && syncSt?.lastSyncAt != null) Text(' · ${_ago(syncSt!.lastSyncAt!)}', style: ts(12.5, c: pal.t2)),
                 ]),
               ]),
             ),
             Press(onTap: () => app.playAll('like', name: '我喜欢的音乐'), scale: .9, child: Container(width: 48, height: 48, decoration: BoxDecoration(color: pal.acc, shape: BoxShape.circle), child: Icon(ic('play'), color: pal.ink))),
           ]),
         ),
-        SizedBox(
-          height: 52,
-          child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.fromLTRB(Tk.pad, 14, Tk.pad, 4), children: [
-            for (final f in const ['全部', '已下载', 'Hi-Res']) Padding(padding: const EdgeInsets.only(right: 8), child: LChip(f, on: filter == f, onTap: () => setState(() => filter = f))),
-            LChip('最近添加', icon: 'sort', onTap: () => toast('排序：最近添加', 'sort')),
-          ]),
-        ),
-        for (final id in app.liked.where((id) => filter != 'Hi-Res' || songs[id].quality == 'Hi-Res').where((id) => filter != '已下载' || id % 2 == 0))
+        if (!online)
+          SizedBox(
+            height: 52,
+            child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.fromLTRB(Tk.pad, 14, Tk.pad, 4), children: [
+              for (final f in const ['全部', '已下载', 'Hi-Res']) Padding(padding: const EdgeInsets.only(right: 8), child: LChip(f, on: filter == f, onTap: () => setState(() => filter = f))),
+              LChip('最近添加', icon: 'sort', onTap: () => toast('排序：最近添加', 'sort')),
+            ]),
+          )
+        else
+          const SizedBox(height: 10),
+        for (final id in app.liked.where((id) => id < songs.length).where((id) => filter != 'Hi-Res' || songs[id].quality == 'Hi-Res').where((id) => online || filter != '已下载' || id % 2 == 0))
           SongRow(songs[id], key: ValueKey('l$id'), list: 'like', listName: '我喜欢的音乐', heart: true),
-        if (app.liked.isEmpty) const Hint('还没有收藏的歌曲，点歌曲旁的 ♡ 收藏', align: TextAlign.center, padding: EdgeInsets.all(30)),
+        if (app.liked.isEmpty)
+          online
+              ? EmptyState('heart', '还没有收藏的歌曲', desc: app.isSponsor ? '开启「备份与同步 → 多端实时同步」后，桌面端的收藏会同步到这里。' : '赞助用户可以把桌面端的收藏同步到这里。平台搜索接入后也能直接在手机上收藏。')
+              : const Hint('还没有收藏的歌曲，点歌曲旁的 ♡ 收藏', align: TextAlign.center, padding: EdgeInsets.all(30)),
       ]);
+    } else if (seg == '最近' && online) {
+      body.add(const EmptyState('history', '还没有播放记录', desc: '音源解析接入后，播放过的歌会按时间出现在这里。'));
     } else if (seg == '最近') {
       for (final (g, ids) in [('今天', [app.cur, 5, 11, 2]), ('昨天', [7, 16, 18, 20, 9]), ('更早', [3, 14, 22])]) {
         body.add(Padding(padding: const EdgeInsets.fromLTRB(Tk.pad, 18, 0, 4), child: Text(g, style: ts(12.5, w: FontWeight.w600, c: pal.t3))));
@@ -76,10 +87,13 @@ class _LibraryPageState extends State<LibraryPage> {
         child: LayoutBuilder(builder: (c, cs) {
           final w = (cs.maxWidth - 12) / 2;
           return Wrap(spacing: 12, runSpacing: 16, children: [
-            for (final pl in app.myPlaylists) PlCard(pl, w: w, sub: '${pl.count} 首', onTap: () => push(context, PlaylistPage(id: pl.id))),
+            for (final pl in app.myPlaylists) PlCard(pl, w: w, sub: '${pl.isReal && pl.kind == 'created' ? pl.ids.length : pl.count} 首${pl.tag != null ? ' · ${pl.tag}' : ''}', onTap: () => push(context, PlaylistPage(id: pl.id))),
           ]);
         }),
       ));
+      if (online && app.myPlaylists.isEmpty) body.add(EmptyState('queue', '还没有歌单', desc: '点右上角 ＋ 新建歌单；赞助用户开启云同步后，桌面端的歌单也会出现在这里。', action: Btn.sec('新建歌单', icon: 'plus', onTap: () => openNewPlaylist(context))));
+    } else if (online) {
+      body.add(const EmptyState('folder', '本地音乐扫描接入中', desc: '读取手机里的音乐文件需要接入媒体库扫描和本地播放，正在开发。'));
     } else {
       final ids = app.listOf('local');
       body.addAll([
@@ -122,7 +136,7 @@ class _LibraryPageState extends State<LibraryPage> {
         controller: tabScroll[3],
         actions: [
           IBtn('chart', onTap: () => push(context, const StatsPage())),
-          IBtn('download', onTap: () => openImportPlaylist(context)),
+          IBtn('download', onTap: () => online ? toast('导入平台歌单需要先接入平台接口', 'info') : openImportPlaylist(context)),
           IBtn('plus', onTap: () => openNewPlaylist(context)),
         ],
         children: [
@@ -133,7 +147,7 @@ class _LibraryPageState extends State<LibraryPage> {
           ),
         ],
       ),
-      if (seg == '本地' && dim == '歌曲') _azBar(context),
+      if (seg == '本地' && dim == '歌曲' && !app.online) _azBar(context),
     ]);
   }
 
@@ -204,4 +218,12 @@ class _LibraryPageState extends State<LibraryPage> {
       ]),
     );
   }
+}
+
+String _ago(DateTime t) {
+  final d = DateTime.now().difference(t);
+  if (d.inMinutes < 1) return '刚刚';
+  if (d.inHours < 1) return '${d.inMinutes} 分钟前';
+  if (d.inDays < 1) return '${d.inHours} 小时前';
+  return '${d.inDays} 天前';
 }

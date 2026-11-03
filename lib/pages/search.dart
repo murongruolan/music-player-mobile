@@ -50,7 +50,11 @@ class _SearchPageState extends State<SearchPage> {
     q = q.trim();
     if (q.isEmpty) return;
     tc.text = q;
-    if (!app.history.contains(q)) app.history.insert(0, q);
+    app.history
+      ..remove(q)
+      ..insert(0, q);
+    if (app.history.length > 20) app.history.removeRange(20, app.history.length);
+    if (app.online) app.library.saveHistory();
     fn.unfocus();
     setState(() {
       done = true;
@@ -84,11 +88,19 @@ class _SearchPageState extends State<SearchPage> {
     final pal = context.pal;
     return TabPage(title: '搜索', controller: tabScroll[1], bottom: 260, children: [
       if (app.history.isNotEmpty) ...[
-        Sec('搜索历史', size: 16, trailing: IBtn('trash', size: 36, iconSize: 18, color: pal.t3, onTap: () => showLDialog(context, icon: 'trash', title: '清空搜索历史？', actions: [('取消', BtnKind.sec, null), ('清空', BtnKind.danger, () => app.update(app.history.clear))]))),
+        Sec('搜索历史', size: 16, trailing: IBtn('trash', size: 36, iconSize: 18, color: pal.t3, onTap: () => showLDialog(context, icon: 'trash', title: '清空搜索历史？', actions: [
+                  ('取消', BtnKind.sec, null),
+                  ('清空', BtnKind.danger, () {
+                    app.update(app.history.clear);
+                    if (app.online) app.library.saveHistory();
+                  }),
+                ]))),
         Padding(padding: const EdgeInsets.symmetric(horizontal: Tk.pad), child: Wrap(spacing: 8, runSpacing: 8, children: [for (final h in app.history) LChip(h, onTap: () => go(h))])),
       ],
-      const Sec('热搜榜', size: 16, more: '每小时更新'),
-      CardBox(
+      if (app.online)
+        const EmptyState('search', '目前只能搜索本机音乐库', desc: '平台搜索、热搜榜需要接入各音乐平台的接口，正在开发。\n输入歌名、歌手或专辑，可以找到你收藏和歌单里的歌。'),
+      if (!app.online) const Sec('热搜榜', size: 16, more: '每小时更新'),
+      if (!app.online) CardBox(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Column(children: [
           for (final (i, h) in hotSearch.indexed)
@@ -108,8 +120,8 @@ class _SearchPageState extends State<SearchPage> {
             ),
         ]),
       ),
-      const Sec('按风格探索', size: 16),
-      Padding(
+      if (!app.online) const Sec('按风格探索', size: 16),
+      if (!app.online) Padding(
         padding: const EdgeInsets.symmetric(horizontal: Tk.pad),
         child: GridView.count(
           crossAxisCount: 2,
@@ -141,8 +153,10 @@ class _SearchPageState extends State<SearchPage> {
     for (final a in songs.map((s) => s.album).toSet()) {
       if (a.toLowerCase().contains(ql)) out.add(('album', a, '专辑'));
     }
-    for (final x in const ['现场版', '伴奏', '翻唱', '歌词', 'DJ 版']) {
-      out.add(('search', '$q $x', ''));
+    if (!context.appRead.online) {
+      for (final x in const ['现场版', '伴奏', '翻唱', '歌词', 'DJ 版']) {
+        out.add(('search', '$q $x', ''));
+      }
     }
     final hl = highlighter(q, pal.accText);
     final top = MediaQuery.of(context).padding.top;
@@ -245,7 +259,9 @@ class _SearchPageState extends State<SearchPage> {
           transitionBuilder: (c, a) => ScaleTransition(scale: a, child: c),
           child: focus
               ? Press(key: const ValueKey('c'), onTap: () => fn.unfocus(), child: SizedBox(height: 54, child: Center(child: Text('取消', style: ts(15, w: FontWeight.w600, c: pal.accText)))))
-              : const _Disc(key: ValueKey('d')),
+              : app.hasSong
+                  ? const _Disc(key: ValueKey('d'))
+                  : const SizedBox(key: ValueKey('n'), width: 0),
         ),
       ]),
     );
@@ -280,7 +296,7 @@ class _DiscState extends State<_Disc> with SingleTickerProviderStateMixin {
         height: 54,
         child: ValueListenableBuilder<double>(
           valueListenable: app.pos,
-          builder: (_, p, ch) => CustomPaint(painter: _Ring(p / app.song.dur, pal.acc, pal.s3), child: ch),
+          builder: (_, p, ch) => CustomPaint(painter: _Ring(app.song.dur > 0 ? p / app.song.dur : 0, pal.acc, pal.s3), child: ch),
           child: Padding(
             padding: const EdgeInsets.all(4),
             child: Stack(alignment: Alignment.center, children: [
@@ -323,9 +339,37 @@ class _Results extends StatelessWidget {
   final VoidCallback onClear;
   const _Results({required this.q, required this.type, required this.rplat, required this.onType, required this.onPlat, required this.onQuery, required this.onClear});
 
+  /// 联网模式：只在本机音乐库（收藏、歌单里的歌）里找。
+  Widget _localResults(BuildContext context) {
+    final app = context.app;
+    final pal = context.pal;
+    final ql = q.toLowerCase();
+    final res = songs.where((s) => '${s.title} ${s.artist} ${s.album}'.toLowerCase().contains(ql)).toList();
+    final pls = app.myPlaylists.where((p) => p.title.toLowerCase().contains(ql)).toList();
+    final hl = highlighter(q, pal.accText);
+    final top = MediaQuery.of(context).padding.top;
+    return ListView(padding: EdgeInsets.only(top: top, bottom: 170), children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(Tk.pad, 10, 8, 4),
+        child: Row(children: [Expanded(child: Text('「$q」', maxLines: 1, overflow: TextOverflow.ellipsis, style: ts(24, w: FontWeight.w800, c: pal.t1))), IBtn('close', onTap: onClear)]),
+      ),
+      Hint('本机音乐库 · ${res.length} 首歌${pls.isEmpty ? '' : ' · ${pls.length} 个歌单'}（平台搜索接入中）', padding: const EdgeInsets.fromLTRB(Tk.pad, 0, Tk.pad, 8)),
+      if (pls.isNotEmpty) ...[
+        const Sec('歌单', size: 16),
+        for (final p in pls) _plRow(context, p, hl),
+      ],
+      if (res.isNotEmpty) ...[
+        const Sec('歌曲', size: 16),
+        for (final s in res.take(100)) SongRow(s, list: 'all', listName: '搜索「$q」', hl: hl),
+      ],
+      if (res.isEmpty && pls.isEmpty) EmptyState('search', '本机音乐库里没有找到「$q」', desc: '平台搜索接入后可以搜索全部平台的曲库。'),
+    ]);
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = context.app;
+    if (app.online) return _localResults(context);
     final pal = context.pal;
     final ql = q.toLowerCase();
     var res = songs.where((s) => '${s.title}${s.artist}${s.album}'.toLowerCase().contains(ql)).toList();

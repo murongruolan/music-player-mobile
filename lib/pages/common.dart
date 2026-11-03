@@ -233,3 +233,34 @@ class QuickGrid extends StatelessWidget {
     );
   }
 }
+
+/// 空状态：没有数据 / 功能还没接入时用，说清楚原因和下一步。
+class EmptyState extends StatelessWidget {
+  final String icon, title;
+  final String? desc;
+  final Widget? action;
+  final EdgeInsets padding;
+  const EmptyState(this.icon, this.title, {super.key, this.desc, this.action, this.padding = const EdgeInsets.fromLTRB(Tk.pad, 36, Tk.pad, 24)});
+
+  @override
+  Widget build(BuildContext context) {
+    final pal = context.pal;
+    return Padding(
+      padding: padding,
+      child: Column(children: [
+        Container(width: 64, height: 64, decoration: BoxDecoration(color: pal.s2, borderRadius: BorderRadius.circular(20)), child: Icon(ic(icon), size: 30, color: pal.t3)),
+        const SizedBox(height: 14),
+        Text(title, textAlign: TextAlign.center, style: ts(15.5, w: FontWeight.w700, c: pal.t1)),
+        if (desc != null) ...[const SizedBox(height: 6), Text(desc!, textAlign: TextAlign.center, style: ts(13, c: pal.t3, h: 1.55))],
+        if (action != null) ...[const SizedBox(height: 16), action!],
+      ]),
+    );
+  }
+}
+
+/// 头像文字：Lyra 账号昵称首字；演示模式用「栗」。
+String avatarText(AppState app) {
+  final n = app.account?.nickname ?? '';
+  if (n.isNotEmpty) return n.characters.first;
+  return app.online ? 'L' : '栗';
+}

@@ -120,7 +120,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
               ),
             ),
           ),
-          if (app.tab != 1) const MiniPlayer(),
+          if (app.tab != 1 && app.hasSong) const MiniPlayer(),
           AnimatedPositioned(
             duration: const Duration(milliseconds: 380),
             curve: Tk.out,

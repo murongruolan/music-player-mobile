@@ -32,9 +32,23 @@ class _PlaylistPageState extends State<PlaylistPage> {
   Widget build(BuildContext context) {
     final app = context.app;
     final pal = context.pal;
-    final Playlist base = widget.id >= 100 ? app.myPlaylists.firstWhere((x) => x.id == widget.id, orElse: () => app.myPlaylists.first) : playlists[widget.id % playlists.length];
-    final pl = widget.chartName == null ? base : Playlist(base.id, widget.chartName!, by: '${app.platform.name} 官方', count: 30, playCount: base.playCount, hue: base.hue, variant: 2);
-    var ids = widget.id == 100 ? app.liked.toList() : [for (var i = 0; i < songs.length; i++) if ((i * 7 + pl.hue.toInt()) % 3 != 0) i].take(14).toList();
+    final online = app.online;
+    final Playlist? found = online
+        ? (widget.id == 100 ? Playlist(100, '我喜欢的音乐', count: app.liked.length, hue: 42, variant: 0, mine: true) : app.myPlaylists.where((x) => x.id == widget.id).firstOrNull)
+        : widget.id >= 100
+            ? (app.myPlaylists.where((x) => x.id == widget.id).firstOrNull ?? app.myPlaylists.firstOrNull)
+            : playlists[widget.id % playlists.length];
+    if (found == null) {
+      return SubPage(title: '歌单', children: [const EmptyState('queue', '歌单不存在', desc: '它可能已被删除，或在其它设备上被移除。')]);
+    }
+    final Playlist base = found;
+    final pl = widget.chartName == null || online ? base : Playlist(base.id, widget.chartName!, by: '${app.platform.name} 官方', count: 30, playCount: base.playCount, hue: base.hue, variant: 2);
+    var ids = widget.id == 100
+        ? app.liked.where((i) => i < songs.length).toList()
+        : online
+            ? base.ids.where((i) => i < songs.length).toList()
+            : [for (var i = 0; i < songs.length; i++) if ((i * 7 + pl.hue.toInt()) % 3 != 0) i].take(14).toList();
+    final collected = online && base.kind == 'collected' && ids.isEmpty;
     if (sort == '歌名') ids = [...ids]..sort((a, b) => songs[a].title.compareTo(songs[b].title));
     if (sort == '时长') ids = [...ids]..sort((a, b) => songs[a].dur.compareTo(songs[b].dur));
     final listName = pl.title;
@@ -72,7 +86,8 @@ class _PlaylistPageState extends State<PlaylistPage> {
             Text('${pl.by.isEmpty ? '我' : pl.by} · ${pl.count} 首${pl.playCount.isNotEmpty ? ' · ${pl.playCount} 次播放' : ''}', style: ts(13, c: pal.t2)),
           ]),
           const SizedBox(height: 8),
-          SizedBox(width: 300, child: Text('适合在夜里一个人走路时听。霓虹、雨声、合成器和一点点想念。', textAlign: TextAlign.center, style: ts(12.5, c: pal.t3, h: 1.55))),
+          if (!online) SizedBox(width: 300, child: Text('适合在夜里一个人走路时听。霓虹、雨声、合成器和一点点想念。', textAlign: TextAlign.center, style: ts(12.5, c: pal.t3, h: 1.55))),
+          if (online && base.platform != null) Text('来自 ${_platName(base.platform!)}${base.externalId != null ? ' · ID ${base.externalId}' : ''}', style: ts(12, c: pal.t3)),
           Padding(
             padding: const EdgeInsets.fromLTRB(Tk.pad, 18, Tk.pad, 0),
             child: Row(children: [
@@ -80,12 +95,22 @@ class _PlaylistPageState extends State<PlaylistPage> {
               const SizedBox(width: 10),
               IBtn('shuffle', size: 48, bg: pal.s2, onTap: () => app.playAll(widget.id == 100 ? 'like' : 'all', shuffle: true, name: listName)),
               const SizedBox(width: 10),
-              IBtn('download', size: 48, bg: pal.s2, onTap: () => toast('已加入下载队列 · ${pl.count} 首', 'download')),
+              IBtn('download', size: 48, bg: pal.s2, onTap: () => online ? toast('下载需要先接入音源解析', 'info') : toast('已加入下载队列 · ${pl.count} 首', 'download')),
               const SizedBox(width: 10),
-              IBtn(faved ? 'heartf' : 'heart', size: 48, bg: pal.s2, color: faved ? pal.accText : null, onTap: () {
-                setState(() => faved = !faved);
-                toast(faved ? '已收藏歌单' : '已取消收藏', faved ? 'heartf' : 'heart');
-              }),
+              if (online && widget.id != 100)
+                IBtn('trash', size: 48, bg: pal.s2, onTap: () => showLDialog(context, icon: 'trash', iconColor: pal.danger, title: '删除歌单「${pl.title}」？', body: '歌单里的歌不会从「我喜欢」中移除。', actions: [
+                      ('取消', BtnKind.sec, null),
+                      ('删除', BtnKind.danger, () {
+                        app.library.deletePlaylist(base.id);
+                        Navigator.of(context).maybePop();
+                        toast('已删除歌单', 'trash');
+                      }),
+                    ]))
+              else if (!online)
+                IBtn(faved ? 'heartf' : 'heart', size: 48, bg: pal.s2, color: faved ? pal.accText : null, onTap: () {
+                  setState(() => faved = !faved);
+                  toast(faved ? '已收藏歌单' : '已取消收藏', faved ? 'heartf' : 'heart');
+                }),
             ]),
           ),
         ]),
@@ -101,6 +126,8 @@ class _PlaylistPageState extends State<PlaylistPage> {
             })),
           ]),
         ),
+        if (ids.isEmpty && online)
+          EmptyState(collected ? 'link' : 'music', collected ? '这是收藏的平台歌单' : '歌单还是空的', desc: collected ? '它只同步了平台和歌单 ID（${pl.count} 首），歌曲列表要等平台接口接入后再拉取。' : (widget.id == 100 ? '收藏的歌会出现在这里。' : '在歌曲的「···」里选「加入歌单」。')),
         for (final id in ids)
           multi
               ? Press(
@@ -147,7 +174,22 @@ class _PlaylistPageState extends State<PlaylistPage> {
               }),
               ('plus', '加歌单', () => openAddToPlaylist(context, sel.isEmpty ? ids.first : sel.first)),
               ('download', '下载', () => toast('已加入下载 · ${sel.length} 首', 'download')),
-              ('trash', '移除', () => showLDialog(context, icon: 'trash', title: '从歌单移除 ${sel.length} 首？', actions: [('取消', BtnKind.sec, null), ('移除', BtnKind.danger, () => toast('已移除', 'trash'))])),
+              ('trash', '移除', () => showLDialog(context, icon: 'trash', title: '从歌单移除 ${sel.length} 首？', actions: [
+                    ('取消', BtnKind.sec, null),
+                    ('移除', BtnKind.danger, () {
+                      if (app.online) {
+                        if (widget.id == 100) {
+                          for (final id in sel) {
+                            if (app.liked.contains(id)) app.toggleLike(id);
+                          }
+                        } else {
+                          app.library.removeFromPlaylist(widget.id, {...sel});
+                        }
+                        setState(() => sel.clear());
+                      }
+                      toast('已移除', 'trash');
+                    }),
+                  ])),
             ])
               Opacity(opacity: sel.isEmpty ? .4 : 1, child: Press(onTap: sel.isEmpty ? null : f, child: Padding(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), child: Column(children: [Icon(ic(i), size: 20, color: pal.t1), Text(l, style: ts(10.5, c: pal.t2))])))),
           ]),
@@ -170,8 +212,8 @@ class _ArtistPageState extends State<ArtistPage> {
   Widget build(BuildContext context) {
     final app = context.app;
     final pal = context.pal;
-    final s = songs[widget.id];
-    final mine = {...songs.where((x) => x.artist == s.artist), ...songs.take(3)}.take(6).toList();
+    final s = app.songById(widget.id);
+    final mine = app.online ? songs.where((x) => x.artist == s.artist).toList() : {...songs.where((x) => x.artist == s.artist), ...songs.take(3)}.take(6).toList();
     return SubPage(
       title: s.artist,
       fadeTitle: true,
@@ -196,7 +238,7 @@ class _ArtistPageState extends State<ArtistPage> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(s.artist, style: ts(34, w: FontWeight.w800, c: Colors.white).copyWith(shadows: const [Shadow(color: Color(0x66000000), blurRadius: 20)])),
             const SizedBox(height: 6),
-            Text('12.4 万关注 · 本月 38 万次聆听', style: ts(13, c: pal.t2)),
+            Text(app.online ? '音乐库里 ${mine.length} 首' : '12.4 万关注 · 本月 38 万次聆听', style: ts(13, c: pal.t2)),
             const SizedBox(height: 16),
             Row(children: [
               Btn('播放热门', icon: 'play', onTap: () => app.playAll('all', name: '${s.artist} · 热门')),
@@ -208,10 +250,10 @@ class _ArtistPageState extends State<ArtistPage> {
             ]),
           ]),
         ),
-        const Sec('热门歌曲'),
+        Sec(app.online ? '音乐库里的歌' : '热门歌曲'),
         for (final (i, x) in mine.indexed) SongRow(x, num: i, list: 'all', listName: '${s.artist} · 热门'),
-        const Sec('专辑'),
-        HScroll(height: 186, gap: 26, children: [for (final (i, id) in [s.id, (s.id + 8) % 24, (s.id + 16) % 24].indexed) AlbumCard(songs[id], onTap: () => push(context, PlaylistPage(id: i, chartName: songs[id].album)))]),
+        if (!app.online) const Sec('专辑'),
+        if (!app.online) HScroll(height: 186, gap: 26, children: [for (final (i, id) in [s.id, (s.id + 8) % 24, (s.id + 16) % 24].indexed) AlbumCard(songs[id], onTap: () => push(context, PlaylistPage(id: i, chartName: songs[id].album)))]),
       ],
     );
   }
@@ -440,4 +482,9 @@ class _StatsPageState extends State<StatsPage> {
       ]),
     ]);
   }
+}
+
+String _platName(String code) {
+  const m = {'wy': '网易云音乐', 'tx': 'QQ音乐', 'kg': '酷狗音乐', 'kw': '酷我音乐', 'mg': '咪咕音乐', 'local': '本地'};
+  return m[code] ?? code;
 }

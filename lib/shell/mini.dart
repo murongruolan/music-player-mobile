@@ -135,7 +135,7 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
           valueListenable: app.pos,
           builder: (_, p, __) => FractionallySizedBox(
             alignment: Alignment.centerLeft,
-            widthFactor: (p / app.song.dur).clamp(0, 1),
+            widthFactor: (app.song.dur > 0 ? p / app.song.dur : 0.0).clamp(0, 1),
             child: Container(decoration: BoxDecoration(color: pal.acc, borderRadius: BorderRadius.circular(1))),
           ),
         ),

@@ -15,6 +15,11 @@ class DailyPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.app;
     final pal = context.pal;
+    if (app.online) {
+      return TabPage(title: '每日混音', controller: tabScroll[2], children: [
+        EmptyState('sun', '每日推荐接入中', desc: '每日推荐、私人电台由音乐平台按你的账号生成，需要先接入平台登录。\n接入后这里会每天更新。', action: Btn.sec('看看听歌统计', icon: 'chart', onTap: () => push(context, const StatsPage()))),
+      ]);
+    }
     final ids = app.listOf('daily');
     final now = DateTime.now();
     const months = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];

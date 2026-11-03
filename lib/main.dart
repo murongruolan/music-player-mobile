@@ -1,3 +1,4 @@
+import 'dart:async';
 // Lyra（暂名）· Flutter 移动端（mock 数据版）
 // 入口：AppScope（全局状态）→ MaterialApp（主题随设置实时切换）→ 鉴权流程 / 主界面。
 import 'package:flutter/cupertino.dart';
@@ -22,11 +23,12 @@ Future<void> main() async {
   // 截图模式不连后端，页面全部用 mock 数据
   final net = shot != null ? null : await Net.create();
   net?.session.onEnd.where((r) => r == SessionEnd.expired).listen((_) => toast('登录已失效，请重新登录', 'lock'));
-  final app = AppState(net: net);
+  final app = AppState(net: net)..notice = toast;
   await app.cloud.init(); // 读本地听歌统计
   await app.telemetry.init(); // 读上次没发完的埋点
   app.restoreSession();
   app.telemetry.track('app_launch', {'source': 'normal', 'loggedIn': app.authed});
+  unawaited(app.checkUpdate());
   if (shot != null) applyShotState(app, shot);
   runApp(LyraApp(state: app, shot: shot));
 }
@@ -125,7 +127,11 @@ class _RootState extends State<Root> {
     final app = context.app;
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 500),
-      child: app.authed ? const Shell(key: ValueKey('shell')) : const AuthFlow(key: ValueKey('auth')),
+      child: app.versionBlock != null
+          ? VersionDisabledPage(key: const ValueKey('vd'), info: app.versionBlock)
+          : app.authed
+              ? const Shell(key: ValueKey('shell'))
+              : const AuthFlow(key: ValueKey('auth')),
     );
   }
 }
