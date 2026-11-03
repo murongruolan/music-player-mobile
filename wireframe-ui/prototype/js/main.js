@@ -1,6 +1,7 @@
 /* 入口：左侧目录（跳转到任意页面/状态）+ 总览模式（所有页面平铺）+ 启动。 */
 function reset() {
   if (typeof davReset === 'function') davReset();
+  if (typeof fixReset === 'function') fixReset();
   Object.assign(S, { authed:true, stack:[], sheet:null, dialog:null, playerOpen:false, lyricMode:false, amView:'cover', searchQ:'', matchState:'listen', scanMode:'scan', scanResult:null, picker:false, loading:false, navMin:false, clip:null, forgotStep:0, dlg:{}, qFocus:false, searchDone:false, rType:'综合', rPlat:'all', skinTab:'全部', davSeg:0, bar:S.bar, myPlSeg:0, platLogin:{ netease:'小栗子' }, plat:'netease', script:'auto', amWave:'spring', _anim:null, _playerAnim:false, _lyrIdx:-1, tab:'discover' });
 }
 const tabTo = t => () => { S.tab = t; };
@@ -33,6 +34,7 @@ const JUMPS = [
     ['我的', tabTo('me')], ['音乐云盘', pushTo('cloud')], ['底栏收起（滚动后）', () => { S.bar = 'liquid'; S.tab = 'library'; S.libSeg = 'like'; S.navMin = true; }],
   ]],
   ...(typeof DAV_JUMPS !== 'undefined' ? [['音乐云盘 · WebDAV', DAV_JUMPS]] : []),
+  ...(typeof FIX_JUMPS !== 'undefined' ? [['补全 · 二级页 / 抽屉 / 弹窗', FIX_JUMPS]] : []),
   ['底部导航 · 5 种形态', BAR_STYLES.map(([k, n]) => [`底栏 · ${n}`, () => { S.bar = k; S.tab = 'daily'; }])],
   ['二级页', [
     ['歌单详情', pushTo('playlist', { id:0 })], ['歌手', pushTo('artist', { id:0 })], ['听歌统计', pushTo('stats')],
