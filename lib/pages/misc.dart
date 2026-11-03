@@ -1,10 +1,14 @@
 // 其它二级页：公告 · 平台账号 · 下载管理 · 账号中心 · 登录设备 · 音乐云盘（WebDAV）· 关于与更新。备份与同步在 backup.dart。
 import 'package:flutter/material.dart';
 import '../api/announcement_api.dart';
+import '../api/account_api.dart';
+import '../api/devices_api.dart';
 import '../auth/auth.dart';
 import '../core/state.dart';
 import '../core/tokens.dart';
 import '../data/mock.dart';
+import '../data/models.dart';
+import '../net/net.dart';
 import '../shell/shell.dart';
 import '../ui/brand.dart';
 import '../ui/cover.dart';
@@ -191,79 +195,271 @@ class _DownloadPageState extends State<DownloadPage> {
   }
 }
 
-class AccountPage extends StatelessWidget {
+class AccountPage extends StatefulWidget {
   const AccountPage({super.key});
+  @override
+  State<AccountPage> createState() => _AccountPageState();
+}
+
+class _AccountPageState extends State<AccountPage> {
+  int deviceCount = -1; // -1：还没拉到（演示 / 截图），展示 mock 数量
+  bool busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  /// 拉取用户资料与设备数。演示 / 截图（net == null）时保持 mock，不发请求。
+  Future<void> _load() async {
+    final net = context.appRead.net;
+    if (net == null) return;
+    final app = context.appRead;
+    try {
+      final acc = await AccountApi(net.client).profile();
+      if (!mounted) return;
+      app.update(() => app.account = acc);
+    } on ApiException catch (e) {
+      if (mounted && !e.isCancelled) toast(e.userMessage, 'info');
+    }
+    try {
+      final dl = await DevicesApi(net.client).list();
+      if (!mounted) return;
+      setState(() => deviceCount = dl.devices.length);
+    } on ApiException catch (_) {
+      // 设备数拉不到不阻塞页面，进「登录设备」页会有完整报错
+    }
+  }
+
+  /// 统一的「执行 + 错误提示」包装：busy 期间不重复提交，业务错误直接展示后端文案。
+  Future<void> _guard(Future<void> Function() f, {String okMsg = ''}) async {
+    if (busy) return;
+    setState(() => busy = true);
+    try {
+      await f();
+      if (okMsg.isNotEmpty && mounted) toast(okMsg, 'check');
+    } on ApiException catch (e) {
+      if (mounted && !e.isCancelled) toast(e.userMessage, 'info');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = context.app;
     final pal = context.pal;
+    final acc = app.account;
+    final name = acc?.nickname ?? '阿栗';
+    final activated = acc?.isActivated ?? true;
+    final memberName = (acc?.membershipName.isNotEmpty ?? false) ? acc!.membershipName : (acc == null ? '已激活 · 永久' : '已激活');
     return SubPage(title: '账号中心', children: [
       Column(children: [
-        const Avatar('栗', size: 84),
+        Avatar(name.isEmpty ? 'L' : name.characters.first, size: 84),
         const SizedBox(height: 12),
-        Text('阿栗', style: ts(20, w: FontWeight.w700, c: pal.t1)),
-        Text('UID 10086427', style: ts(12.5, c: pal.t2, num: true)),
+        Text(name, style: ts(20, w: FontWeight.w700, c: pal.t1)),
+        Text(acc == null ? 'UID 10086427 · ali@example.com' : 'UID ${acc.uid} · ${acc.email}', style: ts(12.5, c: pal.t2, num: true)),
         const SizedBox(height: 10),
-        const Badge2('已激活 · 永久', acc: true, icon: 'crown'),
+        Badge2(memberName, acc: activated, icon: 'crown', color: activated ? null : pal.warn),
         const SizedBox(height: 18),
       ]),
       Group(title: '资料', children: [
-        Item(icon: 'user', color: 'blue', label: '昵称与头像', val: '阿栗', onTap: () => toast('编辑资料', 'edit')),
-        const Item(icon: 'mail', color: 'orange', label: '邮箱', val: 'ali@example.com'),
-        Item(icon: 'lock', color: 'gray', label: '修改密码', onTap: () => toast('验证码已发送至邮箱', 'mail')),
-        Item(icon: 'link', color: 'cyan', label: 'QQ 绑定', val: '未绑定', onTap: () => toast('跳转 QQ 授权', 'link')),
+        Item(icon: 'user', color: 'blue', label: '昵称与头像', val: name, onTap: () => _editNickname(context)),
+        Item(icon: 'mail', color: 'orange', label: '邮箱', val: acc?.email ?? 'ali@example.com'),
+        Item(icon: 'lock', color: 'gray', label: '修改密码', sub: '重置密码接口暂未开放，可从登录页「忘记密码」入口查看进度', onTap: () => toast('重置密码接口暂未开放', 'info')),
+        Item(icon: 'link', color: 'cyan', label: 'QQ 绑定', val: (acc?.qq?.isNotEmpty ?? false) ? '已绑定 ${acc!.qq}' : '未绑定', onTap: () => _editQQ(context)),
       ]),
       Group(title: '会员', children: [
-        Item(icon: 'key', color: 'gold', label: '激活码', sub: '输入激活码解锁全部功能', onTap: () => _activate(context)),
+        Item(icon: 'key', color: 'gold', label: '激活码', sub: activated ? '输入升级码提升会员等级' : '输入激活码解锁全部功能', onTap: () => _activate(context)),
         Item(icon: 'crown', color: 'pink', label: '会员权益', val: '6 项', onTap: () => toast('Hi-Res 下载 · 粒子皮肤 · 云同步 …', 'crown')),
       ]),
       Group(title: '安全', children: [
-        Item(icon: 'phone', color: 'violet', label: '登录设备', val: '${loginDevices.length} 台', onTap: () => push(context, const DevicesPage())),
+        Item(icon: 'phone', color: 'violet', label: '登录设备', val: deviceCount < 0 ? '${loginDevices.length} 台' : '$deviceCount 台', onTap: () => push(context, const DevicesPage())),
         Item(icon: 'scan', color: 'teal', label: '扫码登录电视 / 车机 / 桌面端', onTap: () => pushFull(context, const ScanPage())),
       ]),
       Group(children: [
         Item(icon: 'logout', color: 'red', label: '退出登录', danger: true, chev: false, onTap: () => showLDialog(context, icon: 'logout', iconColor: pal.danger, title: '退出登录？', body: '本机的收藏与歌单会保留，下次登录后自动同步', actions: [
               ('取消', BtnKind.sec, null),
-              ('退出', BtnKind.danger, () {
+              ('退出', BtnKind.danger, () async {
                 popToRoot();
-                app.signOut();
+                app.signOut(); // 通知服务端作废令牌 + 清空会话（网络层统一处理）
               }),
             ])),
       ]),
     ]);
   }
 
-  void _activate(BuildContext context) {
-    showLSheet(context, title: '激活码', builder: (c) => Padding(
+  /// 修改昵称（≤64 字符，与后端一致）。
+  Future<void> _editNickname(BuildContext context) async {
+    final acc = context.appRead.account;
+    final tc = TextEditingController(text: acc?.nickname ?? '');
+    final r = await showLSheet(context, title: '修改昵称', builder: (c) => Padding(
           padding: const EdgeInsets.symmetric(horizontal: Tk.pad),
           child: Column(children: [
-            const LField(label: '输入 16 位激活码', icon: 'key', autofocus: true),
+            LField(controller: tc, label: '昵称', icon: 'user', autofocus: true),
             const SizedBox(height: 14),
-            Btn('激活', block: true, onTap: () {
-              Navigator.of(c).pop();
-              toast('激活成功 · 永久会员', 'crown');
-            }),
+            Btn('保存', block: true, onTap: () => Navigator.of(c).pop(tc.text)),
           ]),
         ));
+    final nickname = (r as String?)?.trim() ?? '';
+    if (nickname.isEmpty || nickname == acc?.nickname) return;
+    if (nickname.characters.length > 64) return toast('昵称不能超过 64 个字符', 'info');
+    await _guard(() async {
+      final app = context.appRead;
+      final nu = await AccountApi(app.api.client).updateProfile(nickname: nickname);
+      app.update(() => app.account = nu);
+    }, okMsg: '已保存');
+  }
+
+  /// 绑定 / 解绑 QQ（≤12 位数字，与后端一致）。
+  Future<void> _editQQ(BuildContext context) async {
+    final app = context.appRead;
+    final cur = app.account?.qq;
+    if (cur != null && cur.isNotEmpty) {
+      showLDialog(context, icon: 'link', title: '解绑 QQ？', body: '解绑后可以绑定其他 QQ 号', actions: [
+        ('取消', BtnKind.sec, null),
+        ('解绑', BtnKind.danger, () => _guard(() async {
+              final nu = await AccountApi(app.api.client).bindQQ(null);
+              app.update(() => app.account = nu);
+            }, okMsg: '已解绑')),
+      ]);
+      return;
+    }
+    final tc = TextEditingController();
+    final r = await showLSheet(context, title: '绑定 QQ', builder: (c) => Padding(
+          padding: const EdgeInsets.symmetric(horizontal: Tk.pad),
+          child: Column(children: [
+            LField(controller: tc, label: 'QQ 号', icon: 'link', keyboard: TextInputType.number, autofocus: true),
+            const SizedBox(height: 14),
+            Btn('绑定', block: true, onTap: () => Navigator.of(c).pop(tc.text)),
+          ]),
+        ));
+    final qq = (r as String?)?.trim() ?? '';
+    if (qq.isEmpty) return;
+    if (qq.length > 12 || !RegExp(r'^\d+$').hasMatch(qq)) return toast('QQ 号格式不正确', 'info');
+    await _guard(() async {
+      final nu = await AccountApi(app.api.client).bindQQ(qq);
+      app.update(() => app.account = nu);
+    }, okMsg: '已绑定');
+  }
+
+  /// 激活码 / 升级码兑换。激活 / 升级成功后返回带新会员态的用户。
+  Future<void> _activate(BuildContext context) async {
+    final app = context.appRead;
+    if (app.net == null) return toast('演示模式，不发起请求', 'info');
+    final tc = TextEditingController();
+    final r = await showLSheet(context, title: '激活码', builder: (c) => Padding(
+          padding: const EdgeInsets.symmetric(horizontal: Tk.pad),
+          child: Column(children: [
+            LField(controller: tc, label: '输入激活码', icon: 'key', autofocus: true),
+            const SizedBox(height: 14),
+            Btn('激活', block: true, onTap: () => Navigator.of(c).pop(tc.text)),
+          ]),
+        ));
+    final code = (r as String?)?.trim() ?? '';
+    if (code.isEmpty) return;
+    await _guard(() async {
+      final nu = await AccountApi(app.api.client).redeemCode(code);
+      app.update(() => app.account = nu);
+      if (mounted) toast('激活成功 · ${nu.membershipName.isEmpty ? '会员' : nu.membershipName}', 'crown');
+    });
   }
 }
 
-class DevicesPage extends StatelessWidget {
+class DevicesPage extends StatefulWidget {
   const DevicesPage({super.key});
+  @override
+  State<DevicesPage> createState() => _DevicesPageState();
+}
+
+class _DevicesPageState extends State<DevicesPage> {
+  List<DeviceRecord> devices = const [];
+  int maxDevices = 5;
+  bool loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  /// 演示 / 截图（net == null 或还没拉到数据）时回落到 mock 的 loginDevices。
+  List<DeviceRecord> get _view =>
+      devices.isNotEmpty ? devices : [for (final (i, d) in loginDevices.indexed) _mock(d, i)];
+
+  DeviceRecord _mock(Device d, int i) => DeviceRecord(
+        id: i,
+        deviceName: d.name,
+        platform: d.os.contains('TV') ? 'android_tv' : d.os.contains('Windows') ? 'windows' : 'ios',
+        systemVersion: d.os,
+        lastSeenAt: d.current ? '' : d.last,
+        isCurrent: d.current,
+      );
+
+  Future<void> _load() async {
+    final net = context.appRead.net;
+    if (net == null) return;
+    setState(() => loading = true);
+    try {
+      final dl = await DevicesApi(net.client).list();
+      if (!mounted) return;
+      setState(() {
+        devices = dl.devices;
+        maxDevices = dl.maxDevices;
+      });
+    } on ApiException catch (e) {
+      if (mounted && !e.isCancelled) toast(e.userMessage, 'info');
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  Future<void> _remove(DeviceRecord d) async {
+    final app = context.appRead;
+    if (app.net == null) return toast('演示模式，不发起请求', 'info');
+    if (loading) return;
+    setState(() => loading = true);
+    try {
+      await DevicesApi(app.api.client).remove(d.id);
+      if (!mounted) return;
+      toast('已移除 ${d.deviceName}', 'logout');
+      await _load();
+    } on ApiException catch (e) {
+      if (mounted && !e.isCancelled) toast(e.userMessage, 'info');
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  /// 最近在线时间：相对时间（后端 lastSeenAt 是 RFC3339）。
+  String _lastSeen(DeviceRecord d) {
+    if (d.isCurrent) return '当前在线';
+    final t = DateTime.tryParse(d.lastSeenAt)?.toLocal();
+    if (t == null) return d.lastSeenAt.isEmpty ? '' : d.lastSeenAt;
+    final diff = DateTime.now().difference(t);
+    if (diff.inMinutes < 1) return '刚刚在线';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} 分钟前';
+    if (diff.inHours < 24) return '${diff.inHours} 小时前';
+    if (diff.inDays < 7) return '${diff.inDays} 天前';
+    return '${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')} 在线';
+  }
+
   @override
   Widget build(BuildContext context) {
     final pal = context.pal;
+    final list = _view;
     return SubPage(title: '登录设备', children: [
-      const Hint('最多同时登录 5 台设备。移除后该设备需要重新登录。', padding: EdgeInsets.fromLTRB(Tk.pad, 0, Tk.pad, 12)),
+      Hint('最多同时登录 $maxDevices 台设备。移除后该设备需要重新登录。', padding: const EdgeInsets.fromLTRB(Tk.pad, 0, Tk.pad, 12)),
       Group(children: [
-        for (final d in loginDevices)
+        for (final d in list)
           Item(
-            lead: Container(width: 30, height: 30, decoration: BoxDecoration(color: d.current ? settingTiles['green'] : settingTiles['gray'], borderRadius: BorderRadius.circular(9)), child: Icon(ic(d.os.contains('TV') ? 'tv' : d.os.contains('Windows') ? 'grid' : 'phone'), size: 18, color: Colors.white)),
-            label: d.name,
-            sub: '${d.os} · ${d.last}',
-            trailing: d.current
+            lead: Container(width: 30, height: 30, decoration: BoxDecoration(color: d.isCurrent ? settingTiles['green'] : settingTiles['gray'], borderRadius: BorderRadius.circular(9)), child: Icon(ic(d.isTv ? 'tv' : d.isDesktop ? 'grid' : 'phone'), size: 18, color: Colors.white)),
+            label: d.deviceName,
+            sub: [d.systemVersion, _lastSeen(d)].where((s) => s.isNotEmpty).join(' · '),
+            trailing: d.isCurrent
                 ? const Badge2('本机', acc: true)
-                : Btn('移除', small: true, kind: BtnKind.danger, onTap: () => showLDialog(context, icon: 'logout', iconColor: pal.danger, title: '移除「${d.name}」？', body: '该设备需要重新登录', actions: [('取消', BtnKind.sec, null), ('移除', BtnKind.danger, () => toast('已移除 ${d.name}', 'logout'))])),
+                : Btn('移除', small: true, kind: BtnKind.danger, onTap: loading ? null : () => showLDialog(context, icon: 'logout', iconColor: pal.danger, title: '移除「${d.deviceName}」？', body: '该设备需要重新登录', actions: [('取消', BtnKind.sec, null), ('移除', BtnKind.danger, () => _remove(d))])),
           ),
       ]),
     ]);
