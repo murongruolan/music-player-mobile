@@ -121,6 +121,13 @@ class AudioEngine {
   Future<void> resume() => _player.play();
   Future<void> seek(double seconds) => _player.seek(Duration(milliseconds: (seconds * 1000).round()));
   Future<void> setSpeed(double v) => _player.setSpeed(v.clamp(0.5, 3.0));
+
+  /// 变速的音高：1.0 = 不变调（「保持音调」开），跟速变调时传与速度相同的值。
+  /// 平台不支持时 just_audio 内部忽略，调用方无需区分。
+  Future<void> setPitch(double v) => _player.setPitch(v.clamp(0.5, 2.0));
+
+  /// 引擎侧音量（0..1），睡眠定时淡出用；用户音量条（AppState.vol）目前不经引擎。
+  Future<void> setVolume(double v) => _player.setVolume(v.clamp(0.0, 1.0));
   Future<void> setLoopOne(bool one) => _player.setLoopMode(one ? LoopMode.one : LoopMode.off);
 
   /// 通知栏按钮触发的播放/暂停（ AppState 已算好目标状态后调用）。

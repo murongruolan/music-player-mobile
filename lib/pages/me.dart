@@ -83,7 +83,8 @@ class MePage extends StatelessWidget {
           ('cloud', '音乐云盘', () => push(context, const CloudPage())),
           ('download', '下载管理', () => push(context, const DownloadPage())),
           ('mic', '听歌识曲', () => pushFull(context, const ScanPage(match: true))),
-          ('moon', app.timer > 0 ? '${app.timer} 分钟' : '睡眠定时', () => openTimer(context)),
+          // 睡眠定时：开启中显示剩余（剩余跨整分时 state 会 notify 刷新）
+          ('moon', app.sleepLeft > 0 ? '剩 ${(app.sleepLeft / 60).ceil()} 分钟' : '睡眠定时', () => openTimer(context)),
         ]),
         const SizedBox(height: 22),
         Group(title: '个性化', children: [
