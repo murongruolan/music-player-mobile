@@ -4,6 +4,14 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import '../core/state.dart';
 
+/// 启动器图标的图层：完整图标 / 只有底 / 只有竖琴（Android 自适应图标的前景）。
+enum IconLayer { full, background, foreground }
+
+/// 把 App 图标画到画布上（启动器图标生成脚本 test/tool/render_icons_test.dart 也用它）。
+/// [radius] 圆角（0–50，按 100 的画布计）；[artScale] 竖琴缩放（自适应图标要缩进安全区）。
+void paintAppIcon(Canvas canvas, Size size, String id, {double radius = 23, IconLayer layer = IconLayer.full, double artScale = 1}) =>
+    _IconPainter(id, radius: radius, layer: layer, artScale: artScale).paint(canvas, size);
+
 class AppIcon extends StatelessWidget {
   final String id;
   final double size;
@@ -51,7 +59,9 @@ class _AppLogoState extends State<AppLogo> with SingleTickerProviderStateMixin {
 
 class _IconPainter extends CustomPainter {
   final String id;
-  _IconPainter(this.id);
+  final double radius, artScale;
+  final IconLayer layer;
+  _IconPainter(this.id, {this.radius = 23, this.layer = IconLayer.full, this.artScale = 1});
 
   Path _lyreStrokes() => Path()
     ..moveTo(31, 74)
@@ -83,6 +93,13 @@ class _IconPainter extends CustomPainter {
     ..close();
 
   void _lyre(Canvas c, Color stroke, Color star, {Shader? shader, double glow = 0}) {
+    if (layer == IconLayer.background) return;
+    if (artScale != 1) {
+      c.save();
+      c.translate(50, 50);
+      c.scale(artScale);
+      c.translate(-50, -50);
+    }
     Paint p(double w) {
       final pt = Paint()
         ..style = PaintingStyle.stroke
@@ -99,15 +116,18 @@ class _IconPainter extends CustomPainter {
     c.drawPath(_base(), p(6.5));
     c.drawPath(_strings(), p(3));
     c.drawPath(_star(), Paint()..color = star);
+    if (artScale != 1) c.restore();
   }
 
   @override
   void paint(Canvas canvas, Size size) {
     canvas.save();
     canvas.scale(size.width / 100);
-    final rr = RRect.fromRectAndRadius(const Rect.fromLTWH(0, 0, 100, 100), const Radius.circular(23));
+    final rr = RRect.fromRectAndRadius(const Rect.fromLTWH(0, 0, 100, 100), Radius.circular(radius));
     canvas.clipRRect(rr);
+    // 只画前景时把底色画成透明
     final bg = Paint();
+    if (layer == IconLayer.foreground) bg.blendMode = BlendMode.dst;
     switch (id) {
       case 'night':
         bg.shader = ui.Gradient.radial(const Offset(50, 10), 100, [const Color(0xFF2A2C3E), const Color(0xFF07080D)]);
@@ -173,7 +193,7 @@ class _IconPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_IconPainter o) => o.id != id;
+  bool shouldRepaint(_IconPainter o) => o.id != id || o.radius != radius || o.layer != layer || o.artScale != artScale;
 }
 
 /// 环境光：3 个大模糊光斑在近黑底上漂移呼吸（登录 / 注册 / 使用须知共用）。
