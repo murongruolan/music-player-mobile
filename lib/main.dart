@@ -22,7 +22,9 @@ Future<void> main() async {
   // 截图模式不连后端，页面全部用 mock 数据
   final net = shot != null ? null : await Net.create();
   net?.session.onEnd.where((r) => r == SessionEnd.expired).listen((_) => toast('登录已失效，请重新登录', 'lock'));
-  final app = AppState(net: net)..restoreSession();
+  final app = AppState(net: net);
+  await app.cloud.init(); // 读本地听歌统计
+  app.restoreSession();
   if (shot != null) applyShotState(app, shot);
   runApp(LyraApp(state: app, shot: shot));
 }

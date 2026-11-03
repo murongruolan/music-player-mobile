@@ -7,6 +7,7 @@ import '../data/mock.dart';
 import '../data/models.dart';
 import '../net/net.dart';
 import 'announcements.dart';
+import 'cloud.dart';
 import 'tokens.dart';
 
 class Settings {
@@ -77,6 +78,9 @@ class AppState extends ChangeNotifier {
   bool eqOn = true;
   bool autoPopups = true; // 进入主界面时自动弹出未读的弹窗公告（测试 / 截图时关闭）
   late final anns = Announcements(net, notifyListeners);
+
+  /// 云同步 / 云备份 / 听歌统计。
+  late final cloud = Cloud(this);
   int get unread => anns.unread;
   bool isRead(Announcement a) => anns.isRead(a);
 
@@ -115,6 +119,19 @@ class AppState extends ChangeNotifier {
   }
 
   Song get song => songs[cur];
+  Song songById(int id) => songs[id];
+
+  /// 给 [Cloud] 等协作对象用的 notifyListeners。
+  void notify() => notifyListeners();
+
+  @override
+  void notifyListeners() {
+    super.notifyListeners();
+    if (net != null) {
+      cloud.onAppChanged(); // 设置变了 → 防抖推送
+      cloud.evaluate(); // 登录 / 会员 / 开关变了 → 开关实时同步
+    }
+  }
   Platform get platform => platformBy(plat);
   bool isIn(String pid) => platLogin.containsKey(pid);
   List<Script> scriptsOf(String pid) {
@@ -178,6 +195,7 @@ class AppState extends ChangeNotifier {
     final dt = now.difference(_last).inMicroseconds / 1e6;
     _last = now;
     if (!playing) return;
+    cloud.onPlayTick(cur, dt);
     var p = pos.value + dt * speed;
     if (p >= song.dur) {
       if (mode == 'one') {
@@ -356,6 +374,7 @@ class AppState extends ChangeNotifier {
   void sessionEnded(SessionEnd reason) {
     account = null;
     unawaited(anns.reset());
+    unawaited(cloud.reset());
     if (!authed) return notifyListeners();
     authed = false;
     authPage = 'login';
@@ -367,6 +386,7 @@ class AppState extends ChangeNotifier {
     _sessionSub?.cancel();
     _userSub?.cancel();
     anns.dispose();
+    cloud.dispose();
     _clock?.cancel();
     pos.dispose();
     super.dispose();
