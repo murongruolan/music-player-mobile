@@ -1,0 +1,26 @@
+name: Icons
+
+# 重新生成启动器图标（图标画法改了之后手动触发），产物 icons 解压后覆盖到工程根目录。
+on:
+  workflow_dispatch:
+  push:
+    branches: ['chore/app-icon']
+    paths: ['test/tool/render_icons_test.dart', 'lib/ui/brand.dart', '.github/workflows/icons.yml']
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: RENDER_ICONS=1 flutter test test/tool/render_icons_test.dart
+      - uses: actions/upload-artifact@v4
+        with:
+          name: icons
+          path: build/icons/
+          retention-days: 14
