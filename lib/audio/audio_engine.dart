@@ -91,7 +91,10 @@ class AudioEngine {
       _loaded = true;
       await _player.setLoopMode(loopOne ? LoopMode.one : LoopMode.off);
       await applyEq(_eqOn, _eqCurve); // 换源后重新套用 EQ 曲线
-      if (autoplay) await _player.play();
+      // just_audio 的 play() 返回的 Future 要到播放完成/被打断时才 complete，
+      // await 会把 playSong 挂到曲终——通知同步与 AppState 的加载收尾（速度/EQ/收藏态）
+      // 全部永远不执行（实测通知栏因此无媒体卡片）。这里只负责启动播放，不等待。
+      if (autoplay) unawaited(_player.play());
       _syncNotification(playing: autoplay);
     } catch (e) {
       _loaded = false;
