@@ -2,11 +2,10 @@
 //
 // 默认地址可在构建时覆盖：flutter build apk --dart-define=API_BASE_URL=https://api.example.com/api/v1
 // 运行时也可以改（设置 → 开发者选项之类的入口调用 [ApiConfig.setOverride]），会持久化。
-// 注意：*.workers.dev 在中国大陆被 SNI 阻断，正式发布需要绑定自定义域名。
 import 'storage.dart';
 
 class ApiConfig {
-  static const defaultBaseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: 'https://music-player-server.changewk.workers.dev/api/v1');
+  static const defaultBaseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: 'https://player-api.0996996.xyz/api/v1');
   static const appVersion = String.fromEnvironment('APP_VERSION', defaultValue: '0.1.0');
   static const _overrideKey = 'api.baseUrl.override.v1';
 
