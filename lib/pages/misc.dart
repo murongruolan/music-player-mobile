@@ -570,7 +570,7 @@ class AboutPage extends StatelessWidget {
     final app = context.appRead;
     toast('正在检查更新…', 'refresh');
     await app.checkUpdate();
-    final r = app.update;
+    final r = app.updateInfo;
     if (!context.mounted) return;
     if (r == null) return toast('检查失败，请稍后重试', 'info');
     final l = r.latest;
@@ -592,7 +592,7 @@ class AboutPage extends StatelessWidget {
       ]),
       Group(children: [
         if (app.online)
-          Item(icon: 'refresh', color: 'green', label: '检查更新', val: app.update?.hasUpdate == true ? '有新版本 v${app.update!.latest?.version ?? ''}' : null, onTap: () => _checkUpdate(context))
+          Item(icon: 'refresh', color: 'green', label: '检查更新', val: app.updateInfo?.hasUpdate == true ? '有新版本 v${app.updateInfo!.latest?.version ?? ''}' : null, onTap: () => _checkUpdate(context))
         else
           Item(icon: 'refresh', color: 'green', label: '检查更新', val: '有新版本', onTap: () => showLDialog(context, icon: 'download', title: '发现新版本 v2.5.0', body: '· 新增 4 套皮肤\n· 底部搜索栏\n· 修复若干问题', actions: [('稍后', BtnKind.sec, null), ('立即更新', BtnKind.pri, () => toast('正在下载更新包…', 'download'))])),
         Item(icon: 'bell', color: 'orange', label: '公告历史', onTap: () => push(context, const AnnouncementsPage())),

@@ -96,7 +96,7 @@ class AppState extends ChangeNotifier {
   late final sources = ScriptStore(this, net?.prefs);
 
   /// 最近一次检查更新的结果；[versionBlock] 非空时整个 App 显示「版本停用」页。
-  UpdateCheck? update, versionBlock;
+  UpdateCheck? updateInfo, versionBlock;
 
   /// 启动时检查更新（不需要登录）。失败静默。
   Future<void> checkUpdate() async {
@@ -104,7 +104,7 @@ class AppState extends ChangeNotifier {
     if (n == null) return;
     try {
       final r = await UpdateApi(n.client).check();
-      update = r;
+      updateInfo = r;
       versionBlock = r.versionDisabled ? r : null;
       notifyListeners();
     } on ApiException catch (_) {}
