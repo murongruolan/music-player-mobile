@@ -417,7 +417,8 @@ class _PlaylistSquarePageState extends State<PlaylistSquarePage> {
     final pal = context.pal;
     final plat = appPlatform(widget.platform);
     // 分类太多时只放前 40 个（按平台返回的顺序），选中的分类始终在里面
-    final shown = cats.take(40).toList();
+    final seen = <String>{};
+    final shown = cats.where((c) => seen.add(c.id)).take(40).toList();
     final pre = widget.category;
     if (pre != null && !shown.any((c) => c.id == pre.id)) shown.insert(0, pre);
     return SubPage(title: '${plat.short} · 歌单广场', children: [
