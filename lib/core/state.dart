@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../data/mock.dart';
 import '../data/models.dart';
 import '../net/net.dart';
+import 'announcements.dart';
 import 'tokens.dart';
 
 class Settings {
@@ -74,10 +75,10 @@ class AppState extends ChangeNotifier {
   List<double> eq = [...eqPresets['流行']!];
   String eqPreset = '流行';
   bool eqOn = true;
-  final readAnn = <String>{};
   bool autoPopups = true; // 进入主界面时自动弹出未读的弹窗公告（测试 / 截图时关闭）
-  int get unread => announcements.where((a) => !readAnn.contains(a.id)).length;
-  bool isRead(Announcement a) => readAnn.contains(a.id);
+  late final anns = Announcements(net, notifyListeners);
+  int get unread => anns.unread;
+  bool isRead(Announcement a) => anns.isRead(a);
 
   /// 网络层。测试 / 截图不传（为 null），页面里通过 [api] 取用。
   final Net? net;
@@ -354,6 +355,7 @@ class AppState extends ChangeNotifier {
   /// 会话结束（主动退出或令牌失效）→ 回到登录页。失效提示由 main.dart 弹出。
   void sessionEnded(SessionEnd reason) {
     account = null;
+    unawaited(anns.reset());
     if (!authed) return notifyListeners();
     authed = false;
     authPage = 'login';
@@ -364,6 +366,7 @@ class AppState extends ChangeNotifier {
   void dispose() {
     _sessionSub?.cancel();
     _userSub?.cancel();
+    anns.dispose();
     _clock?.cancel();
     pos.dispose();
     super.dispose();
