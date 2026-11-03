@@ -118,14 +118,16 @@ class ApiClient {
     Future<Object?> run() => _withRetry(() => _call('GET', path, uri, auth: auth, timeout: timeout), retry: retry);
     Future<Object?> shared;
     if (dedupe) {
-      shared = _inflight[key] ??= run().whenComplete(() => _inflight.remove(key));
+      // 注意回调用块体：箭头函数会把 remove 返回的 Future 交给 whenComplete，它会等自己完成而死锁。
+      shared = _inflight[key] ??= run().whenComplete(() {
+        _inflight.remove(key);
+      });
     } else {
       shared = run();
     }
+    final Object? data;
     try {
-      final data = await _raceCancel(shared, cancel);
-      if (cacheTtl != null || staleOnError) _put(key, data);
-      return _decode(data, decode);
+      data = await _raceCancel(shared, cancel);
     } on ApiException catch (e) {
       if (staleOnError && hit != null && (e.isNetwork || e.kind == ApiErrorKind.server || e.isRateLimited)) {
         log?.call('[api] $key 失败（${e.kind.name}），使用缓存数据');
@@ -133,6 +135,8 @@ class ApiClient {
       }
       rethrow;
     }
+    if (cacheTtl != null || staleOnError) _put(key, data);
+    return _decode(data, decode);
   }
 
   Future<T> post<T>(String path, {Object? body, Map<String, Object?>? query, Decoder<T>? decode, bool auth = true, bool retry = false, Duration? timeout, CancelToken? cancel}) =>
