@@ -381,6 +381,8 @@ class _DevicesPageState extends State<DevicesPage> {
   List<DeviceRecord> devices = const [];
   int maxDevices = 10;
   bool loading = false;
+  bool selecting = false; // 多选模式（批量移除）
+  final selected = <int>{}; // 选中的设备 id（本机不可选）
 
   @override
   void initState() {
@@ -435,6 +437,44 @@ class _DevicesPageState extends State<DevicesPage> {
     }
   }
 
+  /// 批量移除所选（确认弹窗 → batchRemove）。本机不可选，后端也会整体拒绝含本机的请求。
+  Future<void> _removeSelected() async {
+    final app = context.appRead;
+    final ids = selected.toList();
+    if (app.net == null || ids.isEmpty) return;
+    showLDialog(context,
+        icon: 'logout',
+        iconColor: context.pal.danger,
+        title: '移除 ${ids.length} 台设备？',
+        body: '被移除的设备需要重新登录',
+        actions: [
+          ('取消', BtnKind.sec, null),
+          ('移除', BtnKind.danger, () async {
+            if (loading) return;
+            setState(() => loading = true);
+            try {
+              final removed = await DevicesApi(app.api.client).batchRemove(ids);
+              if (!mounted) return;
+              toast('已移除 $removed 台设备', 'logout');
+              setState(() {
+                selected.clear();
+                selecting = false;
+              });
+              await _load();
+            } on ApiException catch (e) {
+              if (mounted && !e.isCancelled) toast(e.userMessage, 'info');
+            } finally {
+              if (mounted) setState(() => loading = false);
+            }
+          }),
+        ]);
+  }
+
+  void _exitSelecting() => setState(() {
+        selecting = false;
+        selected.clear();
+      });
+
   /// 最近在线时间：相对时间（后端 lastSeenAt 是 RFC3339）。
   String _lastSeen(DeviceRecord d) {
     if (d.isCurrent) return '当前在线';
@@ -448,30 +488,73 @@ class _DevicesPageState extends State<DevicesPage> {
     return '${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')} 在线';
   }
 
+  /// 多选模式的复选框：本机固定禁用（后端也拒绝移除当前设备）。
+  Widget _check(bool on, {bool disabled = false}) {
+    final pal = context.pal;
+    return AnimatedContainer(
+      duration: Tk.base,
+      width: 24,
+      height: 24,
+      decoration: BoxDecoration(
+        color: on ? pal.acc : Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: disabled ? pal.line : on ? pal.acc : pal.lineStrong, width: 2),
+      ),
+      child: on ? Icon(ic('check'), size: 16, color: pal.ink) : null,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final pal = context.pal;
     final list = _view;
-    return SubPage(title: '登录设备', children: [
-      Hint('最多同时登录 $maxDevices 台设备。移除后该设备需要重新登录。', padding: const EdgeInsets.fromLTRB(Tk.pad, 0, Tk.pad, 12)),
-      if (list.isEmpty)
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 40),
-          child: Center(child: loading ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)) : Text('没有拿到设备列表，返回后重试', style: ts(13.5, c: pal.t3))),
-        )
-      else
-        Group(children: [
-        for (final d in list)
-          Item(
-            lead: Container(width: 30, height: 30, decoration: BoxDecoration(color: d.isCurrent ? settingTiles['green'] : settingTiles['gray'], borderRadius: BorderRadius.circular(9)), child: Icon(ic(d.isTv ? 'tv' : d.isDesktop ? 'grid' : 'phone'), size: 18, color: Colors.white)),
-            label: d.deviceName,
-            sub: [d.systemVersion, _lastSeen(d)].where((s) => s.isNotEmpty).join(' · '),
-            trailing: d.isCurrent
-                ? const Badge2('本机', acc: true)
-                : Btn('移除', small: true, kind: BtnKind.danger, onTap: loading ? null : () => showLDialog(context, icon: 'logout', iconColor: pal.danger, title: '移除「${d.deviceName}」？', body: '该设备需要重新登录', actions: [('取消', BtnKind.sec, null), ('移除', BtnKind.danger, () => _remove(d))])),
-          ),
-      ]),
-    ]);
+    return SubPage(
+      title: '登录设备',
+      actions: [
+        if (list.any((d) => !d.isCurrent))
+          IBtn(selecting ? 'x' : 'check', onTap: () => selecting ? _exitSelecting() : setState(() => selecting = true)),
+      ],
+      floating: selecting && selected.isNotEmpty
+          ? Padding(
+              padding: const EdgeInsets.symmetric(horizontal: Tk.pad),
+              child: Btn(
+                '移除所选（${selected.length}）',
+                icon: 'logout',
+                kind: BtnKind.danger,
+                block: true,
+                onTap: loading ? null : _removeSelected,
+              ),
+            )
+          : null,
+      children: [
+        Hint(
+          selecting ? '勾选要移除的设备（本机不可移除），点底部按钮批量移除。' : '最多同时登录 $maxDevices 台设备。移除后该设备需要重新登录。右上角可进入多选模式批量移除。',
+          padding: const EdgeInsets.fromLTRB(Tk.pad, 0, Tk.pad, 12),
+        ),
+        if (list.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 40),
+            child: Center(child: loading ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)) : Text('没有拿到设备列表，返回后重试', style: ts(13.5, c: pal.t3))),
+          )
+        else
+          Group(children: [
+          for (final d in list)
+            Item(
+              lead: Container(width: 30, height: 30, decoration: BoxDecoration(color: d.isCurrent ? settingTiles['green'] : settingTiles['gray'], borderRadius: BorderRadius.circular(9)), child: Icon(ic(d.isTv ? 'tv' : d.isDesktop ? 'grid' : 'phone'), size: 18, color: Colors.white)),
+              label: d.deviceName,
+              sub: [d.systemVersion, _lastSeen(d)].where((s) => s.isNotEmpty).join(' · '),
+              onTap: selecting && !d.isCurrent ? () => setState(() => selected.contains(d.id) ? selected.remove(d.id) : selected.add(d.id)) : null,
+              trailing: selecting
+                  ? (d.isCurrent
+                      ? const Badge2('本机', acc: true)
+                      : _check(selected.contains(d.id)))
+                  : d.isCurrent
+                      ? const Badge2('本机', acc: true)
+                      : Btn('移除', small: true, kind: BtnKind.danger, onTap: loading ? null : () => showLDialog(context, icon: 'logout', iconColor: pal.danger, title: '移除「${d.deviceName}」？', body: '该设备需要重新登录', actions: [('取消', BtnKind.sec, null), ('移除', BtnKind.danger, () => _remove(d))])),
+            ),
+        ]),
+      ],
+    );
   }
 }
 
