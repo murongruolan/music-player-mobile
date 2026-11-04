@@ -441,7 +441,10 @@ class _Results extends StatelessWidget {
               label: a,
               sub: '${12 - i} 万关注 · ${songs.where((s) => s.artist == a).length} 首',
               onTap: () => push(context, ArtistPage(id: songs.firstWhere((s) => s.artist == a).id)),
-              trailing: Btn.sec('关注', small: true, onTap: () => toast('已关注 $a', 'heartf')),
+              trailing: Btn.sec(app.taste.follows(a) ? '已关注' : '关注', small: true, onTap: () {
+                final on = app.taste.toggleFollow(a, app.plat);
+                toast(on ? '已关注 $a' : '已取消关注 $a', on ? 'heartf' : 'heart');
+              }),
             ),
         ]);
         break;

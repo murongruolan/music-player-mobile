@@ -16,6 +16,9 @@ class LyricStore {
 
   LyricStore(this._app);
 
+  /// 清掉缓存的歌词（设置 → 关于 → 清除缓存）。当前这首不受影响。
+  void clear() => _cache.clear();
+
   /// 歌曲 [id] 开始播放时调用。
   void load(int id) {
     if (id == _for || id < 0 || id >= songs.length) return;

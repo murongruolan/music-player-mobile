@@ -1,11 +1,13 @@
 // 二级页：歌单详情（模糊背景视差 + 多选）、歌手、听歌统计。
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../core/state.dart';
 import '../core/tokens.dart';
 import '../data/mock.dart';
 import '../data/models.dart';
-import '../platform/models.dart' show CatalogType;
+import '../platform/models.dart' show CatalogType, SearchType;
+import '../source/source_manager.dart' show normalizeSinger;
 import '../platform/registry.dart';
 import '../shell/shell.dart';
 import '../ui/cover.dart';
@@ -15,6 +17,7 @@ import '../widgets/sheets.dart';
 import 'backup.dart' show SponsorGate, toastApiError;
 import 'common.dart';
 import 'discover.dart';
+import 'radio.dart';
 import 'remote.dart';
 
 class PlaylistPage extends StatefulWidget {
@@ -217,7 +220,18 @@ class ArtistPage extends StatefulWidget {
 }
 
 class _ArtistPageState extends State<ArtistPage> {
-  bool follow = false;
+  /// 关注 / 取消关注（记在本机，「我的 → 关注的歌手」里能看到）。关注时顺手查一下平台歌手 id，之后点进去能直接打开平台歌手页。
+  void _toggleFollow(AppState app, Song s) {
+    final plat = platformOfSong(s.id) ?? PlatformHub.codeOf(app.plat);
+    final on = app.taste.toggleFollow(s.artist, plat);
+    toast(on ? '已关注 ${s.artist}' : '已取消关注 ${s.artist}', on ? 'heartf' : 'heart');
+    if (!on || !app.online) return;
+    unawaited(app.content.search(plat, s.artist, SearchType.artist, limit: 5).then((o) {
+      final hit = o.result.items.where((a) => normalizeSinger(a.title) == normalizeSinger(s.artist)).firstOrNull;
+      if (hit != null) app.taste.attachCatalog(s.artist, o.platform, hit.id, cover: hit.cover);
+    }, onError: (Object _) {}));
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = context.app;
@@ -227,10 +241,7 @@ class _ArtistPageState extends State<ArtistPage> {
     return SubPage(
       title: s.artist,
       fadeTitle: true,
-      actions: [IBtn(follow ? 'heartf' : 'heart', color: follow ? pal.accText : null, onTap: () {
-        setState(() => follow = !follow);
-        toast(follow ? '已关注 ${s.artist}' : '已取消关注', 'heartf');
-      })],
+      actions: [IBtn(app.taste.follows(s.artist) ? 'heartf' : 'heart', color: app.taste.follows(s.artist) ? pal.accText : null, onTap: () => _toggleFollow(app, s))],
       hero: (y) => Positioned(
         left: 0,
         right: 0,
@@ -257,8 +268,9 @@ class _ArtistPageState extends State<ArtistPage> {
               }),
               const SizedBox(width: 10),
               Btn.sec('歌手电台', icon: 'wave', onTap: () {
+                // 联网：在平台上搜这位歌手的歌拼成电台；演示模式沿用 mock 列表
+                if (app.online) return unawaited(playArtistRadio(app, s.artist, platform: platformOfSong(s.id)));
                 app.playAll('hot', shuffle: true, name: '${s.artist} 电台');
-                toast('${s.artist} 电台：相似歌手连续播放', 'wave');
               }),
             ]),
           ]),

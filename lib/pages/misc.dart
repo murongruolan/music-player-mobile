@@ -1,9 +1,12 @@
 // 其它二级页：公告 · 平台账号 · 下载管理 · 账号中心 · 登录设备 · 音乐云盘（WebDAV）· 关于与更新。备份与同步在 backup.dart。
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../api/announcement_api.dart';
 import '../api/account_api.dart';
 import '../api/devices_api.dart';
 import '../auth/auth.dart';
+import '../core/app_log.dart';
 import '../core/state.dart';
 import '../core/tokens.dart';
 import '../data/mock.dart';
@@ -654,6 +657,14 @@ class _CloudPageState extends State<CloudPage> {
 class AboutPage extends StatelessWidget {
   const AboutPage({super.key});
 
+  void _copyLog(AppState app) {
+    final acc = app.account;
+    final header = 'Lyra v${ApiConfig.appVersion} (${ApiConfig.buildNumber}) · ${defaultTargetPlatform.name} · ${app.online ? '联网' : '演示'}'
+        '${acc == null ? '' : ' · UID ${acc.uid}'} · ${AppLog.stamp(DateTime.now())}';
+    Clipboard.setData(ClipboardData(text: AppLog.instance.dump(header)));
+    toast('已复制 ${AppLog.instance.length} 条日志，可以粘贴发给开发者', 'copy');
+  }
+
   Future<void> _checkUpdate(BuildContext context) async {
     final app = context.appRead;
     toast('正在检查更新…', 'refresh');
@@ -687,14 +698,77 @@ class AboutPage extends StatelessWidget {
         Item(icon: 'info', color: 'blue', label: '使用须知', onTap: () => pushFull(context, const DisclaimerPage(readOnly: true))),
         if (!app.online) Item(icon: 'info', color: 'red', label: '版本停用页（演示）', onTap: () => pushFull(context, const VersionDisabledPage())),
       ]),
-      if (!app.online)
       Group(title: '诊断', children: [
-        Item(icon: 'bug', color: 'red', label: '崩溃报告', val: '0 条', onTap: () => toast('没有崩溃记录', 'check')),
-        Item(icon: 'bug', color: 'gray', label: '自动上报崩溃', sw: app.set.crash, onSw: (v) => app.update(() => app.set.crash = v)),
-        Item(icon: 'code', color: 'gray', label: '应用日志', onTap: () => toast('日志已复制，可发给开发者', 'copy')),
-        Item(icon: 'trash', color: 'gray', label: '清除缓存', val: '1.8 GB', onTap: () => showLDialog(context, icon: 'trash', title: '清除 1.8 GB 缓存？', body: '已下载的歌曲不受影响', actions: [('取消', BtnKind.sec, null), ('清除', BtnKind.danger, () => toast('已清除 1.8 GB', 'trash'))])),
+        Item(icon: 'bug', color: 'red', label: '崩溃报告', val: '${AppLog.instance.crashes.length} 条', onTap: () => push(context, const CrashLogPage())),
+        Item(icon: 'bug', color: 'gray', label: '自动上报崩溃', sub: '只上报错误信息和版本号，不含个人数据', sw: app.set.crash, onSw: (v) => app.update(() => app.set.crash = v)),
+        Item(icon: 'code', color: 'gray', label: '应用日志', sub: '复制最近的提示、播放错误和崩溃，发给开发者', onTap: () => _copyLog(app)),
+        Item(icon: 'trash', color: 'gray', label: '清除缓存', sub: '图片、平台列表与歌词的缓存，清除后重新加载', val: fmtBytes(app.imageCacheBytes), onTap: () => showLDialog(context, icon: 'trash', title: '清除缓存？', body: '会清掉已加载的封面图片、平台歌单 / 榜单 / 歌词缓存，之后打开时重新加载。收藏、歌单和设置不受影响。', actions: [
+              ('取消', BtnKind.sec, null),
+              ('清除', BtnKind.danger, () {
+                final n = app.clearCaches();
+                toast(n > 0 ? '已清除 ${fmtBytes(n)} 图片缓存和列表缓存' : '已清除列表缓存', 'trash');
+              }),
+            ])),
       ]),
       const Hint('© 2026 Lyra · 开源许可', align: TextAlign.center),
     ]);
+  }
+}
+
+/// 字节数 → 「12.3 MB」。
+String fmtBytes(int b) {
+  if (b < 1024) return '$b B';
+  if (b < 1024 * 1024) return '${(b / 1024).toStringAsFixed(0)} KB';
+  if (b < 1024 * 1024 * 1024) return '${(b / 1024 / 1024).toStringAsFixed(1)} MB';
+  return '${(b / 1024 / 1024 / 1024).toStringAsFixed(2)} GB';
+}
+
+/// 崩溃报告：本机记录的最近 20 条框架错误 / 未捕获异常。点开看堆栈、可复制。
+class CrashLogPage extends StatefulWidget {
+  const CrashLogPage({super.key});
+  @override
+  State<CrashLogPage> createState() => _CrashLogPageState();
+}
+
+class _CrashLogPageState extends State<CrashLogPage> {
+  @override
+  Widget build(BuildContext context) {
+    final list = AppLog.instance.crashes;
+    final pal = context.pal;
+    return SubPage(
+      title: '崩溃报告',
+      actions: [if (list.isNotEmpty) IBtn('trash', onTap: () => showLDialog(context, icon: 'trash', title: '清空崩溃记录？', body: '只清除本机记录。', actions: [('取消', BtnKind.sec, null), ('清空', BtnKind.danger, () => setState(AppLog.instance.clearCrashes))]))],
+      children: [
+        if (list.isEmpty)
+          const EmptyState('check', '没有崩溃记录', desc: '出现崩溃或未处理的错误时会记在这里（最多 20 条）')
+        else
+          Group(children: [
+            for (final c in list)
+              Item(
+                icon: 'bug',
+                color: 'red',
+                label: c.message.split('\n').first,
+                sub: AppLog.stamp(c.at),
+                onTap: () => showLSheet(context, title: '崩溃详情', builder: (sc) => Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: Tk.pad),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        Text(c.message, style: ts(13, w: FontWeight.w600, c: pal.t1)),
+                        const SizedBox(height: 8),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 320),
+                          child: SingleChildScrollView(child: Text(c.stack.isEmpty ? '（没有堆栈）' : c.stack, style: ts(11, c: pal.t2, h: 1.4))),
+                        ),
+                        const SizedBox(height: 14),
+                        Btn('复制', icon: 'copy', block: true, onTap: () {
+                          Clipboard.setData(ClipboardData(text: '${AppLog.stamp(c.at)} ${c.message}\n${c.stack}'));
+                          Navigator.of(sc).pop();
+                          toast('已复制', 'copy');
+                        }),
+                      ]),
+                    )),
+              ),
+          ]),
+      ],
+    );
   }
 }

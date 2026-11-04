@@ -15,6 +15,7 @@ import 'cloud.dart';
 import 'library_store.dart';
 import 'lyric_store.dart';
 import 'script_store.dart';
+import 'taste.dart';
 import 'telemetry.dart';
 import 'tokens.dart';
 
@@ -100,6 +101,9 @@ class AppState extends ChangeNotifier {
 
   /// 当前歌曲的真实歌词（联网模式）。
   late final lyricStore = LyricStore(this);
+
+  /// 关注的歌手、不感兴趣的歌（本机）。
+  late final taste = TasteStore(net?.prefs, notifyListeners);
 
   /// 导入的音源脚本（联网模式），持久化并可经 lx_sources 云同步。
   late final sources = ScriptStore(this, net?.prefs);
@@ -215,6 +219,7 @@ class AppState extends ChangeNotifier {
     final e = engine!;
     if (!e.loaded) return;
     _restoreSleepVolume(); // 淡出中用户切了歌：恢复音量，淡出窗口由 _sleepTick 重新进入
+    unawaited(e.setVolume(vol));
     applySpeedToEngine();
     if (e.playingNow != playing) unawaited(e.setPlaying(playing)); // 加载期间用户可能已按暂停/切歌
     e.updateNotification(playing: playing, liked: liked.contains(cur));
@@ -332,9 +337,57 @@ class AppState extends ChangeNotifier {
   void _restoreSleepVolume() {
     if (_sleepFading) {
       _sleepFading = false;
-      if (engineActive && _sleepVolBase != null) unawaited(engine!.setVolume(_sleepVolBase!));
+      if (engineActive) unawaited(engine!.setVolume(vol));
     }
     _sleepVolBase = null;
+  }
+
+  /// 播放器音量条（0..1，相对系统音量）。睡眠淡出进行中时只记下新值，淡出结束后生效。
+  void setVolume(double v) {
+    vol = v.clamp(0.0, 1.0);
+    if (engineActive && !_sleepFading) unawaited(engine!.setVolume(vol));
+    notifyListeners();
+  }
+
+  // ---------- 口味 ----------
+
+  /// 被标记为不感兴趣（本次会话的 id，或本机记录的曲目 key）。
+  bool isDisliked(int id) {
+    if (disliked.contains(id)) return true;
+    final k = id >= 0 && id < songs.length ? songs[id].key : null;
+    return k != null && taste.disliked.contains(k);
+  }
+
+  /// 不感兴趣：记下来（电台以后不再放），并从当前队列里拿掉；正在放的就切下一首。
+  void dislike(int id) {
+    disliked.add(id);
+    final k = id >= 0 && id < songs.length ? songs[id].key : null;
+    if (k != null) taste.dislike(k);
+    if (id == cur && queue.length > 1) {
+      _step(1, notify: false);
+      queue.remove(id);
+    } else if (id != cur) {
+      queue.remove(id);
+    }
+    notifyListeners();
+  }
+
+  // ---------- 缓存 ----------
+
+  /// 内存里的图片缓存大小（字节）。列表 / 歌词等数据缓存没有可靠的大小，不计入。
+  int get imageCacheBytes => PaintingBinding.instance.imageCache.currentSizeBytes;
+
+  /// 清除缓存：图片、平台列表 / 详情 / 歌词、接口缓存。返回清掉的图片字节数。
+  int clearCaches() {
+    final bytes = imageCacheBytes;
+    final ic = PaintingBinding.instance.imageCache;
+    ic.clear();
+    ic.clearLiveImages();
+    content.invalidate();
+    lyricStore.clear();
+    net?.client.clearCache();
+    notifyListeners();
+    return bytes;
   }
 
   /// 加载当前曲目到引擎（engineActive 时才调）。
@@ -360,6 +413,7 @@ class AppState extends ChangeNotifier {
     cur = -1;
     playing = false;
     pos.value = 0;
+    vol = 1; // 真实播放：音量条默认满格（相对系统音量）
     liked.clear();
     myPlaylists.clear();
     scripts.clear();

@@ -11,6 +11,7 @@ import '../ui/kit.dart';
 import '../widgets/sheets.dart';
 import 'common.dart';
 import 'detail.dart';
+import 'followed.dart';
 import 'misc.dart';
 import 'scan.dart';
 import 'settings.dart';
@@ -87,6 +88,9 @@ class MePage extends StatelessWidget {
           ('moon', app.sleepLeft > 0 ? '剩 ${(app.sleepLeft / 60).ceil()} 分钟' : '睡眠定时', () => openTimer(context)),
         ]),
         const SizedBox(height: 22),
+        Group(title: '音乐', children: [
+          Item(icon: 'user', color: 'pink', label: '关注的歌手', val: app.taste.followed.isEmpty ? null : '${app.taste.followed.length} 位', onTap: () => push(context, const FollowedArtistsPage())),
+        ]),
         Group(title: '个性化', children: [
           Item(icon: 'palette', color: 'violet', label: '外观与界面', val: '${accents[app.accent].name} · ${barStyles[app.bar]}', onTap: () => push(context, const AppearancePage())),
           Item(icon: 'quote', color: 'pink', label: '歌词', val: app.set.trans ? '显示翻译' : null, onTap: () => push(context, const LyricsSettingsPage())),

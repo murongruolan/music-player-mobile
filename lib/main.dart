@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show PlatformDispatcher;
 // Lyra（暂名）· Flutter 移动端（mock 数据版）
 // 入口：AppScope（全局状态）→ MaterialApp（主题随设置实时切换）→ 鉴权流程 / 主界面。
 import 'package:audio_service/audio_service.dart';
@@ -8,9 +9,11 @@ import 'package:flutter/services.dart';
 import 'audio/audio_engine.dart';
 import 'audio/media_handler.dart';
 import 'auth/auth.dart';
+import 'core/app_log.dart';
 import 'core/shots.dart';
 import 'core/state.dart';
 import 'core/tokens.dart';
+import 'net/api_config.dart';
 import 'net/net.dart';
 import 'shell/shell.dart';
 import 'source/music_resolver.dart';
@@ -20,6 +23,7 @@ import 'widgets/sheets.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  _installDiagnostics();
   registerSheets();
   SystemChrome.setSystemUIOverlayStyle(overlayStyle(true));
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -27,6 +31,7 @@ Future<void> main() async {
   final shot = shotFromUrl();
   // 截图模式不连后端，页面全部用 mock 数据
   final net = shot != null ? null : await Net.create();
+  await AppLog.instance.attach(net?.prefs); // 读本机保存的崩溃记录
   net?.session.onEnd.where((r) => r == SessionEnd.expired).listen((_) => toast('登录已失效，请重新登录', 'lock'));
   // 音频引擎：截图模式不创建（无平台通道，保持模拟时钟），正式运行才有真实播放 + 通知栏
   AudioEngine? engine;
@@ -46,10 +51,20 @@ Future<void> main() async {
     engine = AudioEngine(resolver: resolver);
     await engine.init(handler);
   }
-  final app = AppState(net: net, engine: engine)..notice = toast;
+  final app = AppState(net: net, engine: engine)
+    ..notice = (msg, icon) {
+      AppLog.instance.add('提示', msg); // 提示气泡（含播放失败原因）都记进应用日志
+      toast(msg, icon);
+    };
+  // 「自动上报崩溃」开着才上报；本机记录不受开关影响
+  AppLog.instance.onCrash = (c) {
+    if (app.set.crash) app.telemetry.track('app_crash', {'message': c.message.length > 500 ? c.message.substring(0, 500) : c.message, 'stack': c.stack.length > 3000 ? c.stack.substring(0, 3000) : c.stack, 'version': ApiConfig.appVersion});
+  };
+  AppLog.instance.add('启动', 'v${ApiConfig.appVersion} (${ApiConfig.buildNumber}) · ${net == null ? '演示模式' : '联网模式'}');
   resolver.app = app;
   CoverTint.onReady = app.notify; // 封面取色完成后播放器背景重绘
   await app.cloud.init(); // 读本地听歌统计
+  await app.taste.load(); // 关注的歌手、不感兴趣的歌
   await app.telemetry.init(); // 读上次没发完的埋点
   app.restoreSession();
   app.telemetry.track('app_launch', {'source': 'normal', 'loggedIn': app.authed});
@@ -159,4 +174,22 @@ class _RootState extends State<Root> {
               : const AuthFlow(key: ValueKey('auth')),
     );
   }
+}
+
+/// 崩溃 / 错误收集：框架错误、未捕获的异步错误记进 [AppLog]（设置 → 关于与更新 → 诊断），debugPrint 也顺带记一份。
+void _installDiagnostics() {
+  final prev = FlutterError.onError;
+  FlutterError.onError = (d) {
+    AppLog.instance.crash(d.exception, d.stack);
+    prev?.call(d);
+  };
+  PlatformDispatcher.instance.onError = (e, st) {
+    AppLog.instance.crash(e, st);
+    return false; // 交回默认处理（打印），只是多记一份
+  };
+  final print0 = debugPrint;
+  debugPrint = (m, {wrapWidth}) {
+    if (m != null) AppLog.instance.add('debug', m);
+    print0(m, wrapWidth: wrapWidth);
+  };
 }
