@@ -1,8 +1,14 @@
 // 封面：按色相 + 变体取预渲染的占位图（由原型 coverStyle 生成）。有封面地址时在占位图上叠网络图片，
 // 占位图同时是加载中 / 加载失败的兜底。CoverPainter 保留给需要实时绘制的少数场景。
+//
+// 网络层必须走 [UaImage]（不要用 Image.network / NetworkImage + headers）：
+// 网易 / QQ 图床按 UA 拦截，Dart 默认 UA 一律 403；且 Image.network 的 headers 参数
+// 在本工程实测不透传（带上 UA 请求仍以 Dart UA 出网，宿主 curl 双向验证过 2026-11-04）。
 import 'dart:math' as math;
 import 'dart:ui' as ui;
+import 'package:flutter/foundation.dart' show SynchronousFuture;
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import '../core/tokens.dart';
 import '../data/models.dart';
 
@@ -64,15 +70,13 @@ class Cover extends StatelessWidget {
   Widget? _image(BuildContext context) {
     final u = coverUrl(url);
     if (u == null) return child;
-    final img = Image.network(
-      u,
-      // 网易 / QQ 等图床按 UA 拦截：默认的 Dart/3.x UA 会被 403（封面全部落进渐变兜底），
-      // 必须带浏览器 UA（统一常量）。若某平台仍拒绝，errorBuilder 静默退回渐变。
-      headers: const {'User-Agent': Cover.ua},
+    // UA 拦截见文件头说明；cacheWidth 拿不到（撑满容器的 Cover）时不缩放解码。
+    final cacheW = _cacheW(context);
+    final img = Image(
+      image: cacheW == null ? UaImage(u) : ResizeImage(UaImage(u), width: cacheW), // 只限宽度，保持原比例（歌手照片 / 横幅不是正方形）
       fit: BoxFit.cover,
       width: double.infinity,
       height: double.infinity,
-      cacheWidth: _cacheW(context),
       gaplessPlayback: true,
       frameBuilder: (_, ch, frame, sync) => sync ? ch : AnimatedOpacity(opacity: frame == null ? 0 : 1, duration: const Duration(milliseconds: 260), child: ch),
       errorBuilder: (_, __, ___) => const SizedBox.expand(),
@@ -110,7 +114,7 @@ class BlurCover extends StatelessWidget {
       child: Stack(fit: StackFit.expand, children: [
         ColoredBox(color: hsl(hue + 40, .62, .34)),
         img(AssetImage(placeholderAsset(hue, variant))),
-        if (u != null) img(NetworkImage(u, headers: const {'User-Agent': Cover.ua}), fade: true),
+        if (u != null) img(UaImage(u), fade: true),
       ]),
     );
   }
@@ -120,6 +124,40 @@ class BlurCover extends StatelessWidget {
 String placeholderAsset(double hue, int variant) {
   final h = ((hue % 360 + 360) % 360 / 30).round() % 12;
   return 'assets/covers/cover_${h}_${variant.abs() % 6}.jpg';
+}
+
+/// 带浏览器 UA 的网络图：网易 / QQ 等图床按 UA 拦截，Dart 默认 UA（Dart/3.x）一律 403，
+/// 而 Image.network / NetworkImage 的 headers 参数在本工程实测不透传（2026-11-04，
+/// 曾导致全量封面静默落回占位图）——所以自己取字节解码。
+/// 失败抛给 errorBuilder（占位图兜底）；ImageCache 按 key 缓存，不会重复请求。
+class UaImage extends ImageProvider<UaImage> {
+  final String url;
+  const UaImage(this.url);
+
+  /// 所有封面共用一个连接池（列表一屏几十张图，每张新建连接太浪费）。
+  static final http.Client _client = http.Client();
+
+  @override
+  Future<UaImage> obtainKey(covariant ImageConfiguration configuration) => SynchronousFuture<UaImage>(this);
+
+  @override
+  ImageStreamCompleter loadImage(UaImage key, ImageDecoderCallback decode) {
+    return MultiFrameImageStreamCompleter(codec: _load(key, decode), scale: 1.0);
+  }
+
+  Future<ui.Codec> _load(UaImage key, ImageDecoderCallback decode) async {
+    final r = await _client.get(Uri.parse(key.url), headers: const {'User-Agent': Cover.ua}).timeout(const Duration(seconds: 12));
+    if (r.statusCode != 200 || r.bodyBytes.isEmpty) throw StateError('封面 HTTP ${r.statusCode}');
+    final buffer = await ui.ImmutableBuffer.fromUint8List(r.bodyBytes);
+    return decode(buffer);
+  }
+
+  @override
+  bool operator ==(Object other) => other is UaImage && other.url == url;
+  @override
+  int get hashCode => url.hashCode;
+  @override
+  String toString() => 'UaImage("$url")';
 }
 
 /// 规范封面地址：只接受 http(s)；支持 https 的图床（网易 / QQ）把 http 升级成 https，
