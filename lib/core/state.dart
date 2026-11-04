@@ -15,6 +15,7 @@ import '../data/mock.dart';
 import '../api/update_api.dart';
 import '../data/models.dart';
 import '../net/net.dart';
+import '../cloud/dav_store.dart';
 import '../platform/credentials.dart';
 import '../platform/login/netease_login.dart';
 import '../platform/login/kugou_login.dart';
@@ -190,6 +191,9 @@ class AppState extends ChangeNotifier {
   /// 平台登录凭证（网易云 / QQ / 酷狗），存系统钥匙串，只留在本机。
   /// 登录层写入，直链层等只经 [CredentialStore] 接口读。测试 / 演示模式只在内存里。
   late final platCreds = PlatformCredentials(net?.store);
+
+  /// 音乐云盘（WebDAV）服务器，连同密码存钥匙串。
+  late final dav = DavStore(net?.store, notifyListeners);
 
   /// 平台登录流程（网易云扫码 / Cookie，QQ Cookie）。
   late final neteaseLogin = NeteaseLogin(content.http, anonCookie: () => platCreds.anonymousCookie(Plat.wy), log: (m) => AppLog.instance.add('网易云登录', m));
@@ -607,8 +611,11 @@ class AppState extends ChangeNotifier {
   /// 能不能真正播放。联网模式下音源解析（脚本运行时 / 平台取流）还没接入，先拦下来并提示，
   /// 不再用计时器假装在播放。
   bool get canPlay => !online || (engine != null && sources.sources.isNotEmpty);
-  bool _blockPlay() {
+
+  /// [id] 是云盘歌曲时，不需要音源脚本也能播。
+  bool _blockPlay([int? id]) {
     if (canPlay) return false;
+    if (online && engine != null && id != null && id >= 0 && id < songs.length && (songs[id].key?.startsWith('$davPlatform:') ?? false)) return false;
     notice?.call(engine == null ? '当前环境不支持播放' : '还没有导入音源脚本：在「设置 → 平台与解析脚本」导入后就能播放', 'info');
     return true;
   }
@@ -723,7 +730,7 @@ class AppState extends ChangeNotifier {
 
   /// [ids]：明确的播放队列（平台歌单 / 榜单 / 搜索结果）；不给时按 [list] 取。
   void play(int id, {String? list, String? name, List<int>? ids}) {
-    if (_blockPlay()) return;
+    if (_blockPlay(id)) return;
     if (ids != null) {
       queue = [...ids];
       if (name != null) queueName = name;

@@ -128,7 +128,7 @@ class _BackupPageState extends State<BackupPage> {
               ],
             ),
           ],
-          Press(onTap: () => push(context, const CloudPage()), child: noteBox(context, 'cloud', 'WebDAV 已移到「我的 → 音乐云盘」，可以直接播放 NAS 上的音乐，也可以备份收藏和歌单。')),
+          Press(onTap: () => push(context, const CloudPage()), child: noteBox(context, 'cloud', 'WebDAV 已移到「我的 → 音乐云盘」，可以直接浏览和播放 NAS 上的音乐。')),
         ]);
       },
     );
@@ -302,7 +302,7 @@ class _DemoBackupPage extends StatelessWidget {
         Item(icon: 'cloud', color: 'blue', label: '立即备份到账号', onTap: () => toast('备份完成 · 1.2 MB', 'cloud')),
         Item(icon: 'history', color: 'gray', label: '历史备份', val: '3 份', onTap: () => _history(context)),
       ]),
-      Press(onTap: () => push(context, const CloudPage()), child: noteBox(context, 'cloud', 'WebDAV 已移到「我的 → 音乐云盘」，可以直接播放 NAS 上的音乐，也可以备份收藏和歌单。')),
+      Press(onTap: () => push(context, const CloudPage()), child: noteBox(context, 'cloud', 'WebDAV 已移到「我的 → 音乐云盘」，可以直接浏览和播放 NAS 上的音乐。')),
     ]);
   }
 
