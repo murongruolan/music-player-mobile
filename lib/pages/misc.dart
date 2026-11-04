@@ -514,9 +514,13 @@ class _DevicesPageState extends State<DevicesPage> {
         if (list.any((d) => !d.isCurrent))
           IBtn(selecting ? 'x' : 'check', onTap: () => selecting ? _exitSelecting() : setState(() => selecting = true)),
       ],
+      // SubPage.floating 是 body Stack 的直接 child：必须自己包 Positioned 定位到底部
+      // （对齐 remote.dart 的 _multiBar），否则按 topLeft 铺在顶栏上且布局异常。
       floating: selecting && selected.isNotEmpty
-          ? Padding(
-              padding: const EdgeInsets.symmetric(horizontal: Tk.pad),
+          ? Positioned(
+              left: Tk.pad,
+              right: Tk.pad,
+              bottom: MediaQuery.of(context).padding.bottom + 84,
               child: Btn(
                 '移除所选（${selected.length}）',
                 icon: 'logout',
@@ -541,7 +545,7 @@ class _DevicesPageState extends State<DevicesPage> {
           for (final d in list)
             Item(
               lead: Container(width: 30, height: 30, decoration: BoxDecoration(color: d.isCurrent ? settingTiles['green'] : settingTiles['gray'], borderRadius: BorderRadius.circular(9)), child: Icon(ic(d.isTv ? 'tv' : d.isDesktop ? 'grid' : 'phone'), size: 18, color: Colors.white)),
-              label: d.deviceName,
+              label: d.deviceName.isEmpty ? '未命名设备' : d.deviceName,
               sub: [d.systemVersion, _lastSeen(d)].where((s) => s.isNotEmpty).join(' · '),
               onTap: selecting && !d.isCurrent ? () => setState(() => selected.contains(d.id) ? selected.remove(d.id) : selected.add(d.id)) : null,
               trailing: selecting
