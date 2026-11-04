@@ -124,7 +124,7 @@ class AudioEngine {
 
   /// 变速的音高：1.0 = 不变调（「保持音调」开），跟速变调时传与速度相同的值。
   /// 平台不支持时 just_audio 内部忽略，调用方无需区分。
-  Future<void> setPitch(double v) => _player.setPitch(v.clamp(0.5, 2.0));
+  Future<void> setPitch(double v) => _player.setPitch(v.clamp(0.5, 2.0)).catchError((Object _) {}); // 部分平台不支持变调，静默忽略
 
   /// 引擎侧音量（0..1），睡眠定时淡出用；用户音量条（AppState.vol）目前不经引擎。
   Future<void> setVolume(double v) => _player.setVolume(v.clamp(0.0, 1.0));

@@ -274,6 +274,8 @@ class AppState extends ChangeNotifier {
       _sleepT?.cancel();
       _sleepT = null;
       if (playing && set.finishSong) {
+        // 等这首播完再停：先把淡出压低的音量恢复，否则剩下的部分会静音播完
+        _restoreSleepVolume();
         _stopAfterSong = true;
         return;
       }

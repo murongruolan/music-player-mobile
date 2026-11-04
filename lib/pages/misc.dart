@@ -512,7 +512,7 @@ class _DevicesPageState extends State<DevicesPage> {
       title: '登录设备',
       actions: [
         if (list.any((d) => !d.isCurrent))
-          IBtn(selecting ? 'x' : 'check', onTap: () => selecting ? _exitSelecting() : setState(() => selecting = true)),
+          IBtn(selecting ? 'close' : 'check', onTap: () => selecting ? _exitSelecting() : setState(() => selecting = true)),
       ],
       // SubPage.floating 是 body Stack 的直接 child：必须自己包 Positioned 定位到底部
       // （对齐 remote.dart 的 _multiBar），否则按 topLeft 铺在顶栏上且布局异常。
