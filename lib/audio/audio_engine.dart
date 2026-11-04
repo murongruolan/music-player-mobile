@@ -5,6 +5,8 @@
 // - 引擎模式下 AppState 的 pos / playing / 时长全部由本引擎的回调驱动；
 // - 队列逻辑（下一首是谁）仍归 AppState，引擎只负责「把给定的曲目播出来」。
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
@@ -33,6 +35,9 @@ class AudioEngine {
   Song? _current;
   bool _loaded = false;
   int _seq = 0;
+  bool _cacheOn = false; // 边听边缓存：LockCachingAudioSource 边播边落盘
+  String? _cacheDir;
+  bool _fade = false; // 暂停 / 恢复的音量淡入淡出
   bool _eqOn = false;
   List<double> _eqCurve = List.filled(10, 0);
 
@@ -101,7 +106,15 @@ class AudioEngine {
     }
     _current = song;
     try {
-      await _player.setAudioSource(AudioSource.uri(uri));
+      final AudioSource source;
+      if (_cacheOn && _cacheDir != null && _cacheDir!.isNotEmpty && !uri.isScheme('file')) {
+        // 边听边缓存：just_audio 自带的锁定缓存源（同 URL 二次播放直接读盘）
+        final key = base64Url.encode(utf8.encode(uri.toString())).replaceAll('=', '');
+        source = LockCachingAudioSource(uri, cacheFile: File('$_cacheDir/$key.audio'));
+      } else {
+        source = AudioSource.uri(uri);
+      }
+      await _player.setAudioSource(source);
       if (seq != _seq) return;
       _loaded = true;
       await _player.setLoopMode(loopOne ? LoopMode.one : LoopMode.off);
@@ -120,8 +133,42 @@ class AudioEngine {
     }
   }
 
-  Future<void> pause() => _player.pause();
-  Future<void> resume() => _player.play();
+  /// 边听边缓存：开关 + 缓存目录（path_provider 临时目录）。
+  Future<void> setCache({required bool enabled, String? dir}) async {
+    _cacheOn = enabled;
+    _cacheDir = dir;
+  }
+
+  /// 暂停 / 恢复的音量淡入淡出开关（400ms）。
+  void setFade(bool on) => _fade = on;
+
+  Future<void> _rampVolume(double from, double to) async {
+    const steps = 6, stepMs = Duration(milliseconds: 66);
+    for (var i = 1; i <= steps; i++) {
+      await _player.setVolume(from + (to - from) * i / steps);
+      await Future<void>.delayed(stepMs);
+    }
+  }
+
+  Future<void> pause() async {
+    if (_fade) {
+      await _rampVolume(1, 0);
+      await _player.pause();
+      await _player.setVolume(1); // 恢复音量，下次播放正常响度
+    } else {
+      await _player.pause();
+    }
+  }
+
+  Future<void> resume() async {
+    if (_fade) {
+      await _player.setVolume(0);
+      await _player.play();
+      await _rampVolume(0, 1);
+    } else {
+      await _player.play();
+    }
+  }
   Future<void> seek(double seconds) => _player.seek(Duration(milliseconds: (seconds * 1000).round()));
   Future<void> setSpeed(double v) => _player.setSpeed(v.clamp(0.5, 3.0));
 
@@ -134,7 +181,7 @@ class AudioEngine {
   Future<void> setLoopOne(bool one) => _player.setLoopMode(one ? LoopMode.one : LoopMode.off);
 
   /// 通知栏按钮触发的播放/暂停（ AppState 已算好目标状态后调用）。
-  Future<void> setPlaying(bool play) => play ? _player.play() : _player.pause();
+  Future<void> setPlaying(bool play) => play ? resume() : pause();
 
   /// 卸载当前音源（退出登录 / 清空队列等场景）。
   Future<void> unload() async {

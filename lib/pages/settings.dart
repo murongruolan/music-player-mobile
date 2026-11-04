@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:http/http.dart' as http;
 import '../core/script_store.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 import '../core/state.dart';
 import '../core/tokens.dart';
 import '../data/mock.dart';
@@ -84,7 +85,7 @@ class AppearancePage extends StatelessWidget {
         Item(icon: 'layers', color: 'blue', label: '播放器背景', sub: sk.usesBg ? '律动、声波、唱片、舞台使用' : '当前皮肤「${sk.name}」自带背景，不受此项影响', val: const {'blur': '模糊封面', 'static': '静态流光', 'flow': '动态流光'}[app.bg], onTap: () => openBg(context)),
         Item(icon: 'vinyl', color: 'gray', label: '唱片旋转', sw: app.set.vinylSpin, onSw: (v) => app.update(() => app.set.vinylSpin = v)),
         Item(icon: 'phone', color: 'gold', label: '横屏充电时进入待机', sub: '手机横放并充电时，自动切到「待机」皮肤', sw: app.set.standbyAuto, onSw: (v) => app.update(() => app.set.standbyAuto = v)),
-        Item(icon: 'sun', color: 'orange', label: '播放页屏幕常亮', sw: app.set.keepAwake, onSw: (v) => app.update(() => app.set.keepAwake = v)),
+        Item(icon: 'sun', color: 'orange', label: '播放页屏幕常亮', sub: '播放页打开期间保持屏幕点亮', sw: app.set.keepAwake, onSw: (v) { app.update(() => app.set.keepAwake = v); v ? WakelockPlus.enable() : WakelockPlus.disable(); }),
       ]),
       Group(title: '界面', children: [
         Item(icon: 'font', color: 'teal', label: '界面字体', val: fonts.firstWhere((f) => f[0] == app.font)[1], onTap: () => openFonts(context)),
@@ -254,7 +255,7 @@ class LyricsSettingsPage extends StatelessWidget {
       Group(title: '显示', children: [
         Item(icon: 'globe', color: 'blue', label: '显示翻译', sw: s.trans, onSw: (v) => u(() => s.trans = v)),
         Item(icon: 'font', color: 'violet', label: '显示罗马音', sw: s.roma, onSw: (v) => u(() => s.roma = v)),
-        Item(icon: 'refresh', color: 'teal', label: '简繁转换', sub: '按系统语言自动转换', sw: s.conv, onSw: (v) => u(() => s.conv = v)),
+        Item(icon: 'refresh', color: 'teal', label: '简繁转换', sub: '即将支持 · 按系统语言自动转换'),
         Item(icon: 'eye', color: 'gray', label: '非当前行模糊', sw: s.blur, onSw: (v) => u(() => s.blur = v)),
         Item(icon: 'sparkle', color: 'gold', label: '逐字辉光', sub: '有逐字时间轴时按字填充，否则按行均匀插值', sw: s.glow, onSw: (v) => u(() => s.glow = v)),
       ]),
@@ -343,10 +344,10 @@ class PlaybackPage extends StatelessWidget {
       Group(title: '播放行为', children: [
         Item(icon: 'repeat', color: 'violet', label: '默认播放模式', val: app.modeName, onTap: app.cycleMode),
         Item(icon: 'speed', color: 'teal', label: '播放速度', val: '${app.speed.toStringAsFixed(2)}×', onTap: () => openSpeed(context)),
-        Item(icon: 'wave', color: 'green', label: '淡入淡出', sub: '切歌与暂停时 400ms 交叉淡化', sw: s.fade, onSw: (v) => u(() => s.fade = v)),
+        Item(icon: 'wave', color: 'green', label: '淡入淡出', sub: '暂停与恢复时音量平滑过渡', sw: s.fade, onSw: (v) => u(() { s.fade = v; app.applyFadeToEngine(); })),
         Item(icon: 'play', color: 'orange', label: '启动时自动播放', sw: s.autoplay, onSw: (v) => u(() => s.autoplay = v)),
         Item(icon: 'up', color: 'pink', label: '启动时打开播放页', sw: s.autoOpen, onSw: (v) => u(() => s.autoOpen = v)),
-        Item(icon: 'cloud', color: 'blue', label: '边听边缓存', sub: app.online ? '播放过的歌缓存到本机，下次秒开' : '已缓存 1.8 GB · 上限 4 GB', sw: s.cache, onSw: (v) => u(() => s.cache = v)),
+        Item(icon: 'cloud', color: 'blue', label: '边听边缓存', sub: '播放过的歌缓存到本机，下次秒开', sw: s.cache, onSw: (v) => u(() { s.cache = v; app.applyCacheToEngine(); })),
       ]),
       Group(title: '高级', children: [
         Item(icon: 'zap', color: 'gold', label: '智能换源', val: s.smart ? '已开启' : '已关闭', onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SmartPage()))),

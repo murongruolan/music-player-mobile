@@ -4,6 +4,8 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../cast/dlna.dart';
+import '../source/music_resolver.dart';
 import '../core/state.dart';
 import '../core/tokens.dart';
 import '../data/mock.dart';
@@ -37,6 +39,11 @@ void openSongMore(BuildContext context, int id, String ctx, {bool dark = false})
         close();
         Clipboard.setData(ClipboardData(text: '${s.title} - ${s.artist}'));
         toast('已复制「${s.title} - ${s.artist}」', 'copy');
+      }),
+      ('download', '下载', () {
+        close();
+        unawaited(app.downloads.enqueue(s));
+        toast('已加入下载队列', 'download');
       }),
     ];
     final grid = app.online ? onlineGrid : [
@@ -650,9 +657,12 @@ void openQuality(BuildContext context, {bool dark = false}) {
           child: Press(
             onTap: i <= math.max(max, 2) || q.key == app.song.quality
                 ? () {
-                    app.update(() => app.quality = q.key);
+                    app.update(() {
+                      app.quality = q.key;
+                      app.set.onlineQ = q.key; // 真实生效：下一次取流按此档位（music_resolver 消费）
+                    });
                     Navigator.of(c).pop();
-                    toast('已切换到 ${q.name} ${q.key}', 'hd');
+                    toast('已切换到 ${q.name} ${q.key}，下一首起生效', 'hd');
                   }
                 : () => toast('当前歌曲不支持 ${q.name}', 'info'),
             child: Padding(
@@ -665,7 +675,7 @@ void openQuality(BuildContext context, {bool dark = false}) {
             ),
           ),
         ),
-      Group(children: [Item(label: '不可用时自动降级', sub: '当前音质取流失败时自动降一档', sw: app.set.autoDowngrade, onSw: (v) => app.update(() => app.set.autoDowngrade = v))]),
+      Group(children: [const Item(label: '不可用时自动降级', sub: '当前版本取流失败时会自动尝试更低档位，此行为始终开启')]),
     ]);
   });
 }
@@ -698,34 +708,99 @@ void openSpeed(BuildContext context, {bool dark = false}) {
 }
 
 void openCast(BuildContext context, {bool dark = false}) {
-  showLSheet(context, title: '投放', sub: '附近设备', dark: dark, builder: (c) {
+  showLSheet(context, title: '投放', sub: '同一 Wi-Fi 下的 DLNA 设备', dark: dark, builder: (c) {
     final app = c.app;
     final pal = c.pal;
-    return Column(children: [
-      const Padding(padding: EdgeInsets.symmetric(horizontal: Tk.pad), child: _ScanStrip()),
-      const SizedBox(height: 8),
-      for (final d in castDevices)
-        Item(
-          lead: Container(width: 40, height: 40, decoration: BoxDecoration(color: app.castDev == d.name ? pal.accSoft : pal.s2, borderRadius: BorderRadius.circular(12)), child: Icon(ic(d.kind.contains('电视') ? 'tv' : d.kind.contains('车') ? 'car' : 'speaker'), color: app.castDev == d.name ? pal.accText : pal.t2)),
-          label: d.name,
-          sub: '${d.kind} · ${d.last}',
-          trailing: app.castDev == d.name ? Icon(ic('check'), color: pal.accText) : null,
-          onTap: () {
-            app.update(() => app.castDev = d.name);
-            Navigator.of(c).pop();
-            toast('已投放到 ${d.name}', 'cast');
-          },
-        ),
-      if (app.castDev != null)
+    // 真实 DLNA 发现：SSDP 组播 → 设备描述解析。连接后经 resolver 取流，声音由渲染端播放。
+    return StatefulBuilder(builder: (c, set) {
+      List<DlnaDevice> devices = [];
+      var scanning = true;
+      var connecting = '';
+      String? error;
+
+      Future<void> rescan() async {
+        set(() {
+          scanning = true;
+          error = null;
+          devices = [];
+        });
+        try {
+          final r = await app.cast?.discover() ?? const <DlnaDevice>[];
+          if (c.mounted) set(() {
+            devices = r;
+            scanning = false;
+          });
+        } catch (e) {
+          if (c.mounted) set(() {
+            scanning = false;
+            error = '$e';
+          });
+        }
+      }
+
+      unawaited(rescan());
+
+      Future<void> pick(DlnaDevice d) async {
+        if (app.cast == null) return toast('当前环境不支持投放', 'info');
+        set(() => connecting = d.name);
+        try {
+          await app.cast!.connect(d);
+          app.update(() => app.castDev = d.name);
+          if (app.hasSong) await app.castPlayCurrent(); // 有歌在播：立即把当前曲目投过去
+          if (c.mounted) Navigator.of(c).pop();
+          toast(app.hasSong ? '已投放到 ${d.name}' : '已连接 ${d.name}，播放时自动投放', 'cast');
+        } catch (e) {
+          app.update(() => app.castDev = null);
+          toast('投放失败：$e', 'info');
+        }
+        if (c.mounted) set(() => connecting = '');
+      }
+
+      return Column(children: [
+        if (scanning) const Padding(padding: EdgeInsets.symmetric(horizontal: Tk.pad), child: _ScanStrip()),
+        if (!scanning && error != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Tk.pad, 6, Tk.pad, 6),
+            child: Text('扫描失败：$error', style: ts(12.5, c: pal.danger)),
+          ),
+        if (!scanning && devices.isEmpty && error == null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Tk.pad, 14, Tk.pad, 8),
+            child: Text('未发现可投放的设备\n确认电视 / 音箱已开启 DLNA 并与手机在同一 Wi-Fi', textAlign: TextAlign.center, style: ts(13, c: pal.t3, h: 1.6)),
+          ),
+        for (final d in devices)
+          Item(
+            lead: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(color: app.castDev == d.name ? pal.accSoft : pal.s2, borderRadius: BorderRadius.circular(12)),
+                child: connecting == d.name
+                    ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: pal.acc))
+                    : Icon(ic((d.modelName ?? '').toLowerCase().contains('tv') ? 'tv' : 'speaker'), color: app.castDev == d.name ? pal.accText : pal.t2)),
+            label: d.name,
+            sub: connecting == d.name ? '连接中…' : (d.modelName ?? 'DLNA 渲染设备'),
+            trailing: app.castDev == d.name ? Icon(ic('check'), color: pal.accText) : null,
+            onTap: connecting.isEmpty ? () => unawaited(pick(d)) : null,
+          ),
         Padding(
           padding: const EdgeInsets.fromLTRB(Tk.pad, 10, Tk.pad, 0),
-          child: Btn('断开 ${app.castDev}', kind: BtnKind.danger, block: true, onTap: () {
-            app.update(() => app.castDev = null);
-            Navigator.of(c).pop();
-            toast('已断开投放', 'cast');
-          }),
+          child: Row(children: [
+            Expanded(child: Btn.sec('重新扫描', icon: 'refresh', onTap: scanning ? null : () => unawaited(rescan()))),
+            if (app.castDev != null) ...[
+              const SizedBox(width: 10),
+              Expanded(
+                child: Btn('断开 ${app.castDev}', kind: BtnKind.danger, onTap: () async {
+                  await app.cast?.disconnect();
+                  app.update(() => app.castDev = null);
+                  Navigator.of(c).pop();
+                  toast('已断开投放，按播放键回到本地播放', 'cast');
+                }),
+              ),
+            ],
+          ]),
         ),
-    ]);
+      ]);
+    });
   });
 }
 
@@ -813,24 +888,35 @@ void openLyricCard(BuildContext context) {
 void openTrace(BuildContext context, {bool dark = false}) {
   showLSheet(context, title: '播放链路', sub: context.appRead.song.title, dark: dark, builder: (c) {
     final pal = c.pal;
+    final history = c.appRead.resolver?.history ?? const <ResolveTrace>[];
+    if (history.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(Tk.pad, 8, Tk.pad, 16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('还没有取流记录', style: ts(14, w: FontWeight.w600, c: pal.t1)),
+          const SizedBox(height: 6),
+          Text('播放一首歌后，这里会显示解析脚本、实际音质、缓存命中与换平台过程。', style: ts(12.5, c: pal.t3, h: 1.6)),
+        ]),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: Tk.pad),
       child: Column(children: [
-        for (final (i, t) in playTrace.indexed)
+        for (final (i, t) in history.indexed)
           IntrinsicHeight(
             child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Column(children: [
-                Container(width: 10, height: 10, margin: const EdgeInsets.only(top: 5), decoration: BoxDecoration(shape: BoxShape.circle, color: t[3] == 'ok' ? pal.ok : pal.danger)),
-                if (i < playTrace.length - 1) Expanded(child: Container(width: 1.5, color: pal.line)),
+                Container(width: 10, height: 10, margin: const EdgeInsets.only(top: 5), decoration: BoxDecoration(shape: BoxShape.circle, color: t.ok ? pal.ok : pal.danger)),
+                if (i < history.length - 1) Expanded(child: Container(width: 1.5, color: pal.line)),
               ]),
               const SizedBox(width: 12),
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.only(bottom: 16),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(t[0], style: ts(11, c: pal.t3, num: true)),
-                    Text(t[1], style: ts(14, w: FontWeight.w600, c: pal.t1)),
-                    Text(t[2], style: ts(12.5, c: t[3] == 'ok' ? pal.t2 : pal.danger)),
+                    Text('${_hhmmss(t.time)} · ${t.title}', style: ts(11, c: pal.t3, num: true), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Text('${t.ok ? '取流成功' : '取流失败'} · ${t.platform} · ${t.quality}', style: ts(14, w: FontWeight.w600, c: pal.t1)),
+                    Text(t.source + (t.note.isEmpty ? '' : ' · ${t.note}'), style: ts(12.5, c: t.ok ? pal.t2 : pal.danger)),
                   ]),
                 ),
               ),
@@ -840,6 +926,9 @@ void openTrace(BuildContext context, {bool dark = false}) {
     );
   });
 }
+
+String _hhmmss(DateTime t) =>
+    '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}:${t.second.toString().padLeft(2, '0')}';
 
 // ============ 播放队列 ============
 void openQueue(BuildContext context, {bool dark = true}) {

@@ -1,8 +1,10 @@
 // 其它二级页：公告 · 平台账号 · 下载管理 · 账号中心 · 登录设备 · 音乐云盘（WebDAV）· 关于与更新。备份与同步在 backup.dart。
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../api/announcement_api.dart';
 import '../api/account_api.dart';
 import '../api/devices_api.dart';
+import '../api/password_api.dart';
 import '../auth/auth.dart';
 import '../core/state.dart';
 import '../core/tokens.dart';
@@ -156,45 +158,76 @@ class DownloadPage extends StatefulWidget {
 }
 
 class _DownloadPageState extends State<DownloadPage> {
-  final paused = <int>{};
   @override
   Widget build(BuildContext context) {
     final app = context.app;
     final pal = context.pal;
     final s = app.set;
+    final dl = app.downloads;
+    String fmtSize(int b) => b >= 1048576 ? '${(b / 1048576).toStringAsFixed(1)} MB' : '${(b / 1024).round()} KB';
+    final ongoingKeys = [...dl.running];
+    final waiting = dl.waitingSongs;
     return SubPage(title: '下载管理', children: [
-      if (app.online) const EmptyState('download', '暂无下载任务', desc: '下载功能还在开发中，完成后可以在歌曲的「···」里下载。'),
-      if (!app.online) Padding(padding: const EdgeInsets.fromLTRB(Tk.pad, 0, 0, 6), child: Text('正在下载 · 2', style: ts(12.5, w: FontWeight.w600, c: pal.t3))),
       if (!app.online)
-      for (final (id, p, t) in const [(13, .62, '12.4 / 20.1 MB'), (20, .18, '6.0 / 33.6 MB')])
-        SizedBox(
-          height: 70,
-          child: Row(children: [
-            const SizedBox(width: Tk.pad),
-            Cover.song(songs[id], size: 48),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(songs[id].title, style: ts(15, w: FontWeight.w600, c: pal.t1)),
-                const SizedBox(height: 7),
-                ClipRRect(borderRadius: BorderRadius.circular(2), child: LinearProgressIndicator(value: p, minHeight: 4, color: paused.contains(id) ? pal.t3 : pal.acc, backgroundColor: pal.s3)),
-                const SizedBox(height: 5),
-                Text('${paused.contains(id) ? '已暂停 · ' : ''}$t · ${songs[id].quality}', style: ts(12, c: pal.t3)),
+        const Hint('下载与离线播放需要在联网模式（登录后）使用。', padding: EdgeInsets.fromLTRB(Tk.pad, 8, Tk.pad, 10)),
+      if (app.online) ...[
+        if (ongoingKeys.isEmpty && waiting.isEmpty && dl.items.isEmpty)
+          const EmptyState('download', '还没有下载', desc: '在歌曲的「···」里点下载，或歌单页点下载按钮；下载完成后断网也能播放。'),
+        if (ongoingKeys.isNotEmpty)
+          Padding(padding: const EdgeInsets.fromLTRB(Tk.pad, 0, 0, 6), child: Text('下载中 · ${ongoingKeys.length + waiting.length}', style: ts(12.5, w: FontWeight.w600, c: pal.t3))),
+        for (final key in ongoingKeys)
+          if (dl.songByKey(key) case final song?)
+            SizedBox(
+              height: 70,
+              child: Row(children: [
+                const SizedBox(width: Tk.pad),
+                Cover.song(song, size: 48),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(song.title, style: ts(15, w: FontWeight.w600, c: pal.t1)),
+                    const SizedBox(height: 7),
+                    ClipRRect(
+                        borderRadius: BorderRadius.circular(2),
+                        child: LinearProgressIndicator(value: dl.progressOf(key), minHeight: 4, color: pal.acc, backgroundColor: pal.s3)),
+                    const SizedBox(height: 5),
+                    Text('${(dl.progressOf(key) * 100).round()}%', style: ts(12, c: pal.t3)),
+                  ]),
+                ),
               ]),
             ),
-            IBtn(paused.contains(id) ? 'play' : 'pause', color: pal.t3, onTap: () => setState(() => paused.contains(id) ? paused.remove(id) : paused.add(id))),
-            const SizedBox(width: 6),
-          ]),
-        ),
-      const SizedBox(height: 14),
-      Group(title: '设置', children: [
-        Padding(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8), child: LSlider(label: '同时下载', value: s.dlConc, min: 1, max: 8, step: 1, fmt: (v) => '${v.round()} 首', onChanged: (v) => app.update(() => s.dlConc = v))),
-        Item(icon: 'edit', color: 'violet', label: '文件命名', val: '歌名 - 歌手', onTap: () => toast('可选顺序与分隔符，非法字符自动替换', 'edit')),
-        Item(icon: 'album', color: 'orange', label: '内嵌封面与标签', sub: 'FLAC / MP3 / M4A 自动写入元数据', sw: s.dlCover, onSw: (v) => app.update(() => s.dlCover = v)),
-        Item(icon: 'quote', color: 'pink', label: '另存歌词与封面文件', sub: '同目录生成 .lrc 与 cover.jpg', sw: s.dlLyric, onSw: (v) => app.update(() => s.dlLyric = v)),
-        Item(icon: 'folder', color: 'blue', label: '保存位置', val: '/Music/Lyra', onTap: () => toast('选择文件夹', 'folder')),
-        Item(icon: 'wifi', color: 'cyan', label: '仅 Wi-Fi 下载', sw: s.wifiOnly, onSw: (v) => app.update(() => s.wifiOnly = v)),
-      ]),
+        for (final song in waiting)
+          Item(icon: 'clock', color: 'gray', label: song.title, sub: '排队中 · ${song.artist}（点击移出队列）', onTap: () => dl.removeWaiting(song)),
+        const SizedBox(height: 14),
+        if (dl.items.isNotEmpty)
+          Padding(padding: const EdgeInsets.fromLTRB(Tk.pad, 0, 0, 6), child: Text('已下载 · ${dl.items.length}', style: ts(12.5, w: FontWeight.w600, c: pal.t3))),
+        for (final it in dl.items)
+          Item(
+            icon: 'download',
+            color: 'blue',
+            label: it.title,
+            sub: '${it.artist} · ${it.quality} · ${fmtSize(it.sizeBytes)}',
+            trailing: IBtn('trash', color: pal.danger, onTap: () => dl.remove(it)),
+          ),
+        if (dl.items.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Tk.pad, 12, Tk.pad, 20),
+            child: Btn('清空全部下载', kind: BtnKind.danger, block: true, onTap: () => showLDialog(context, icon: 'trash', iconColor: pal.danger, title: '清空全部下载？',
+                body: '已下载的音频、封面与歌词文件都会被删除。', actions: [
+                  ('取消', BtnKind.sec, null),
+                  ('清空', BtnKind.danger, () => dl.clear()),
+                ])),
+          ),
+        Group(title: '设置', children: [
+          Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              child: LSlider(label: '同时下载', value: s.dlConc, min: 1, max: 8, step: 1, fmt: (v) => '${v.round()} 首', onChanged: (v) => app.update(() => s.dlConc = v))),
+          Item(icon: 'wifi', color: 'cyan', label: '仅 Wi-Fi 下载', sw: s.wifiOnly, onSw: (v) => app.update(() => s.wifiOnly = v)),
+          Item(icon: 'image', color: 'violet', label: '同时下载封面', sw: s.dlCover, onSw: (v) => app.update(() => s.dlCover = v)),
+          Item(icon: 'lyrics', color: 'teal', label: '同时下载歌词', sw: s.dlLyric, onSw: (v) => app.update(() => s.dlLyric = v)),
+          const Item(icon: 'edit', color: 'gray', label: '文件命名', sub: '歌名 - 歌手（非法字符自动替换为下划线）'),
+        ]),
+      ],
     ]);
   }
 }
@@ -271,7 +304,7 @@ class _AccountPageState extends State<AccountPage> {
       Group(title: '资料', children: [
         Item(icon: 'user', color: 'blue', label: '昵称与头像', val: name, onTap: () => _editNickname(context)),
         Item(icon: 'mail', color: 'orange', label: '邮箱', val: acc?.email ?? (app.online ? '' : 'ali@example.com')),
-        Item(icon: 'lock', color: 'gray', label: '修改密码', sub: '重置密码接口暂未开放，可从登录页「忘记密码」入口查看进度', onTap: () => toast('重置密码接口暂未开放', 'info')),
+        Item(icon: 'lock', color: 'gray', label: '修改密码', sub: '验证邮箱后设置新密码，重置会退出所有设备', onTap: () => push(context, const ChangePasswordPage())),
         Item(icon: 'link', color: 'cyan', label: 'QQ 绑定', val: (acc?.qq?.isNotEmpty ?? false) ? '已绑定 ${acc!.qq}' : '未绑定', onTap: () => _editQQ(context)),
       ]),
       Group(title: '会员', children: [
@@ -696,5 +729,131 @@ class AboutPage extends StatelessWidget {
       ]),
       const Hint('© 2026 Lyra · 开源许可', align: TextAlign.center),
     ]);
+  }
+}
+
+/// 修改密码（登录态）：验证邮箱 → 设置新密码。
+/// 复用忘记密码接口（/auth/forgot-password + /auth/reset-password），
+/// 重置成功后服务端吊销全部会话，本机也同步退出登录。
+class ChangePasswordPage extends StatefulWidget {
+  const ChangePasswordPage({super.key});
+  @override
+  State<ChangePasswordPage> createState() => _ChangePasswordPageState();
+}
+
+class _ChangePasswordPageState extends State<ChangePasswordPage> {
+  final code = TextEditingController(), p1 = TextEditingController(), p2 = TextEditingController();
+  final err = <String, String>{};
+  int shake = 0;
+  bool busy = false, _done = false;
+  int cd = 0;
+  Timer? _cdt;
+
+  @override
+  void dispose() {
+    _cdt?.cancel();
+    code.dispose();
+    p1.dispose();
+    p2.dispose();
+    super.dispose();
+  }
+
+  void _e(String k, String msg) => setState(() {
+        err[k] = msg;
+        shake++;
+      });
+
+  Future<void> _send() async {
+    if (cd > 0) return;
+    final app = context.appRead;
+    try {
+      await PasswordApi(app.api.client).forgot(app.account?.email ?? '');
+      if (!mounted) return;
+      setState(() => cd = 60);
+      _cdt = Timer.periodic(const Duration(seconds: 1), (t) {
+        if (cd <= 1) {
+          t.cancel();
+          if (mounted) setState(() => cd = 0);
+          return;
+        }
+        setState(() => cd--);
+      });
+      toast('验证码已发送至 ${app.account?.email ?? '你的邮箱'}', 'mail');
+    } on ApiException catch (e) {
+      if (!e.isCancelled) toast(e.userMessage, 'info');
+    }
+  }
+
+  Future<void> _submit() async {
+    final e = <String, String>{};
+    if (!RegExp(r'^\d{6}$').hasMatch(code.text.trim())) e['code'] = '请输入 6 位邮箱验证码';
+    if (pwScore(p1.text) < 2 || p1.text.length < 8) e['p1'] = '密码至少 8 位，并包含数字或字母大小写';
+    if (p1.text != p2.text) e['p2'] = '两次输入的密码不一致';
+    if (e.isNotEmpty) return setState(() {
+      err
+        ..clear()
+        ..addAll(e);
+      shake++;
+    });
+    setState(() => busy = true);
+    final app = context.appRead;
+    try {
+      await PasswordApi(app.api.client).reset(email: app.account?.email ?? '', code: code.text, password: p1.text);
+      if (!mounted) return;
+      setState(() {
+        busy = false;
+        _done = true;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => busy = false);
+      if (!e.isCancelled) toast(e.userMessage, 'info');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.app;
+    final pal = context.pal;
+    return SubPage(
+      title: '修改密码',
+      children: [
+        const Hint('向账号邮箱发送验证码，验证通过后设置新密码。\n重置成功后所有设备（含本机）都会退出登录。', padding: EdgeInsets.fromLTRB(Tk.pad, 8, Tk.pad, 10)),
+        Group(children: [
+          Item(icon: 'mail', color: 'orange', label: '邮箱', val: app.account?.email ?? ''),
+        ]),
+        if (_done) ...[
+          const SizedBox(height: 14),
+          const Hint('密码已重置，所有设备已退出登录。', padding: EdgeInsets.symmetric(horizontal: Tk.pad)),
+          const SizedBox(height: 14),
+          Btn('重新登录', block: true, onTap: () async {
+            final navigator = Navigator.of(context);
+            await app.signOut();
+            if (navigator.canPop()) navigator.popUntil((r) => r.isFirst);
+          }),
+        ] else ...[
+          const SizedBox(height: 14),
+          Group(children: [
+            LField(
+              controller: code,
+              label: '邮箱验证码',
+              icon: 'key',
+              keyboard: TextInputType.number,
+              error: err['code'],
+              shake: err.containsKey('code') ? shake : 0,
+              suffix: cd > 0 ? '${cd}s' : '获取验证码',
+              onSuffix: _send,
+              onChanged: (_) => setState(() => err.remove('code')),
+            ),
+            LField(controller: p1, label: '新密码', icon: 'lock', password: true, error: err['p1'], shake: err.containsKey('p1') ? shake : 0, onChanged: (_) => setState(() => err.remove('p1'))),
+            LField(controller: p2, label: '确认新密码', icon: 'lock', password: true, error: err['p2'], shake: err.containsKey('p2') ? shake : 0, onChanged: (_) => setState(() => err.remove('p2'))),
+          ]),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Tk.pad, 16, Tk.pad, 24),
+            child: Btn('重置密码', block: true, busy: busy, onTap: _submit),
+          ),
+        ],
+      ],
+    );
   }
 }

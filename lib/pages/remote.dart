@@ -2,6 +2,7 @@
 // 数据来自 AppState.content（lib/platform/），歌曲登记进本机歌曲目录后复用 SongRow（收藏、加歌单、同步都能用）。
 import 'dart:math' as math;
 import 'dart:ui' as ui;
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../core/state.dart';
 import '../core/tokens.dart';
@@ -242,7 +243,10 @@ class _RemoteCollectionPageState extends State<RemoteCollectionPage> {
                 app.play(q.first, name: listName, ids: q);
               }),
               const SizedBox(width: 10),
-              IBtn('download', size: 48, bg: pal.s2, onTap: () => toast('下载功能还在开发中', 'info')),
+              IBtn('download', size: 48, bg: pal.s2, onTap: () {
+                unawaited(app.downloads.enqueueAll(ids.map(app.songById)));
+                toast('已加入下载队列 · ${ids.length} 首', 'download');
+              }),
               if (widget.type == CatalogType.playlist) ...[
                 const SizedBox(width: 10),
                 IBtn(collected != null ? 'heartf' : 'heart', size: 48, bg: pal.s2, color: collected != null ? pal.accText : null, onTap: () {
@@ -334,7 +338,10 @@ class _RemoteCollectionPageState extends State<RemoteCollectionPage> {
                 toast(n > 0 ? '已收藏 $n 首到「我喜欢」' : '选中的歌都已收藏', 'heartf');
               }),
               ('plus', '加歌单', () => openAddToPlaylist(context, sel.first)),
-              ('download', '下载', () => toast('下载功能还在开发中', 'info')),
+              ('download', '下载', () {
+                unawaited(app.downloads.enqueueAll(sel.map(app.songById)));
+                toast('已加入下载队列 · ${sel.length} 首', 'download');
+              }),
             ])
               Opacity(opacity: sel.isEmpty ? .4 : 1, child: Press(onTap: sel.isEmpty ? null : f, child: Padding(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), child: Column(children: [Icon(ic(i), size: 20, color: pal.t1), Text(l, style: ts(10.5, c: pal.t2))])))),
           ]),

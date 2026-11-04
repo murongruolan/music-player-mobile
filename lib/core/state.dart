@@ -1,9 +1,16 @@
 // 全局状态（对应原型 core.js 的 S 与 ACT）。所有页面通过 context.app 读取，修改后 notifyListeners。
 // 接口对接时：把 mock 读取换成 Repository 调用即可，UI 不需要改。
 import 'dart:async';
+import 'dart:io' as io;
 import 'dart:math' as math;
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
 import '../audio/audio_engine.dart';
+import '../cast/cast_controller.dart';
+import '../cast/dlna.dart' show CastException;
+import '../source/source_manager.dart' show ResolveException;
+import '../download/downloads.dart';
+import '../source/music_resolver.dart';
 import '../data/mock.dart';
 import '../api/update_api.dart';
 import '../data/models.dart';
@@ -60,7 +67,6 @@ class AppState extends ChangeNotifier {
   String mode = 'loop'; // loop | one | shuffle | order
   String quality = 'SQ';
   int timer = 0; // 睡眠定时设定值（分钟）；0 = 未开启
-  String? castDev;
   List<int> queue = List.generate(16, (i) => i);
   String queueName = '深夜城市漫游 · 霓虹与雨';
   final liked = <int>{0, 4, 7, 12, 17};
@@ -101,6 +107,9 @@ class AppState extends ChangeNotifier {
   /// 导入的音源脚本（联网模式），持久化并可经 lx_sources 云同步。
   late final sources = ScriptStore(this, net?.prefs);
 
+  /// 下载库（联网模式）：已完成清单持久化，进行中在内存；已下载的歌 resolver 离线优先。
+  late final downloads = DownloadStore(this, net?.prefs);
+
   /// 最近一次检查更新的结果；[versionBlock] 非空时整个 App 显示「版本停用」页。
   UpdateCheck? updateInfo, versionBlock;
 
@@ -134,6 +143,17 @@ class AppState extends ChangeNotifier {
   final AudioEngine? engine;
   double engineDuration = 0; // 引擎返回的实际曲目时长（秒）；0 = 尚未加载
 
+  /// 播放链路解析器：取流记录（播放链路页）与投放取流的入口。与引擎共用同一实例。
+  final MusicResolver? resolver;
+
+  /// DLNA 投放控制器。测试 / 截图为 null；有 resolver 即创建。
+  CastController? cast;
+  String? castDev; // 当前投放到的设备名（null = 未投放，本地播放）
+
+  /// 是否正在投放（声音走 DLNA 渲染端，本地引擎暂停）。
+  bool get casting => cast?.connected == true;
+  bool _suppressEnginePlaying = false; // 投放接管期间忽略本地引擎的播放态回调
+
   /// 歌词列表内容版本：换歌写入新词时 +1。歌词视图据此重建布局缓存，
   /// 防止旧歌的 tops/hs 布局数组被新歌词按旧长度索引（RangeError 崩溃）。
   int lyricsVersion = 0;
@@ -153,7 +173,7 @@ class AppState extends ChangeNotifier {
   /// 各音乐平台的公开内容（发现页、搜索、歌单 / 榜单详情）。测试可以注入假平台。
   final PlatformHub content;
 
-  AppState({this.net, this.engine, PlatformHub? content}) : content = content ?? PlatformHub() {
+  AppState({this.net, this.engine, this.resolver, PlatformHub? content}) : content = content ?? PlatformHub() {
     _sessionSub = net?.session.onEnd.listen(sessionEnded);
     _userSub = net?.session.onUser.listen((u) {
       if (u == null) return;
@@ -165,7 +185,9 @@ class AppState extends ChangeNotifier {
       scriptOrder[p.id] = scripts.where((s) => s.platforms.contains(p.id)).map((s) => s.id).toList();
     }
     _clock = Timer.periodic(const Duration(milliseconds: 50), (_) => _tick());
+    if (resolver != null) cast = CastController(); // 投放依赖 resolver 取流
     _bindEngine();
+    _bindCast();
   }
 
   // ---------- 音频引擎（真实播放；测试 / 截图为 null，走模拟时钟） ----------
@@ -177,9 +199,11 @@ class AppState extends ChangeNotifier {
       if (engineDuration != d) update(() => engineDuration = d); // song getter 的实际时长变了
     };
     e.onPlaying = (p) {
+      if (_suppressEnginePlaying) return; // 投放接管窗口：本地引擎的暂停不回写 UI
       if (playing != p) update(() => playing = p); // 通知栏 / 线控改的状态同步回 UI
     };
     e.onCompleted = _onEngineCompleted; // 单曲循环由引擎 LoopMode.one 自循环，不会走到这
+    e.setFade(set.fade); // 淡入淡出开关联动引擎
     e.onError = (msg) {
       // 解析 / 加载失败：界面回到暂停态并提示原因
       if (playing) update(() => playing = false);
@@ -201,6 +225,88 @@ class AppState extends ChangeNotifier {
           update(() => toggleLike(cur));
       }
     };
+  }
+
+  /// 投放控制器回调：进度 / 时长复用引擎通道（播放器 UI 无感知），播完走同一套切歌逻辑。
+  void _bindCast() {
+    final c = cast;
+    if (c == null) return;
+    c.onPosition = (p) => pos.value = p;
+    c.onDuration = (d) {
+      if (engineDuration != d) update(() => engineDuration = d);
+    };
+    c.onPlaying = (p) {
+      if (playing != p) update(() => playing = p);
+    };
+    c.onEnded = () {
+      // 单曲循环：重投当前曲目；其余走引擎播完的同一入口（睡眠定时 / 切歌）
+      if (mode == 'one' && casting) {
+        unawaited(_castPlayCurrent());
+      } else {
+        _onEngineCompleted();
+      }
+    };
+    c.onError = (msg) {
+      if (playing) update(() => playing = false);
+      notice?.call(msg, 'info');
+    };
+  }
+
+  /// 投放当前曲目（播放器 / 投放面板入口）：同一 resolver 取流，地址交给渲染端拉流。
+  /// 本地引擎暂停并卸载（断开投放后按播放键会重新加载队列当前曲目）。
+  Future<void> castPlayCurrent() => _castPlayCurrent();
+
+  Future<void> _castPlayCurrent() async {
+    final c = cast, r = resolver;
+    if (c == null || r == null || !hasSong) return;
+    final autoplay = playing;
+    try {
+      final uri = await r.resolve(songs[cur]);
+      if (uri == null) return;
+      if (!casting) return; // 等待解析期间用户断开了投放
+      _suppressEnginePlaying = true; // 本地引擎让位：暂停 / 卸载产生的回调不回写 UI
+      if (engineActive) await engine!.setPlaying(false);
+      await engine?.unload(); // 通知栏同步清空；断开投放后按播放键重载当前队列曲目
+      await c.cast(songs[cur], uri, autoplay: autoplay);
+      _suppressEnginePlaying = false;
+    } on ResolveException catch (e) {
+      _suppressEnginePlaying = false;
+      if (playing) update(() => playing = false);
+      notice?.call(e.message, 'info');
+    } on CastException catch (e) {
+      _suppressEnginePlaying = false;
+      if (playing) update(() => playing = false);
+      notice?.call('投放失败：${e.message}', 'info');
+    }
+  }
+
+  /// 边听边缓存：开关 + 缓存目录下发引擎（settings 切换与启动时调用）。
+  Future<void> applyCacheToEngine() async {
+    final e = engine;
+    if (e == null) return;
+    String? dir;
+    if (set.cache) {
+      try {
+        final d = await getTemporaryDirectory();
+        dir = '${d.path}${io.Platform.pathSeparator}stream-cache';
+        await io.Directory(dir).create(recursive: true);
+      } catch (_) {
+        dir = null; // 目录不可用：本次会话退回直连
+      }
+    }
+    await e.setCache(enabled: set.cache, dir: dir);
+  }
+
+  /// 淡入淡出开关下发引擎（settings 切换时调用；启动由 _bindEngine 收尾处理）。
+  void applyFadeToEngine() => engine?.setFade(set.fade);
+
+  /// 「启动时自动播放」：恢复上次播放的歌并直接开播（脚本未就绪 / 无歌时静默跳过）。
+  Future<void> autoplayLast() async {
+    if (!online || engine == null || !set.autoplay || hasSong) return;
+    final id = int.tryParse(await net?.prefs.read('last.song.v1') ?? '') ?? -1;
+    if (id < 0 || id >= songs.length) return;
+    if (sources.forPlayback().isEmpty) return;
+    play(id, ids: [id]);
   }
 
   /// 引擎加载完成后的收尾：套用速度 / 音调并刷新通知栏（带真实收藏态）。
@@ -493,8 +599,13 @@ class AppState extends ChangeNotifier {
     pos.value = 0;
     engineDuration = 0;
     playing = true;
+    unawaited(net?.prefs.write('last.song.v1', '$id')); // 「启动时自动播放」恢复用
     notifyListeners();
-    if (engine != null) _enginePlayCurrent(); // 引擎存在即下发：engineActive 门控会让第一首歌永远无法加载
+    if (casting) {
+      unawaited(_castPlayCurrent()); // 投放中：解析后交给渲染端播放
+    } else if (engine != null) {
+      _enginePlayCurrent(); // 引擎存在即下发：engineActive 门控会让第一首歌永远无法加载
+    }
   }
 
   void playAll(String list, {bool shuffle = false, String? name}) {
@@ -509,13 +620,21 @@ class AppState extends ChangeNotifier {
     playing = true;
     if (shuffle) mode = 'shuffle';
     notifyListeners();
-    if (engine != null) _enginePlayCurrent(); // 同 play()：不能以「尚未加载」为由拒绝第一次加载
+    if (casting) {
+      unawaited(_castPlayCurrent());
+    } else if (engine != null) {
+      _enginePlayCurrent(); // 同 play()：不能以「尚未加载」为由拒绝第一次加载
+    }
   }
 
   void toggle() {
     if (!hasSong) return;
     playing = !playing;
     notifyListeners();
+    if (casting) {
+      unawaited(cast!.setPlaying(playing));
+      return;
+    }
     if (engine == null) return;
     if (engineActive) {
       unawaited(engine!.setPlaying(playing));
@@ -530,7 +649,9 @@ class AppState extends ChangeNotifier {
   void next() => _step(1);
   void prev() {
     if (pos.value > 3) {
-      if (engineActive) {
+      if (casting) {
+        unawaited(cast!.seek(0)); // 投放中：渲染端回到曲目开头
+      } else if (engineActive) {
         engine!.seek(0); // 真实播放：回到曲目开头（进度由引擎回调刷新）
       } else {
         pos.value = 0;
@@ -551,13 +672,21 @@ class AppState extends ChangeNotifier {
     }
     pos.value = 0;
     engineDuration = 0;
-    if (engine != null) _enginePlayCurrent(); // 单曲循环时引擎自循环，不会走到这
+    if (casting) {
+      unawaited(_castPlayCurrent()); // 单曲循环时投放端自循环，不会走到这
+    } else if (engine != null) {
+      _enginePlayCurrent(); // 单曲循环时引擎自循环，不会走到这
+    }
     if (notify) notifyListeners();
   }
 
   void seek(double sec) {
     if (!hasSong) return;
     final d = song.dur.toDouble();
+    if (casting) {
+      unawaited(cast!.seek(sec.clamp(0, d))); // 进度由投放轮询刷新
+      return;
+    }
     if (engineActive) {
       unawaited(engine!.seek(sec.clamp(0, d))); // 进度由引擎回调刷新
       return;

@@ -40,6 +40,16 @@ dependencies:
     path: third_party/flutter_qjs
   # 从文件导入音源脚本（flutter.dev 官方插件，系统文件选择器）
   file_selector: ^1.0.3
+  # captcha.la 人机验证桥接（注册/发码 passToken），官方 WebView 插件
+  webview_flutter: ^4.14.1
+  # 本地下载 / 边听边缓存的文件存储路径，官方插件
+  path_provider: ^2.1.6
+  # 播放页屏幕常亮（keepScreenOn 开关的真实消费方）
+  wakelock_plus: ^1.8.2
+  # 「仅 Wi-Fi 下载」的网络类型感知，官方生态插件
+  connectivity_plus: ^7.3.2
+  # DLNA 投屏的设备描述 / SOAP 响应解析（UPnP 就是 HTTP+XML，无需第三方投屏包）
+  xml: ^7.1.0
 
 dev_dependencies:
   flutter_test:

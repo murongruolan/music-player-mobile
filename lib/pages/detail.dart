@@ -1,6 +1,7 @@
 // 二级页：歌单详情（模糊背景视差 + 多选）、歌手、听歌统计。
 import 'dart:math' as math;
 import 'dart:ui' as ui;
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../core/state.dart';
 import '../core/tokens.dart';
@@ -110,7 +111,11 @@ class _PlaylistPageState extends State<PlaylistPage> {
                 app.play(q.first, name: listName, ids: q);
               }),
               const SizedBox(width: 10),
-              IBtn('download', size: 48, bg: pal.s2, onTap: () => online ? toast('下载功能还在开发中', 'info') : toast('已加入下载队列 · ${pl.count} 首', 'download')),
+              IBtn('download', size: 48, bg: pal.s2, onTap: () {
+                if (!online) return toast('已加入下载队列 · ${pl.count} 首', 'download');
+                unawaited(app.downloads.enqueueAll(ids.map(app.songById)));
+                toast('已加入下载队列 · ${ids.length} 首', 'download');
+              }),
               const SizedBox(width: 10),
               if (online && widget.id != 100)
                 IBtn('trash', size: 48, bg: pal.s2, onTap: () => showLDialog(context, icon: 'trash', iconColor: pal.danger, title: '删除歌单「${pl.title}」？', body: '歌单里的歌不会从「我喜欢」中移除。', actions: [
