@@ -314,7 +314,7 @@ class _OnlineResultsState extends State<_OnlineResults> {
       // 平台筛选
       SizedBox(
         height: 46,
-        child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.fromLTRB(Tk.pad, 6, Tk.pad, 6), children: [
+        child: EdgeFade(child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.fromLTRB(Tk.pad, 6, Tk.pad, 6), children: [
           LChip('全部平台', on: widget.plat == 'all', onTap: () => widget.onPlat('all'), trailing: widget.plat == 'all' && allCount > 0 ? Text(_count(allCount), style: ts(11, c: pal.t3, num: true)) : null),
           for (final p in platforms)
             Padding(
@@ -335,7 +335,7 @@ class _OnlineResultsState extends State<_OnlineResults> {
                 ),
               ),
             ),
-        ]),
+        ])),
       ),
       // 相关搜索（平台联想）
       FutureBuilder<List<String>>(
@@ -343,11 +343,35 @@ class _OnlineResultsState extends State<_OnlineResults> {
         builder: (c, s) {
           final l = (s.data ?? const <String>[]).where((x) => x != q).take(5).toList();
           if (l.isEmpty) return const SizedBox(height: 4);
+          // 标题固定在左边不跟着滚；每条联想最多 160dp，超出省略；右侧渐隐提示还能往右滑
           return SizedBox(
             height: 36,
-            child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: Tk.pad), children: [
-              Row(children: [Icon(ic('trend'), size: 15, color: pal.t3), const SizedBox(width: 4), Text('相关搜索', style: ts(12, c: pal.t3))]),
-              for (final x in l) Padding(padding: const EdgeInsets.only(left: 8), child: Center(child: Press(onTap: () => widget.onQuery(x), child: Text(x, style: ts(12.5, c: pal.accText))))),
+            child: Row(children: [
+              const SizedBox(width: Tk.pad),
+              Icon(ic('trend'), size: 15, color: pal.t3),
+              const SizedBox(width: 4),
+              Text('相关搜索', style: ts(12, c: pal.t3)),
+              Expanded(
+                child: EdgeFade(
+                  child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.only(left: 4, right: Tk.pad), children: [
+                    for (final x in l)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 4),
+                        child: Center(
+                          child: Press(
+                            onTap: () => widget.onQuery(x),
+                            child: Container(
+                              constraints: const BoxConstraints(maxWidth: 160),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(color: pal.s2, borderRadius: BorderRadius.circular(14)),
+                              child: Text(x, maxLines: 1, overflow: TextOverflow.ellipsis, style: ts(12.5, c: pal.accText)),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ]),
+                ),
+              ),
             ]),
           );
         },

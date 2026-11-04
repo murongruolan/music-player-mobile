@@ -1240,6 +1240,7 @@ class _LFieldState extends State<LField> with SingleTickerProviderStateMixin {
                 obscureText: widget.password && hide,
                 keyboardType: widget.keyboard,
                 maxLines: widget.lines,
+                textAlignVertical: TextAlignVertical.top,
                 onChanged: widget.onChanged,
                 style: ts(15, c: pal.t1),
                 cursorColor: pal.acc,
@@ -1254,8 +1255,16 @@ class _LFieldState extends State<LField> with SingleTickerProviderStateMixin {
         if (widget.suffix != null) Press(onTap: widget.onSuffix ?? () => toast('验证码已发送', 'mail'), child: Padding(padding: const EdgeInsets.symmetric(horizontal: 14), child: Text(widget.suffix!, style: ts(14, w: FontWeight.w600, c: widget.onSuffix == null && widget.suffix!.endsWith('s') ? pal.t3 : pal.accText)))),
       ]),
     );
+    // 点框内任意位置（浮动标签、图标、空白处）都让输入框获得焦点；输入区、眼睛、后缀按钮自己处理点击
+    final tappable = GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        if (!fn.hasFocus) fn.requestFocus();
+      },
+      child: MouseRegion(cursor: SystemMouseCursors.text, child: field),
+    );
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      AnimatedBuilder(animation: sh, child: field, builder: (_, ch) => Transform.translate(offset: Offset(math.sin(sh.value * math.pi * 6) * 8 * (1 - sh.value), 0), child: ch)),
+      AnimatedBuilder(animation: sh, child: tappable, builder: (_, ch) => Transform.translate(offset: Offset(math.sin(sh.value * math.pi * 6) * 8 * (1 - sh.value), 0), child: ch)),
       AnimatedSize(duration: Tk.base, child: err ? Padding(padding: const EdgeInsets.only(top: 6, left: 4), child: Text(widget.error!, style: ts(12, c: pal.danger))) : const SizedBox(width: double.infinity)),
     ]);
   }
