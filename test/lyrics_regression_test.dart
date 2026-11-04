@@ -6,7 +6,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lyra/core/state.dart';
 import 'package:lyra/data/mock.dart';
 import 'package:lyra/data/models.dart';
-import 'package:lyra/main.dart';
 import 'package:lyra/player/lyrics.dart';
 
 void main() {
@@ -54,7 +53,7 @@ void main() {
     // 新词按旧长度索引正是 RangeError 0..51:52 的来源）。几何无关、直接观测缓存。
     final st = tester.state(find.byType(LyricView)) as dynamic;
     expect(st.layoutLines, 30, reason: '布局缓存必须随换歌重测');
-    expect(find.textContaining('第 29 行'), findsWidgets, reason: '第 29 行应已按新布局渲染');
+    expect((st.paintedLines as List<int>).contains(29), isTrue, reason: '第 29 行应已按新布局画出来');
 
     // 再反向收缩：60 行 → 3 行（tops 比 lyrics 长的场景也不能崩）
     lyrics

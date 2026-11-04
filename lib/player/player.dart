@@ -155,18 +155,16 @@ class _PlayerBackgroundState extends State<PlayerBackground> with SingleTickerPr
     final still = app.set.reduceMotion || widget.mode != 'flow';
     Widget base;
     if (widget.mode == 'blur') {
-      base = ImageFiltered(
-        imageFilter: ui.ImageFilter.blur(sigmaX: widget.preview ? 18 : 35, sigmaY: widget.preview ? 18 : 35),
-        child: ColorFiltered(colorFilter: const ColorFilter.matrix(_sat15), child: Transform.scale(scale: 1.2, child: Cover.song(s, size: 0, radius: 0))),
-      );
+      // 极小图放大代替实时高斯模糊：播放页常驻，ImageFiltered 每帧重算是老机型卡顿的主因之一
+      base = ColorFiltered(colorFilter: const ColorFilter.matrix(_sat15), child: Transform.scale(scale: 1.2, child: BlurCover.song(s, px: widget.preview ? 32 : 16)));
     } else {
-      base = AnimatedBuilder(
+      base = RepaintBoundary(child: AnimatedBuilder(
         animation: c,
         builder: (_, __) => ValueListenableBuilder<double>(
           valueListenable: app.pos,
           builder: (_, p, __) => CustomPaint(painter: _FlowPainter(songColors(s), still ? 0 : c.value, widget.beat && app.playing ? app.beat() : 0)),
         ),
-      );
+      ));
     }
     final light = widget.tone == 'light';
     return Stack(fit: StackFit.expand, children: [

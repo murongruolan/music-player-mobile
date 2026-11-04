@@ -1,5 +1,5 @@
-// 封面：按色相 + 变体生成渐变（原型 coverStyle 的 Canvas 版）。有封面地址时在渐变上叠网络图片，
-// 渐变同时是加载中 / 加载失败的兜底。
+// 封面：按色相 + 变体取预渲染的占位图（由原型 coverStyle 生成）。有封面地址时在占位图上叠网络图片，
+// 占位图同时是加载中 / 加载失败的兜底。CoverPainter 保留给需要实时绘制的少数场景。
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -43,8 +43,12 @@ class Cover extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(radius),
-        child: CustomPaint(
-          painter: CoverPainter(hue, variant),
+        child: DecoratedBox(
+          // 预渲染图片作为底图：老机型上实时绘制多层渐变每帧都要重画，图片只解码一次、全局共享缓存。
+          decoration: BoxDecoration(
+            color: hsl(hue + 40, .62, .34),
+            image: DecorationImage(image: AssetImage(placeholderAsset(hue, variant)), fit: BoxFit.cover),
+          ),
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(radius),
@@ -76,6 +80,46 @@ class Cover extends StatelessWidget {
     if (child == null) return img;
     return Stack(fit: StackFit.expand, children: [img, child!]);
   }
+}
+
+/// 模糊背景封面：把封面解码成极小的图（[px] 像素宽）再放大铺满，双三次插值放大本身就是柔和的模糊。
+/// 相比 ImageFiltered（sigma 30~40 的高斯模糊每帧都要在 GPU 上重算，滚动时老机型掉帧明显），
+/// 这里只在解码时付一次成本，之后和普通图片一样合成。
+class BlurCover extends StatelessWidget {
+  final double hue;
+  final int variant;
+  final String? url;
+  final int px;
+  const BlurCover({super.key, required this.hue, this.variant = 0, this.url, this.px = 20});
+  factory BlurCover.song(Song s, {int px = 20}) => BlurCover(hue: s.hue, variant: s.variant, url: s.cover, px: px);
+
+  @override
+  Widget build(BuildContext context) {
+    final u = coverUrl(url);
+    Widget img(ImageProvider p, {bool fade = false}) => Image(
+          image: ResizeImage(p, width: px),
+          fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
+          filterQuality: FilterQuality.high,
+          gaplessPlayback: true,
+          frameBuilder: fade ? (_, ch, frame, sync) => sync ? ch : AnimatedOpacity(opacity: frame == null ? 0 : 1, duration: const Duration(milliseconds: 260), child: ch) : null,
+          errorBuilder: (_, __, ___) => const SizedBox.expand(),
+        );
+    return RepaintBoundary(
+      child: Stack(fit: StackFit.expand, children: [
+        ColoredBox(color: hsl(hue + 40, .62, .34)),
+        img(AssetImage(placeholderAsset(hue, variant))),
+        if (u != null) img(NetworkImage(u, headers: const {'User-Agent': Cover.ua}), fade: true),
+      ]),
+    );
+  }
+}
+
+/// 占位封面图片：色相按 30° 分桶（12 档），样式 6 种。
+String placeholderAsset(double hue, int variant) {
+  final h = ((hue % 360 + 360) % 360 / 30).round() % 12;
+  return 'assets/covers/cover_${h}_${variant.abs() % 6}.jpg';
 }
 
 /// 规范封面地址：只接受 http(s)；支持 https 的图床（网易 / QQ）把 http 升级成 https，

@@ -260,7 +260,7 @@ class _AccountPageState extends State<AccountPage> {
     final memberName = (acc?.membershipName.isNotEmpty ?? false) ? acc!.membershipName : (acc == null ? '已激活 · 永久' : '已激活');
     return SubPage(title: '账号中心', children: [
       Column(children: [
-        Avatar(name.isEmpty ? 'L' : name.characters.first, size: 84),
+        Avatar(name.isEmpty ? 'L' : name.characters.first, size: 84, url: avatarUrl(app, size: 84)),
         const SizedBox(height: 12),
         Text(name, style: ts(20, w: FontWeight.w700, c: pal.t1)),
         Text(acc == null ? (app.online ? '' : 'UID 10086427 · ali@example.com') : 'UID ${acc.uid} · ${acc.email}', style: ts(12.5, c: pal.t2, num: true)),
@@ -272,7 +272,7 @@ class _AccountPageState extends State<AccountPage> {
         Item(icon: 'user', color: 'blue', label: '昵称与头像', val: name, onTap: () => _editNickname(context)),
         Item(icon: 'mail', color: 'orange', label: '邮箱', val: acc?.email ?? (app.online ? '' : 'ali@example.com')),
         Item(icon: 'lock', color: 'gray', label: '修改密码', sub: '重置密码接口暂未开放，可从登录页「忘记密码」入口查看进度', onTap: () => toast('重置密码接口暂未开放', 'info')),
-        Item(icon: 'link', color: 'cyan', label: 'QQ 绑定', val: (acc?.qq?.isNotEmpty ?? false) ? '已绑定 ${acc!.qq}' : '未绑定', onTap: () => _editQQ(context)),
+        Item(icon: 'link', color: 'cyan', label: 'QQ 绑定', sub: '绑定后头像使用 QQ 头像，与桌面端同步', val: (acc?.qq?.isNotEmpty ?? false) ? '已绑定 ${acc!.qq}' : '未绑定', onTap: () => _editQQ(context)),
       ]),
       Group(title: '会员', children: [
         Item(icon: 'key', color: 'gold', label: '激活码', sub: activated ? '输入升级码提升会员等级' : '输入激活码解锁全部功能', onTap: () => _activate(context)),
@@ -316,7 +316,7 @@ class _AccountPageState extends State<AccountPage> {
     }, okMsg: '已保存');
   }
 
-  /// 绑定 / 解绑 QQ（≤12 位数字，与后端一致）。
+  /// 绑定 / 解绑 QQ：填 QQ 号即可（账号级，桌面端绑定过的这里直接显示）。格式同桌面端：5~12 位数字、不以 0 开头。
   Future<void> _editQQ(BuildContext context) async {
     final app = context.appRead;
     final cur = app.account?.qq;
@@ -341,7 +341,7 @@ class _AccountPageState extends State<AccountPage> {
         ));
     final qq = (r as String?)?.trim() ?? '';
     if (qq.isEmpty) return;
-    if (qq.length > 12 || !RegExp(r'^\d+$').hasMatch(qq)) return toast('QQ 号格式不正确', 'info');
+    if (!qqPattern.hasMatch(qq)) return toast('QQ 号应为 5~12 位数字，且不以 0 开头', 'info');
     await _guard(() async {
       final nu = await AccountApi(app.api.client).bindQQ(qq);
       app.update(() => app.account = nu);

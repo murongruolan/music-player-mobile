@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 // 数据模型。字段与原型 data.js 对应，接口对接时由 Repository 填充。
 
 class Song {
@@ -46,10 +47,44 @@ class Playlist {
   bool get isReal => key != null;
 }
 
+/// 逐字（逐词）时间：[start] / [dur] 秒，对应 [LyricLine.text] 里 UTF-16 下标 [from, to)。
+class LyricWord {
+  final double start, dur;
+  final int from, to;
+  const LyricWord(this.start, this.dur, this.from, this.to);
+}
+
 class LyricLine {
   final double t, d;
   final String text, trans, section;
-  const LyricLine(this.t, this.d, this.text, this.trans, this.section);
+
+  /// 逐字时间（网易 yrc / 酷狗 krc / 酷我 / 咪咕 mrc / QQ qrc）。没有时按行时长估算。
+  final List<LyricWord>? words;
+  const LyricLine(this.t, this.d, this.text, this.trans, this.section, {this.words});
+
+  /// 只有行时间时，「唱完这一行」大约用多久。行间隔里常含前奏 / 间奏，直接按整段间隔铺开
+  /// 会让填充比演唱慢一截（唱完了填充才走一半），所以按字数估一个演唱时长封顶。
+  double get _sungDur {
+    final n = text.trim().length;
+    final est = 0.8 + n * 0.32;
+    return math.max(0.6, math.min(d * .92, est));
+  }
+
+  /// 在时间 [p]（秒）时这一行已唱到的位置，0..1（按字符比例；逐字时间精确到字内插值）。
+  double progressAt(double p) {
+    final w = words;
+    final len = text.length;
+    if (w == null || w.isEmpty || len == 0) return ((p - t) / _sungDur).clamp(0.0, 1.0);
+    if (p <= w.first.start) return w.first.from / len;
+    for (final x in w) {
+      if (p < x.start) return x.from / len; // 词与词之间的停顿：停在下一个词开头
+      if (p < x.start + x.dur) {
+        final f = x.dur <= 0 ? 1.0 : (p - x.start) / x.dur;
+        return (x.from + (x.to - x.from) * f) / len;
+      }
+    }
+    return 1;
+  }
 }
 
 class Platform {

@@ -40,7 +40,7 @@ class LibraryStore implements LibraryBinding {
       return hit;
     }
     final id = songs.length;
-    songs.add(Song(id, t.title.isEmpty ? '未知歌曲' : t.title, t.artist, t.album, t.durationSec, _quality(t), _hue(k), k.hashCode.abs() % 4, key: k, cover: t.cover));
+    songs.add(Song(id, t.title.isEmpty ? '未知歌曲' : t.title, t.artist, t.album, t.durationSec, _quality(t), _hue(k), k.hashCode.abs() % 6, key: k, cover: t.cover));
     _byKey[k] = id;
     _tracks[id] = t;
     return id;
@@ -96,7 +96,7 @@ class LibraryStore implements LibraryBinding {
       p.name.isEmpty ? '未命名歌单' : p.name,
       count: p.total ?? ids.length,
       hue: _hue(p.id),
-      variant: p.id.hashCode.abs() % 4,
+      variant: p.id.hashCode.abs() % 6,
       mine: true,
       tag: p.kind == 'collected' ? '收藏' : null,
       ids: ids,
@@ -165,7 +165,7 @@ class LibraryStore implements LibraryBinding {
     final id = _app.myPlaylists.fold<int>(199, (m, p) => p.id > m ? p.id : m) + 1;
     final key = '$platform-$externalId';
     _plRaw[id] = CloudPlaylist(id: key, name: name, description: description, cover: cover, kind: 'collected', platform: platform, externalId: externalId, total: total, updatedAt: now, createdAt: now);
-    final p = Playlist(id, name.isEmpty ? '未命名歌单' : name, count: total ?? 0, hue: _hue(key), variant: key.hashCode.abs() % 4, mine: true, tag: '收藏', key: key, platform: platform, externalId: externalId, kind: 'collected', updatedAt: now, createdAt: now, cover: cover);
+    final p = Playlist(id, name.isEmpty ? '未命名歌单' : name, count: total ?? 0, hue: _hue(key), variant: key.hashCode.abs() % 6, mine: true, tag: '收藏', key: key, platform: platform, externalId: externalId, kind: 'collected', updatedAt: now, createdAt: now, cover: cover);
     _app.myPlaylists.add(p);
     _changed();
     return p;

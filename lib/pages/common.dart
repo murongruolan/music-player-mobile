@@ -88,12 +88,13 @@ class _TabPageState extends State<TabPage> {
               child: Opacity(
                 opacity: k,
                 child: ClipRect(
-                  child: BackdropFilter(
-                    filter: ui.ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-                    child: Container(
+                  child: backdrop(
+                    context,
+                    ui.ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                    Container(
                       height: top + 44,
                       padding: EdgeInsets.only(top: top),
-                      color: pal.bg.withValues(alpha: .78),
+                      color: reduceBlur(context) ? pal.bg : pal.bg.withValues(alpha: .78),
                       alignment: Alignment.center,
                       child: Text(widget.title, style: ts(16, w: FontWeight.w700, c: pal.t1)),
                     ),
@@ -256,6 +257,24 @@ class EmptyState extends StatelessWidget {
       ]),
     );
   }
+}
+
+/// QQ 号格式（与桌面端一致）：5~12 位数字，不以 0 开头。
+final qqPattern = RegExp(r'^[1-9]\d{4,11}$');
+
+/// QQ 头像地址（qlogo 公开接口，按 QQ 号取，不需要授权）。[s] 取 40 / 100 / 140 / 640。
+String qqAvatarUrl(String qq, {int s = 640}) => 'https://q1.qlogo.cn/g?b=qq&nk=$qq&s=$s';
+
+/// Lyra 账号头像：自定义头像 > 已绑定 QQ 的头像 > null（显示首字占位）。演示模式没有账号，返回 null。
+/// 号码不合法时 qlogo 也会返回一张默认图，所以这里先按格式过滤。
+String? avatarUrl(AppState app, {double size = 36}) {
+  final acc = app.account;
+  if (acc == null) return null;
+  final custom = acc.avatarUrl?.trim();
+  if (custom != null && (custom.startsWith('https://') || custom.startsWith('http://'))) return custom;
+  final qq = acc.qq?.trim();
+  if (qq == null || !qqPattern.hasMatch(qq)) return null;
+  return qqAvatarUrl(qq, s: size > 40 ? 640 : 140);
 }
 
 /// 头像文字：Lyra 账号昵称首字；演示模式用「栗」。

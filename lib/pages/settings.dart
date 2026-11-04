@@ -92,6 +92,7 @@ class AppearancePage extends StatelessWidget {
         Item(icon: 'compass', color: 'cyan', label: '首页内容与顺序', val: '${app.homeMods.where((m) => m.value).length} 个模块', onTap: () => openHomeOrder(context)),
         Item(icon: 'zap', color: 'green', label: '触感反馈', sw: app.set.haptics, onSw: (v) => app.update(() => app.set.haptics = v)),
         Item(icon: 'eye', color: 'gray', label: '减少动态效果', sub: '关闭形变、弹簧、流光等动画', sw: app.set.reduceMotion, onSw: (v) => app.update(() => app.set.reduceMotion = v)),
+        Item(icon: 'layers', color: 'gray', label: '减少模糊效果', sub: '玻璃、毛玻璃导航栏改为不透明底色，老机型更流畅', sw: app.set.reduceBlur, onSw: (v) => app.update(() => app.set.reduceBlur = v)),
       ]),
     ]);
   }

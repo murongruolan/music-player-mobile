@@ -599,7 +599,10 @@ class Avatar extends StatelessWidget {
   final String text;
   final double size;
   final VoidCallback? onTap;
-  const Avatar(this.text, {super.key, this.size = 36, this.onTap});
+
+  /// 头像图片地址；加载中 / 失败时显示首字占位。
+  final String? url;
+  const Avatar(this.text, {super.key, this.size = 36, this.onTap, this.url});
   @override
   Widget build(BuildContext context) {
     final pal = context.pal;
@@ -611,13 +614,32 @@ class Avatar extends StatelessWidget {
         height: size,
         alignment: Alignment.center,
         decoration: BoxDecoration(shape: BoxShape.circle, gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [pal.acc, Color.lerp(pal.acc, Colors.black, .45)!])),
-        child: Text(text, style: ts(size * .42, w: FontWeight.w700, c: pal.ink)),
+        child: url == null
+            ? Text(text, style: ts(size * .42, w: FontWeight.w700, c: pal.ink))
+            : Stack(fit: StackFit.expand, alignment: Alignment.center, children: [
+                Center(child: Text(text, style: ts(size * .42, w: FontWeight.w700, c: pal.ink))),
+                ClipOval(
+                  child: Image.network(
+                    url!,
+                    fit: BoxFit.cover,
+                    cacheWidth: (size * MediaQuery.devicePixelRatioOf(context)).round(),
+                    gaplessPlayback: true,
+                    frameBuilder: (_, ch, frame, sync) => sync ? ch : AnimatedOpacity(opacity: frame == null ? 0 : 1, duration: const Duration(milliseconds: 220), child: ch),
+                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                  ),
+                ),
+              ]),
       ),
     );
   }
 }
 
 // ============ 玻璃 ============
+/// 背景模糊开关：「减少模糊效果」开启时不做 BackdropFilter（每帧对背后内容做高斯模糊，是老机型掉帧大户），
+/// 调用方需在 [child] 里用 [opaque] 换成不透明底色。
+bool reduceBlur(BuildContext context) => context.appRead.set.reduceBlur;
+Widget backdrop(BuildContext context, ui.ImageFilter filter, Widget child) => reduceBlur(context) ? child : BackdropFilter(filter: filter, child: child);
+
 class Glass extends StatelessWidget {
   final Widget child;
   final double radius, blur;
@@ -632,10 +654,11 @@ class Glass extends StatelessWidget {
       decoration: BoxDecoration(borderRadius: BorderRadius.circular(radius), boxShadow: shadow),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(radius),
-        child: BackdropFilter(
-          filter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-          child: Container(
-            decoration: BoxDecoration(color: color ?? pal.glass, borderRadius: BorderRadius.circular(radius), border: border ?? Border.all(color: pal.line)),
+        child: backdrop(
+          context,
+          ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+          Container(
+            decoration: BoxDecoration(color: reduceBlur(context) ? pal.bgElev : color ?? pal.glass, borderRadius: BorderRadius.circular(radius), border: border ?? Border.all(color: pal.line)),
             child: child,
           ),
         ),

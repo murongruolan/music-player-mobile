@@ -8,6 +8,7 @@ import '../data/mock.dart';
 import '../api/update_api.dart';
 import '../data/models.dart';
 import '../net/net.dart';
+import '../platform/prefetch.dart';
 import '../platform/registry.dart';
 import 'announcements.dart';
 import 'cloud.dart';
@@ -27,6 +28,8 @@ class Settings {
   double dlConc = 3;
   bool dlCover = true, dlLyric = true, wifiOnly = true, cache = true, vinylSpin = true, haptics = true, pitch = true;
   bool finishSong = true, fadeStop = true, cloudSync = true, autoBackup = true, crash = true, navAutoMin = true, clipDetect = true;
+  /// 减少模糊效果：玻璃 / 毛玻璃导航栏等背景模糊（BackdropFilter）改成不透明底色，老机型上明显更流畅。
+  bool reduceBlur = false;
   bool reduceMotion = false, standbyAuto = true, autoDowngrade = true, mobileLow = true;
   String onlineQ = 'SQ', dlQ = 'Hi-Res', mode = '列表循环', fontSize = '标准';
 }
@@ -153,6 +156,9 @@ class AppState extends ChangeNotifier {
   /// 各音乐平台的公开内容（发现页、搜索、歌单 / 榜单详情）。测试可以注入假平台。
   final PlatformHub content;
 
+  /// 空闲时预载其他平台的发现页（只在 Wi-Fi 下）。
+  late final prefetch = IdlePrefetch(content);
+
   AppState({this.net, this.engine, PlatformHub? content}) : content = content ?? PlatformHub() {
     _sessionSub = net?.session.onEnd.listen(sessionEnded);
     _userSub = net?.session.onUser.listen((u) {
@@ -165,6 +171,7 @@ class AppState extends ChangeNotifier {
       scriptOrder[p.id] = scripts.where((s) => s.platforms.contains(p.id)).map((s) => s.id).toList();
     }
     _clock = Timer.periodic(const Duration(milliseconds: 50), (_) => _tick());
+    pos.addListener(_posClock.reset); // 每次有新的进度上报，平滑位置从这里重新起算
     _bindEngine();
   }
 
@@ -414,8 +421,20 @@ class AppState extends ChangeNotifier {
     return (name: s.name, ms: s.ms, ok: s.ok);
   }
 
-  int get lyricIndex {
-    final p = pos.value + set.loff;
+  /// 平滑的播放位置：引擎大约每 200ms 才报一次进度，逐帧动画（歌词填充）在两次上报之间
+  /// 按经过的时间 × 倍速往前推，最多推 0.6 秒（防止卡顿 / 缓冲时跑过头）。
+  double get smoothPos {
+    final p = pos.value;
+    if (!playing || !hasSong && online) return p;
+    final dt = math.min(_posClock.elapsedMicroseconds / 1e6, 0.6);
+    return p + dt * speed;
+  }
+
+  final _posClock = Stopwatch()..start();
+
+  int get lyricIndex => lyricIndexAt(smoothPos + set.loff);
+
+  int lyricIndexAt(double p) {
     var k = 0;
     for (var i = 0; i < lyrics.length; i++) {
       if (lyrics[i].t <= p) k = i;
@@ -423,11 +442,13 @@ class AppState extends ChangeNotifier {
     return k;
   }
 
-  /// 当前行内进度 0..1（只有行时间时按行时长 × 0.92 均匀插值）。
+  /// 当前行内进度 0..1：有逐字时间按字走，否则按估算的演唱时长插值（见 [LyricLine.progressAt]）。
   double get lineProgress {
     if (lyrics.isEmpty) return 0;
-    final l = lyrics[lyricIndex];
-    return ((pos.value + set.loff - l.t) / (l.d * .92)).clamp(0, 1);
+    final p = smoothPos + set.loff;
+    final k = lyricIndexAt(p);
+    if (k >= lyrics.length) return 0;
+    return lyrics[k].progressAt(p);
   }
 
   /// 模拟节拍包络 0..1（112 BPM）。
@@ -700,6 +721,7 @@ class AppState extends ChangeNotifier {
     library.dispose();
     _clock?.cancel();
     _sleepT?.cancel();
+    prefetch.stop();
     pos.dispose();
     super.dispose();
   }

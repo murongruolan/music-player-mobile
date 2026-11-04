@@ -27,9 +27,23 @@ class _OnlineDiscoverState extends State<_OnlineDiscover> {
     return (boards: await b, cats: await k);
   }
 
+  AppState? _app;
+
   void _load(AppState app) {
+    _app = app;
     f = _fetch(app);
     rec = _fetchRec(app);
+    // 当前平台出内容后，空闲时把其他平台的发现页预载进缓存（切平台秒开）
+    final mine = f;
+    f.then((_) {
+      if (mounted && identical(mine, f)) app.prefetch.start(app.plat);
+    }, onError: (Object _) {});
+  }
+
+  @override
+  void dispose() {
+    _app?.prefetch.stop();
+    super.dispose();
   }
 
   Future<void> _refresh() async {
@@ -58,7 +72,7 @@ class _OnlineDiscoverState extends State<_OnlineDiscover> {
         IBtn('scan', onTap: () => pushFull(context, const ScanPage())),
         IBtn('bell', dot: app.unread > 0, onTap: () => push(context, const AnnouncementsPage())),
         const SizedBox(width: 4),
-        Avatar(avatarText(app), onTap: () => app.update(() => app.tab = 4)),
+        Avatar(avatarText(app), url: avatarUrl(app), onTap: () => app.update(() => app.tab = 4)),
       ],
       children: [
         const Padding(padding: EdgeInsets.fromLTRB(Tk.pad, 2, Tk.pad, 12), child: SourceBar()),
@@ -98,16 +112,10 @@ class _OnlineDiscoverState extends State<_OnlineDiscover> {
                 // custom（为你定制）需要登录平台账号，未登录时原型里也不显示
               }
             }
-            final banners = [
-              for (final x in d.feed.playlists.take(4))
-                BannerItem('推荐歌单', x.title, [if (x.creator?.isNotEmpty == true) x.creator!, if (x.playCountText.isNotEmpty) '${x.playCountText}次播放'].join(' · '), _hueOf(x), (c) => openCatalog(c, x), cover: x.cover),
-              if (d.feed.hotBoard != null)
-                BannerItem('排行榜', d.feed.hotBoard!.title, d.feed.hotBoard!.subtitle.isNotEmpty ? d.feed.hotBoard!.subtitle : app.platform.name, _hueOf(d.feed.hotBoard!), (c) => openCatalog(c, d.feed.hotBoard!), cover: d.feed.hotBoard!.cover),
-            ];
             return Column(key: ValueKey('c$plat'), crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               const Rise(0, _LoginStrip()),
               const SizedBox(height: 16),
-              if (banners.isNotEmpty) Rise(1, BannerCarousel(key: ValueKey('bn$plat'), items: banners)),
+              Rise(1, _OnlineBanner(d.feed, key: ValueKey('bn$plat'))),
               for (var i = 0; i < mods.length; i++) Rise(i + 2, mods[i]),
               if (d.feed.errors.isNotEmpty) Hint('部分内容没有加载出来：${d.feed.errors.join('；')}', padding: const EdgeInsets.fromLTRB(Tk.pad, 16, Tk.pad, 0)),
             ]);
@@ -119,6 +127,60 @@ class _OnlineDiscoverState extends State<_OnlineDiscover> {
 }
 
 double _hueOf(CatalogItem x) => catalogHue(x);
+
+/// Banner：飙升榜 / 新歌榜（带榜首歌曲）+ 推荐歌单第 7~10 个。
+/// 精选区用的是推荐歌单前 6 个、此刻热门用的是第一个榜单，这里都避开，保证 Banner 和下面的区块不重复。
+List<CatalogItem> bannerBoards(DiscoverFeed f) {
+  final rest = [for (final b in f.boards) if (b.id != f.hotBoard?.id) b];
+  final out = <CatalogItem>[];
+  for (final keys in const [['飙升'], ['新歌', '新曲']]) {
+    final b = rest.where((b) => !out.contains(b) && keys.any(b.title.contains)).firstOrNull;
+    if (b != null) out.add(b);
+  }
+  for (final b in rest) {
+    if (out.length >= 2) break;
+    if (!out.contains(b)) out.add(b);
+  }
+  return out;
+}
+
+class _OnlineBanner extends StatefulWidget {
+  final DiscoverFeed feed;
+  const _OnlineBanner(this.feed, {super.key});
+  @override
+  State<_OnlineBanner> createState() => _OnlineBannerState();
+}
+
+class _OnlineBannerState extends State<_OnlineBanner> {
+  late final boards = bannerBoards(widget.feed);
+  late final Future<List<List<int>>> tops = Future.wait([for (final b in boards) _boardTracks(context.appRead, b).catchError((Object _) => <int>[])]);
+
+  List<BannerItem> _items(List<List<int>>? top) {
+    final app = context.appRead;
+    return [
+      for (final (i, b) in boards.indexed)
+        BannerItem(
+          '排行榜',
+          b.title,
+          switch (top?[i]) {
+            [final id, ...] => '榜首 · ${songs[id].title} - ${songs[id].artist}',
+            _ => b.subtitle.isNotEmpty ? b.subtitle : app.platform.name,
+          },
+          _hueOf(b),
+          (c) => openCatalog(c, b),
+          cover: b.cover,
+        ),
+      for (final x in widget.feed.playlists.skip(6).take(4))
+        BannerItem('推荐歌单', x.title, [if (x.creator?.isNotEmpty == true) x.creator!, if (x.playCountText.isNotEmpty) '${x.playCountText}次播放'].join(' · '), _hueOf(x), (c) => openCatalog(c, x), cover: x.cover),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (boards.isEmpty && widget.feed.playlists.length <= 6) return const SizedBox.shrink();
+    return FutureBuilder<List<List<int>>>(future: tops, builder: (_, s) => BannerCarousel(items: _items(s.data)));
+  }
+}
 Future<List<int>> _boardTracks(AppState app, CatalogItem b) => boardTracks(app, b);
 
 // ============ 我的歌单（Lyra 音乐库：自建 / 收藏） ============
