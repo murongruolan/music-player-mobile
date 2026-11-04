@@ -73,7 +73,7 @@ class Cover extends StatelessWidget {
     // UA 拦截见文件头说明；cacheWidth 拿不到（撑满容器的 Cover）时不缩放解码。
     final cacheW = _cacheW(context);
     final img = Image(
-      image: cacheW == null ? UaImage(u) : ResizeImage(UaImage(u), width: cacheW, height: cacheW, policy: ResizeImagePolicy.exact),
+      image: cacheW == null ? UaImage(u) : ResizeImage(UaImage(u), width: cacheW), // 只限宽度，保持原比例（歌手照片 / 横幅不是正方形）
       fit: BoxFit.cover,
       width: double.infinity,
       height: double.infinity,
@@ -134,6 +134,9 @@ class UaImage extends ImageProvider<UaImage> {
   final String url;
   const UaImage(this.url);
 
+  /// 所有封面共用一个连接池（列表一屏几十张图，每张新建连接太浪费）。
+  static final http.Client _client = http.Client();
+
   @override
   Future<UaImage> obtainKey(covariant ImageConfiguration configuration) => SynchronousFuture<UaImage>(this);
 
@@ -143,7 +146,7 @@ class UaImage extends ImageProvider<UaImage> {
   }
 
   Future<ui.Codec> _load(UaImage key, ImageDecoderCallback decode) async {
-    final r = await http.get(Uri.parse(key.url), headers: const {'User-Agent': Cover.ua}).timeout(const Duration(seconds: 12));
+    final r = await _client.get(Uri.parse(key.url), headers: const {'User-Agent': Cover.ua}).timeout(const Duration(seconds: 12));
     if (r.statusCode != 200 || r.bodyBytes.isEmpty) throw StateError('封面 HTTP ${r.statusCode}');
     final buffer = await ui.ImmutableBuffer.fromUint8List(r.bodyBytes);
     return decode(buffer);
