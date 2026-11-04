@@ -48,3 +48,6 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  # 预渲染的占位封面（12 色相 × 6 样式，256px JPEG），替代实时渐变绘制
+  assets:
+    - assets/covers/

@@ -27,7 +27,7 @@ int registerTrack(AppState app, PTrack t) => app.library.register(t.toCloud());
 double _hue(String k) => (k.hashCode.abs() % 360).toDouble();
 
 /// 平台歌单 / 榜单卡片 → PlCard 用的 Playlist（id 无意义，只用于展示）。
-Playlist cardOf(CatalogItem c) => Playlist(-1, c.title, by: c.creator ?? '', count: c.trackCount ?? 0, playCount: c.playCountText, hue: _hue('${c.platform}${c.id}'), variant: c.id.hashCode.abs() % 4, cover: c.cover);
+Playlist cardOf(CatalogItem c) => Playlist(-1, c.title, by: c.creator ?? '', count: c.trackCount ?? 0, playCount: c.playCountText, hue: _hue('${c.platform}${c.id}'), variant: c.id.hashCode.abs() % 6, cover: c.cover);
 
 double catalogHue(CatalogItem x) => _hue('${x.platform}${x.id}');
 
@@ -592,7 +592,7 @@ class CatalogRow extends StatelessWidget {
         height: 64,
         child: Row(children: [
           const SizedBox(width: Tk.pad),
-          Cover(hue: _hue('${c.platform}${c.id}'), variant: c.id.hashCode.abs() % 4, size: 48, radius: artist ? 24 : 10, url: c.cover),
+          Cover(hue: _hue('${c.platform}${c.id}'), variant: c.id.hashCode.abs() % 6, size: 48, radius: artist ? 24 : 10, url: c.cover),
           const SizedBox(width: 12),
           Expanded(
             child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [

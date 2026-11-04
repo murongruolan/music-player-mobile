@@ -1,5 +1,5 @@
-// 封面：按色相 + 变体生成渐变（原型 coverStyle 的 Canvas 版）。有封面地址时在渐变上叠网络图片，
-// 渐变同时是加载中 / 加载失败的兜底。
+// 封面：按色相 + 变体取预渲染的占位图（由原型 coverStyle 生成）。有封面地址时在占位图上叠网络图片，
+// 占位图同时是加载中 / 加载失败的兜底。CoverPainter 保留给需要实时绘制的少数场景。
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -43,8 +43,12 @@ class Cover extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(radius),
-        child: CustomPaint(
-          painter: CoverPainter(hue, variant),
+        child: DecoratedBox(
+          // 预渲染图片作为底图：老机型上实时绘制多层渐变每帧都要重画，图片只解码一次、全局共享缓存。
+          decoration: BoxDecoration(
+            color: hsl(hue + 40, .62, .34),
+            image: DecorationImage(image: AssetImage(placeholderAsset(hue, variant)), fit: BoxFit.cover),
+          ),
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(radius),
@@ -76,6 +80,12 @@ class Cover extends StatelessWidget {
     if (child == null) return img;
     return Stack(fit: StackFit.expand, children: [img, child!]);
   }
+}
+
+/// 占位封面图片：色相按 30° 分桶（12 档），样式 6 种。
+String placeholderAsset(double hue, int variant) {
+  final h = ((hue % 360 + 360) % 360 / 30).round() % 12;
+  return 'assets/covers/cover_${h}_${variant.abs() % 6}.jpg';
 }
 
 /// 规范封面地址：只接受 http(s)；支持 https 的图床（网易 / QQ）把 http 升级成 https，

@@ -529,7 +529,7 @@ class _AlbumCard extends StatelessWidget {
             height: size,
             child: Stack(clipBehavior: Clip.none, children: [
               Positioned(left: 14, top: 4, child: Container(width: size - 8, height: size - 8, decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFF0D0E12), border: Border.all(color: const Color(0xFF26282F), width: 6)))),
-              Cover(hue: catalogHue(a), variant: a.id.hashCode.abs() % 4, size: size, radius: 12, shadow: true, url: a.cover),
+              Cover(hue: catalogHue(a), variant: a.id.hashCode.abs() % 6, size: size, radius: 12, shadow: true, url: a.cover),
             ]),
           ),
           const SizedBox(height: 8),
