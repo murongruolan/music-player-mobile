@@ -82,13 +82,14 @@ class _OnlineDiscoverState extends State<_OnlineDiscover> {
                   if (app.myPlaylists.isNotEmpty) mods.add(const _LibPlaylists());
                 case 'quick':
                   mods.add(QuickGrid([
-                    ('sun', '每日混音', () => app.update(() => app.tab = 2)),
+                    // 「每日混音」指向的每日页已在底栏 tab 上，改为进入歌单广场；排行榜同理进完整榜单页
+                    ('sun', '歌单广场', () => push(context, PlaylistSquarePage(platform: code))),
                     ('wave', '私人电台', () {
                       final ids = [...d.hot]..shuffle();
                       if (ids.isNotEmpty) app.play(ids.first, name: '私人电台', ids: ids);
                     }),
                     ('mic', '听歌识曲', () => pushFull(context, const ScanPage(match: true))),
-                    ('chart', '排行榜', () => app.update(() => app.homeTab = '榜单')),
+                    ('chart', '排行榜', () => push(context, LeaderboardsPage(platform: code))),
                   ]));
                 case 'tabs':
                   mods.add(_OnlineTabs(d.feed, d.hot, code));

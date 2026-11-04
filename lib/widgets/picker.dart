@@ -140,7 +140,8 @@ class _PickerPanelState extends State<_PickerPanel> {
           final w = cs.maxWidth / platforms.length;
           final sel = platforms.indexWhere((p) => p.id == app.plat);
           return SizedBox(
-            height: 92,
+            // 92 会比格子内容（徽标 + 平台名 + 登录态两行文本）矮 2px，每格报 BOTTOM OVERFLOWED
+            height: 96,
             child: Stack(children: [
               AnimatedPositioned(
                 duration: const Duration(milliseconds: 520),
@@ -154,9 +155,15 @@ class _PickerPanelState extends State<_PickerPanel> {
                   SizedBox(
                     width: w,
                     child: Press(
-                      onTap: () {
+                      onTap: () async {
                         haptic(context);
+                        if (p.id == app.plat) return Navigator.of(context).pop(); // 点当前平台：仅收起面板
                         app.switchPlatform(p.id);
+                        // 与下方音源行同款手感：让选中态动画播一下再收起，不用手动点空白关闭
+                        await Future.delayed(const Duration(milliseconds: 280));
+                        if (!context.mounted) return;
+                        Navigator.of(context).pop();
+                        toast('平台：${p.name}', 'grid');
                       },
                       child: Column(children: [
                         const SizedBox(height: 4),

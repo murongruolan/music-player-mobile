@@ -182,7 +182,8 @@ void main() {
     // 原型：登录卡 + Banner + 快捷入口 + 精选 / 榜单 / 歌单 + 平台推荐区
     expect(find.text('登录网易云音乐'), findsOneWidget);
     expect(find.byType(BannerCarousel), findsOneWidget);
-    expect(find.text('每日混音'), findsOneWidget);
+    // 快捷入口的「每日混音」已改为「歌单广场」（fix/discover-interactions）
+    expect(find.text('歌单广场'), findsOneWidget);
     expect(find.text('精选'), findsOneWidget);
     expect(find.text('wy 歌曲 1000', skipOffstage: false), findsWidgets);
     // 热门歌曲登记进了歌曲目录，可以收藏
