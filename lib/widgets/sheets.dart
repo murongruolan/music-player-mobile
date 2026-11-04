@@ -18,6 +18,7 @@ import '../ui/brand.dart';
 import '../ui/cover.dart';
 import '../ui/icons.dart';
 import '../ui/kit.dart';
+import 'plat_login.dart';
 
 void registerSheets() {
   onSongMore = openSongMore;
@@ -323,9 +324,7 @@ void openImportPlaylist(BuildContext context) {
 // ============ 平台登录：扫码 / 手机号 / Cookie ============
 void openPlatLogin(BuildContext context, String pid, {String mode = '扫码'}) {
   final p = platformBy(pid);
-  if (context.appRead.online) {
-    return openPendingFeature(context, '登录${p.name}', '平台账号登录（扫码 / 手机号 / Cookie）需要对接${p.name}的接口，正在开发。登录后才能看到每日推荐和你在该平台的歌单。');
-  }
+  if (context.appRead.online) return openRealPlatLogin(context, pid, mode: mode); // 真实登录：plat_login.dart
   var m = mode;
   var st = 0; // 0 等待 1 已扫码 2 成功
   Timer? t1, t2;

@@ -130,6 +130,8 @@ class _LoginStripState extends State<_LoginStrip> with SingleTickerProviderState
   Widget build(BuildContext context) {
     final app = context.app;
     final p = app.platform;
+    // 联网模式：没有登录入口的平台（酷我 / 咪咕 / 酷狗暂未接入）和已登录时不显示
+    if (app.online && (!AppState.loginPlatforms.contains(p.id) || app.isIn(p.id))) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: Tk.pad),
       child: ClipRRect(
@@ -155,10 +157,10 @@ class _LoginStripState extends State<_LoginStrip> with SingleTickerProviderState
                   child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text('登录${p.name}', style: ts(15, w: FontWeight.w700, c: context.pal.t1)),
                     const SizedBox(height: 2),
-                    Text('每日推荐 · 心动 / 雷达 · 你的歌单 · 收藏同步', maxLines: 1, overflow: TextOverflow.ellipsis, style: ts(11.5, c: context.pal.t2)),
+                    Text(app.online ? (p.id == 'netease' ? '扫码或导入 Cookie · 用你的会员身份播放' : '导入 Cookie · 用你的会员身份播放') : '每日推荐 · 心动 / 雷达 · 你的歌单 · 收藏同步', maxLines: 1, overflow: TextOverflow.ellipsis, style: ts(11.5, c: context.pal.t2)),
                   ]),
                 ),
-                Btn('登录', icon: 'scan', small: true, bg: Color(p.c1), fg: Colors.white, onTap: () => openPlatLogin(context, p.id)),
+                Btn('登录', icon: p.id == 'qq' && app.online ? 'code' : 'scan', small: true, bg: Color(p.c1), fg: Colors.white, onTap: () => openPlatLogin(context, p.id)),
               ]),
             ),
           ]),
