@@ -140,7 +140,8 @@ class _PickerPanelState extends State<_PickerPanel> {
           final w = cs.maxWidth / platforms.length;
           final sel = platforms.indexWhere((p) => p.id == app.plat);
           return SizedBox(
-            height: 92,
+            // 92 会比格子内容（徽标 + 平台名 + 登录态两行文本）矮 2px，每格报 BOTTOM OVERFLOWED
+            height: 96,
             child: Stack(children: [
               AnimatedPositioned(
                 duration: const Duration(milliseconds: 520),
