@@ -35,7 +35,7 @@ void main() {
       final u1 = (await r.resolve(songs[0]))!;
       final u2 = (await r.resolve(songs[0]))!;
       final u3 = (await r.resolve(songs[23]))!;
-      expect(u1!.uri, u2!.uri); // 确定性
+      expect(u1.uri, u2.uri); // 确定性
       expect(u1.uri.path, endsWith('.mp3'));
       expect(u3.uri.path, endsWith('.mp3'));
       final n1 = int.parse(u1.uri.path.split('-').last.split('.').first);

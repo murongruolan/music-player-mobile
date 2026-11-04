@@ -15,7 +15,6 @@ import '../../audio/track_resolver.dart' show ResolveReason;
 import '../../net/json.dart';
 import '../../platform/credentials.dart';
 import '../../platform/http.dart';
-import '../../platform/models.dart';
 import 'direct_sources.dart';
 import 'direct_url.dart';
 import '../source_manager.dart' show SourceManager;

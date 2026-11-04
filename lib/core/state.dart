@@ -15,7 +15,6 @@ import '../data/mock.dart';
 import '../api/update_api.dart';
 import '../data/models.dart';
 import '../net/net.dart';
-import '../source/music_resolver.dart';
 import '../platform/credentials.dart';
 import '../platform/login/netease_login.dart';
 import '../platform/login/qq_login.dart';

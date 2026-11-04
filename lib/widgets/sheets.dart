@@ -13,7 +13,6 @@ import '../data/models.dart';
 import '../pages/detail.dart';
 import '../pages/radio.dart' show isRadioQueue;
 import '../pages/settings.dart';
-import '../source/music_resolver.dart';
 import '../shell/shell.dart';
 import '../ui/brand.dart';
 import '../ui/cover.dart';

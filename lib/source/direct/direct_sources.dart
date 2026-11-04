@@ -12,7 +12,6 @@ import 'dart:convert';
 import '../../net/json.dart';
 import '../../platform/credentials.dart';
 import '../../platform/http.dart';
-import '../../platform/models.dart';
 import '../../platform/netease_crypto.dart';
 import 'direct_url.dart';
 
