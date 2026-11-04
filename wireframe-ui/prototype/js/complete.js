@@ -312,3 +312,28 @@ MODS.quick = () => `<div class="qk">
     <button data-act="push" data-v="charts"><span class="ic">${ic('chart')}</span>排行榜</button></div>`;
 HOME_MOD_N.quick = ['快捷入口', '歌单广场、私人电台、识曲、排行榜'];
 FIX_JUMPS.push(['登录设备 · 多选', at('devices', {}, () => { S.devSel = new Set([2, 4]); })], ['登录设备 · 批量移除确认', at('devices', {}, () => { S.devSel = new Set([2, 4]); S.dialog = 'devBatch'; })]);
+
+/* ---------- v4.3 QQ 绑定：填 QQ 号即可（替代「跳转 QQ 授权」），绑定后头像用 QQ 头像 ---------- */
+// 头像优先级：自定义头像 > QQ 头像（q1.qlogo.cn/g?b=qq&nk=<QQ>&s=640）> 首字占位。QQ 绑定是账号级的，桌面端绑过移动端直接显示。
+FORM_DIALOGS.qqBind = () => `<h3 class="fd-t">绑定 QQ</h3><p class="fd-s">填写 QQ 号即可，不需要跳转 QQ 授权。绑定后头像会显示为该 QQ 的头像，桌面端同步。</p>
+  <div class="fld" style="margin-top:14px">${ic('link')}<input placeholder="QQ 号" inputmode="numeric" maxlength="12" value="${S.qqDraft || ''}"></div>
+  <p class="fd-s" style="margin-top:8px">5–12 位数字，不以 0 开头</p>
+  <div class="fd-acts"><button class="btn sec" data-act="closeDialog">取消</button><button class="btn pri" data-act="qqBindOk">绑定</button></div>`;
+FORM_DIALOGS.qqUnbind = () => `<h3 class="fd-t">解绑 QQ？</h3><p class="fd-s">当前绑定 ${S.qq}。解绑后头像恢复为首字占位，可以再绑定其他 QQ 号。</p>
+  <div class="fd-acts"><button class="btn sec" data-act="closeDialog">取消</button><button class="btn danger" data-act="qqUnbindOk">解绑</button></div>`;
+Object.assign(ACT, {
+  openQQ: () => { S.qqDraft = '10001'; S.dialog = S.qq ? 'qqUnbind' : 'qqBind'; render(); },
+  qqBindOk: () => { const v = document.querySelector('.dlg.form input')?.value?.trim() ?? S.qqDraft; if (!/^[1-9]\d{4,11}$/.test(v || '')) return toast('QQ 号应为 5–12 位数字，且不以 0 开头', 'info'); S.qq = v; S.dialog = null; render(); toast('已绑定，头像已更新', 'check'); },
+  qqUnbindOk: () => { S.qq = null; S.dialog = null; render(); toast('已解绑', 'check'); },
+});
+ITEM_REMAP.push(['跳转 QQ 授权', 'data-act="openQQ"']);
+const _bs43 = buildScreen;
+buildScreen = function () {
+  let h = _bs43();
+  if (!S.qq) return h;
+  // 已绑定：账号中心显示号码，头像（账号中心 / 我的 / 发现页右上角）换成 QQ 头像
+  h = h.replace(/(<b>QQ 绑定<\/b>(?:(?!<div class="val">)[\s\S])*<div class="val">)未绑定/, `$1已绑定 ${S.qq}`);
+  h = h.replace(/<(div|button) class="avatar( lg)?"([^>]*)>栗</g, '<$1 class="avatar qq$2"$3><img alt="" src="https://q1.qlogo.cn/g?b=qq&amp;nk=' + S.qq + '&amp;s=640"><');
+  return h;
+};
+FIX_JUMPS.push(['账号中心 · 绑定 QQ', at('account', {}, () => { S.qq = null; S.qqDraft = '10001'; S.dialog = 'qqBind'; })], ['账号中心 · 已绑定 QQ（QQ 头像）', at('account', {}, () => { S.qq = '10001'; })], ['账号中心 · 解绑 QQ', at('account', {}, () => { S.qq = '10001'; S.dialog = 'qqUnbind'; })]);
