@@ -43,7 +43,7 @@ class _LyricViewState extends State<LyricView> with TickerProviderStateMixin {
   late final c = AnimationController(vsync: this, duration: const Duration(milliseconds: 720 + 46 * 9));
   late final waveC = AnimationController(vsync: this, duration: const Duration(milliseconds: 4800));
   late final Ticker _ticker = createTicker((_) => _frame());
-  final _repaint = ChangeNotifier();
+  final _repaint = _Ping();
   AppState? _app;
   double _h = 0, _w = 0;
 
@@ -112,7 +112,7 @@ class _LyricViewState extends State<LyricView> with TickerProviderStateMixin {
     final nk = app.lyricIndexAt(p).clamp(0, lays.length - 1);
     if (nk != k) _retarget(nk);
     progress = nk < lyrics.length ? lyrics[nk].progressAt(p) : 0;
-    _repaint.notifyListeners();
+    _repaint.ping();
   }
 
   @override
@@ -204,7 +204,7 @@ class _LyricViewState extends State<LyricView> with TickerProviderStateMixin {
         },
         onVerticalDragUpdate: (d) {
           manual += d.delta.dy;
-          _repaint.notifyListeners();
+          _repaint.ping();
         },
         onVerticalDragEnd: (_) {
           back?.cancel();
@@ -482,4 +482,9 @@ class LyricPreview extends StatelessWidget {
       ]),
     );
   }
+}
+
+/// 只用来通知 CustomPainter 重画（ChangeNotifier.notifyListeners 是 protected）。
+class _Ping extends ChangeNotifier {
+  void ping() => notifyListeners();
 }

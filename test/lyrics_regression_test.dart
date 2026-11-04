@@ -6,7 +6,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lyra/core/state.dart';
 import 'package:lyra/data/mock.dart';
 import 'package:lyra/data/models.dart';
-import 'package:lyra/main.dart';
 import 'package:lyra/player/lyrics.dart';
 
 void main() {
