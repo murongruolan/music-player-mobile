@@ -485,7 +485,13 @@ class _OnlineResultsState extends State<_OnlineResults> {
             ? _status(b, t, '专辑')
             : Padding(
                 padding: const EdgeInsets.fromLTRB(Tk.pad, 12, Tk.pad, 0),
-                child: Wrap(spacing: 10, runSpacing: 16, children: [for (final a in b.items) _AlbumCard(a, hl, size: 140)]),
+                // 按可用宽度均分列（两列起，宽屏 / 平板自动三列以上），卡片撑满整行，不再左挤右空
+                child: LayoutBuilder(builder: (c, cs) {
+                  const gap = 12.0, minCard = 150.0;
+                  final cols = math.max(2, ((cs.maxWidth + gap) / (minCard + gap)).floor());
+                  final w = (cs.maxWidth - gap * (cols - 1)) / cols;
+                  return Wrap(spacing: gap, runSpacing: 16, children: [for (final a in b.items) _AlbumCard(a, hl, width: w)]);
+                }),
               ));
       case SearchType.artist:
         out.addAll([
@@ -524,21 +530,23 @@ class _OnlineResultsState extends State<_OnlineResults> {
 class _AlbumCard extends StatelessWidget {
   final CatalogItem a;
   final TextSpan Function(String, TextStyle) hl;
-  final double size;
-  const _AlbumCard(this.a, this.hl, {this.size = 130});
+  /// 卡片总宽；封面占 [width] 的 88%，右侧露出的唱片占其余部分（原型的「抽出唱片」造型）。
+  final double width;
+  const _AlbumCard(this.a, this.hl, {this.width = 144});
   @override
   Widget build(BuildContext context) {
     final pal = context.pal;
+    final size = width * .88, peek = width - size;
     final sub = [if (a.creator?.isNotEmpty == true) a.creator!, if (a.date?.isNotEmpty == true) a.date!.length > 4 ? a.date!.substring(0, 4) : a.date!].join(' · ');
     return Press(
       onTap: () => openCatalog(context, a),
       child: SizedBox(
-        width: size + 14,
+        width: width,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           SizedBox(
             height: size,
             child: Stack(clipBehavior: Clip.none, children: [
-              Positioned(left: 14, top: 4, child: Container(width: size - 8, height: size - 8, decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFF0D0E12), border: Border.all(color: const Color(0xFF26282F), width: 6)))),
+              Positioned(left: peek, top: 4, child: Container(width: size - 8, height: size - 8, decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFF0D0E12), border: Border.all(color: const Color(0xFF26282F), width: 6)))),
               Cover(hue: catalogHue(a), variant: a.id.hashCode.abs() % 6, size: size, radius: 12, shadow: true, url: a.cover),
             ]),
           ),
