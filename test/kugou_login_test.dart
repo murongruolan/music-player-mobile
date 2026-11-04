@@ -49,9 +49,9 @@ void main() {
       expect(body['key'], key);
       expect(body['params'], isA<String>());
       expect((body['pk'] as String).length, 256);
-      expect(body['mobile'], '138*****0000'); // 打码手机号
+      expect(body['mobile'], '138****0000'); // 打码手机号
       expect(body['signature'], kugouLoginSignature({...body}..remove('signature')));
-      return http.Response(jsonEncode({'error_code': 0, 'data': dataHex}), 200);
+      return http.Response(jsonEncode({'error_code': 0, 'data': dataHex}), 200, headers: {'content-type': 'application/json; charset=utf-8'});
     });
     final login = KugouLogin(PlatformHttp(client: client));
     final dev = KugouDevice('1234567890123456', 'ABCDEF012345ABCDEF012345');
@@ -67,7 +67,7 @@ void main() {
   });
 
   test('loginByCode：明文 data 也能解析', () async {
-    final client = MockClient((req) async => http.Response(jsonEncode({'status': 1, 'data': {'token': 'T2', 'userid': '7', 'nickname': 'x'}}), 200));
+    final client = MockClient((req) async => http.Response(jsonEncode({'status': 1, 'data': {'token': 'T2', 'userid': '7', 'nickname': 'x'}}), 200, headers: {'content-type': 'application/json; charset=utf-8'}));
     final login = KugouLogin(PlatformHttp(client: client));
     final cred = await login.loginByCode('13800000000', '000000', KugouDevice('1111222233334444', 'DDDDEEEEFFFF000011112222'));
     expect(cred.extra[CredKey.kgToken], 'T2');
@@ -75,7 +75,7 @@ void main() {
   });
 
   test('loginByCode：失败返回码 → PlatformException', () async {
-    final client = MockClient((req) async => http.Response(jsonEncode({'error_code': 20020, 'error_msg': '验证码错误'}), 200));
+    final client = MockClient((req) async => http.Response(jsonEncode({'error_code': 20020, 'error_msg': '验证码错误'}), 200, headers: {'content-type': 'application/json; charset=utf-8'}));
     final login = KugouLogin(PlatformHttp(client: client));
     await expectLater(
       login.loginByCode('13800000000', '999999', KugouDevice('1111222233334444', 'DDDDEEEEFFFF000011112222')),

@@ -123,7 +123,7 @@ class KugouLogin {
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     final paramsKey = kugouParamsKey();
     final aes = kugouAesEncrypt({'mobile': mobile, 'code': code}, _random);
-    final masked = mobile.length >= 11 ? '${mobile.substring(0, 3)}*****${mobile.substring(10)}' : mobile;
+    final masked = mobile.length >= 7 ? '${mobile.substring(0, 3)}****${mobile.substring(mobile.length - 4)}' : mobile;
     final body = <String, Object?>{
       ...device.defaultParams(),
       'plat': 1,
