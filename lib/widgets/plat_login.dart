@@ -2,11 +2,12 @@
 // 凭证经 AppState.savePlatformLogin 存系统钥匙串，只留在本机。演示模式的假流程在 sheets.dart 里。
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter/services.dart' hide PlatformException;
 import 'package:qr/qr.dart';
 import '../core/state.dart';
 import '../core/tokens.dart';
-import '../data/mock.dart' show Platform, platformBy;
+import '../data/mock.dart' show platformBy;
+import '../data/models.dart' show Platform;
 import '../platform/credentials.dart';
 import '../platform/login/netease_login.dart';
 import '../platform/models.dart' show PlatformException;
