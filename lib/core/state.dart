@@ -8,6 +8,7 @@ import '../data/mock.dart';
 import '../api/update_api.dart';
 import '../data/models.dart';
 import '../net/net.dart';
+import '../platform/prefetch.dart';
 import '../platform/registry.dart';
 import 'announcements.dart';
 import 'cloud.dart';
@@ -154,6 +155,9 @@ class AppState extends ChangeNotifier {
 
   /// 各音乐平台的公开内容（发现页、搜索、歌单 / 榜单详情）。测试可以注入假平台。
   final PlatformHub content;
+
+  /// 空闲时预载其他平台的发现页（只在 Wi-Fi 下）。
+  late final prefetch = IdlePrefetch(content);
 
   AppState({this.net, this.engine, PlatformHub? content}) : content = content ?? PlatformHub() {
     _sessionSub = net?.session.onEnd.listen(sessionEnded);
@@ -717,6 +721,7 @@ class AppState extends ChangeNotifier {
     library.dispose();
     _clock?.cancel();
     _sleepT?.cancel();
+    prefetch.stop();
     pos.dispose();
     super.dispose();
   }

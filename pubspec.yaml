@@ -40,6 +40,8 @@ dependencies:
     path: third_party/flutter_qjs
   # 从文件导入音源脚本（flutter.dev 官方插件，系统文件选择器）
   file_selector: ^1.0.3
+  # 网络类型判断（flutter community 插件）：空闲预载其他平台只在 Wi-Fi 下进行
+  connectivity_plus: ^6.1.0
 
 dev_dependencies:
   flutter_test:

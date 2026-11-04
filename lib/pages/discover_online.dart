@@ -30,6 +30,17 @@ class _OnlineDiscoverState extends State<_OnlineDiscover> {
   void _load(AppState app) {
     f = _fetch(app);
     rec = _fetchRec(app);
+    // 当前平台出内容后，空闲时把其他平台的发现页预载进缓存（切平台秒开）
+    final mine = f;
+    f.then((_) {
+      if (mounted && identical(mine, f)) app.prefetch.start(app.plat);
+    }, onError: (Object _) {});
+  }
+
+  @override
+  void dispose() {
+    context.appRead.prefetch.stop();
+    super.dispose();
   }
 
   Future<void> _refresh() async {
