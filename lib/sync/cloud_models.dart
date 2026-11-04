@@ -22,6 +22,12 @@ class CloudTrack {
 
   bool get isLocal => platform == 'local' || platform.isEmpty;
 
+  /// 音乐云盘（WebDAV）里的歌：只能在配了这台服务器的设备上播，所以只存本机，不进云同步 / 云备份。
+  bool get isDav => platform == 'dav';
+
+  /// 能不能同步到账号（其它设备上能播）。
+  bool get syncable => !isLocal && !isDav;
+
   /// 桌面端 Track：{id, platform, title, artist, album, duration(秒), cover, qualities, identity}
   factory CloudTrack.fromDesktop(Json j) {
     final id = j.str('id');
@@ -125,7 +131,7 @@ class CloudPlaylist {
         raw: j,
       );
 
-  Json toDesktop() => {
+  Json toDesktop({bool keepDav = false}) => {
         'id': id,
         'title': name,
         'description': description,
@@ -133,7 +139,7 @@ class CloudPlaylist {
         if (platform != null) 'platform': platform,
         'source': kind == 'created' ? 'local' : 'platform',
         if (externalId != null) 'externalId': externalId,
-        'tracks': [for (final t in tracks) if (!t.isLocal) t.toDesktop()],
+        'tracks': [for (final t in tracks) if (keepDav ? !t.isLocal : t.syncable) t.toDesktop()],
         'total': total ?? tracks.length,
         'updatedAt': updatedAt.toUtc().toIso8601String(),
       };
@@ -146,7 +152,7 @@ class CloudPlaylist {
         'kind': kind,
         'remoteSource': platform,
         'remotePlaylistId': externalId,
-        'songs': compact ? const [] : [for (final t in tracks) if (!t.isLocal) {'song': t.toV2(), 'addedAtMs': 0}],
+        'songs': compact ? const [] : [for (final t in tracks) if (t.syncable) {'song': t.toV2(), 'addedAtMs': 0}],
         if (compact) ...{'songCountHint': total ?? tracks.length, 'compact': true},
         'createdAtMs': createdAt.millisecondsSinceEpoch,
         'updatedAtMs': updatedAt.millisecondsSinceEpoch,
@@ -175,11 +181,12 @@ class CloudLibrary {
     );
   }
 
-  Json toPayload() {
-    final favs = favorites.where((t) => !t.isLocal).toList();
+  /// [keepDav]：本机保存时为 true（云盘歌曲留在本机）；云同步 / 云备份用默认的 false。
+  Json toPayload({bool keepDav = false}) {
+    final favs = favorites.where((t) => keepDav ? !t.isLocal : t.syncable).toList();
     return {
       'format': 2,
-      'items': {'tracks': [for (final t in favs) t.toDesktop()], 'playlists': [for (final p in playlists) p.toDesktop()]},
+      'items': {'tracks': [for (final t in favs) t.toDesktop()], 'playlists': [for (final p in playlists) p.toDesktop(keepDav: keepDav)]},
       'favorites': [for (final t in favs) {'song': t.toV2(), 'addedAtMs': 0}],
       'playlists': [for (final p in playlists) p.toV2()],
       'exportedAt': DateTime.now().toUtc().toIso8601String(),
@@ -188,7 +195,7 @@ class CloudLibrary {
 
   // ---- favorites / playlists 文档（桌面端格式 {items: [...]}）----
   static List<CloudTrack> parseFavorites(Object? v) => asJson(v).list('items', CloudTrack.fromDesktop);
-  static Json favoritesPayload(List<CloudTrack> l) => {'items': [for (final t in l) if (!t.isLocal) t.toDesktop()]};
+  static Json favoritesPayload(List<CloudTrack> l) => {'items': [for (final t in l) if (t.syncable) t.toDesktop()]};
   static List<CloudPlaylist> parsePlaylists(Object? v) => asJson(v).list('items', CloudPlaylist.fromDesktop);
   static Json playlistsPayload(List<CloudPlaylist> l) => {'items': [for (final p in l) p.toDesktop()]};
 
@@ -203,7 +210,7 @@ class CloudLibrary {
   static (List<CloudTrack>, bool) mergeFavorites(List<CloudTrack> local, List<CloudTrack> remote) {
     final remoteIds = remote.map((t) => t.id).toSet();
     final localIds = local.map((t) => t.id).toSet();
-    final extra = local.any((t) => !t.isLocal && !remoteIds.contains(t.id));
+    final extra = local.any((t) => t.syncable && !remoteIds.contains(t.id)); // 云盘歌曲只在本机，不算「需要推送」
     return ([...local, for (final t in remote) if (!localIds.contains(t.id)) t], extra);
   }
 
@@ -220,7 +227,11 @@ class CloudLibrary {
         extra = true;
         out.add(p);
       } else {
-        out.add(o);
+        // 远端版本胜出：远端不带云盘歌曲（只存本机），把本机这份里的云盘歌曲接回去
+        final dav = [for (final t in p.tracks) if (t.isDav && !o.tracks.any((x) => x.id == t.id)) t];
+        out.add(dav.isEmpty
+            ? o
+            : CloudPlaylist(id: o.id, name: o.name, description: o.description, cover: o.cover, platform: o.platform, externalId: o.externalId, kind: o.kind, total: o.total, tracks: [...o.tracks, ...dav], createdAt: o.createdAt, updatedAt: o.updatedAt, raw: o.raw));
       }
     }
     out.addAll(r.values);

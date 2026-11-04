@@ -240,7 +240,7 @@ class LibraryStore implements LibraryBinding {
   Future<void> flush() async {
     _saveT?.cancel();
     _saveT = null;
-    await _prefs?.write(_kLib, jsonEncode(read().toPayload()));
+    await _prefs?.write(_kLib, jsonEncode(read().toPayload(keepDav: true))); // 云盘歌曲只存本机
   }
 
   /// 退出登录：清空本机音乐库（下一个账号从云端重新同步）。

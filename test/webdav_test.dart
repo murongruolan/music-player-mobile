@@ -5,6 +5,7 @@ import 'package:http/testing.dart';
 import 'package:lyra/cloud/dav_store.dart';
 import 'package:lyra/cloud/webdav.dart';
 import 'package:lyra/net/storage.dart';
+import 'package:lyra/sync/cloud_models.dart';
 
 // Nextcloud 风格：根地址带路径，href 是绝对路径且中文 / 空格已编码
 const _multistatus = '''<?xml version="1.0"?>
@@ -94,5 +95,25 @@ void main() {
 
     await again.remove('d1');
     expect(again.playOf(t), isNull);
+  });
+
+  test('云盘歌曲只存本机：不进云同步，合并时也不丢', () {
+    const s = DavServer(id: 'd1', name: 'NAS', url: 'https://nas.local/', user: 'u');
+    final dav = DavStore.trackOf(s, const DavEntry(path: '/a.flac', name: 'a.flac', isDir: false));
+    const wy = CloudTrack(id: 'wy:1', platform: 'wy', songId: '1', title: 't', artist: 'a');
+    final lib = CloudLibrary(favorites: [dav, wy]);
+    final sync = lib.toPayload() as Map;
+    expect(((sync['items'] as Map)['tracks'] as List).length, 1);
+    final local = lib.toPayload(keepDav: true) as Map;
+    expect(((local['items'] as Map)['tracks'] as List).length, 2);
+    // 远端只有 wy:1：本机多出来的云盘歌曲不算需要推送
+    expect(CloudLibrary.mergeFavorites([dav, wy], [wy]).$2, isFalse);
+    // 远端歌单更新时，本机歌单里的云盘歌曲接回去
+    final t0 = DateTime.utc(2026, 1, 1), t1 = DateTime.utc(2026, 2, 1);
+    final mine = CloudPlaylist(id: 'p', name: 'x', tracks: [wy, dav], updatedAt: t0, createdAt: t0);
+    final theirs = CloudPlaylist(id: 'p', name: 'x2', tracks: [wy], updatedAt: t1, createdAt: t0);
+    final merged = CloudLibrary.mergePlaylists([mine], [theirs]).$1.single;
+    expect(merged.name, 'x2');
+    expect(merged.tracks.map((t) => t.id), ['wy:1', dav.id]);
   });
 }
