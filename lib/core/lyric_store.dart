@@ -41,6 +41,7 @@ class LyricStore {
     lyrics
       ..clear()
       ..addAll(l);
+    _app.lyricsVersion++; // 歌词视图的布局缓存失效（换歌后行数变了，旧 tops/hs 不能再按旧长度用）
     _app.notify();
   }
 

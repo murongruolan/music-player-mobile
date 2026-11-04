@@ -134,6 +134,10 @@ class AppState extends ChangeNotifier {
   final AudioEngine? engine;
   double engineDuration = 0; // 引擎返回的实际曲目时长（秒）；0 = 尚未加载
 
+  /// 歌词列表内容版本：换歌写入新词时 +1。歌词视图据此重建布局缓存，
+  /// 防止旧歌的 tops/hs 布局数组被新歌词按旧长度索引（RangeError 崩溃）。
+  int lyricsVersion = 0;
+
   /// 播放链路错误出口（气泡提示等），由 main.dart 注入；state 不直接依赖 UI。
   void Function(String message)? onEngineError;
 
@@ -343,6 +347,7 @@ class AppState extends ChangeNotifier {
   void _enterRealMode() {
     songs.clear();
     lyrics.clear();
+    lyricsVersion++; // 歌词视图的布局缓存失效
     queue = [];
     queueName = '';
     cur = -1;
