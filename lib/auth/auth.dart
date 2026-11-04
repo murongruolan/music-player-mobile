@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../api/registration_api.dart';
 import '../core/state.dart';
+import 'captcha_bridge.dart';
 import '../core/tokens.dart';
 import '../api/device_login_api.dart';
 import '../api/password_api.dart';
@@ -211,6 +212,7 @@ class _LoginPageState extends State<LoginPage> {
   final err = <String, String>{};
   int shake = 0, cd = 0;
   bool busy = false, remember = true, capOk = false, done = false;
+  String _capToken = ''; // captcha.la 人机验证 passToken（服务端开启验证时必传）
   Timer? cdt;
   final capKey = GlobalKey<CaptchaState>();
 
@@ -305,8 +307,8 @@ class _LoginPageState extends State<LoginPage> {
       toast('验证码已发送至 $_maskedEmail', 'mail');
       return;
     }
-    if (_blockedByRealCaptcha) {
-      toast('此服务器已开启人机验证，当前版本暂未接入验证组件，请联系服务端临时关闭', 'info');
+    if (_blockedByRealCaptcha && _capToken.isEmpty) {
+      toast('请先完成人机验证', 'info');
       return;
     }
     _sendCode(net);
@@ -314,9 +316,10 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _sendCode(Net net) async {
     try {
-      // 人机验证未启用时 passToken 传空；启用的场景见 _blockedByRealCaptcha
-      await RegistrationApi(net.client).sendCode(email.text.trim(), '');
+      // passToken：服务端开启人机验证时必传（单次有效）；未启用时传空
+      await RegistrationApi(net.client).sendCode(email.text.trim(), _capToken);
       if (!mounted) return;
+      _capToken = ''; // passToken 单用，消费后清空
       _startCountdown();
       toast('验证码已发送至 $_maskedEmail', 'mail');
     } on ApiException catch (e) {
@@ -380,8 +383,9 @@ class _LoginPageState extends State<LoginPage> {
       _busy(() => setState(() => done = true));
       return;
     }
-    if (_blockedByRealCaptcha) {
-      toast('此服务器已开启人机验证，当前版本暂未接入验证组件，请联系服务端临时关闭', 'info');
+    // 邮箱验证关闭时，注册本身需要 passToken（邮箱码只在 send-code 一步消费）
+    if (_blockedByRealCaptcha && (regCfg?.emailVerificationRequired != true) && _capToken.isEmpty) {
+      toast('请先完成人机验证', 'info');
       return;
     }
     _doRegister(net);
@@ -394,6 +398,8 @@ class _LoginPageState extends State<LoginPage> {
         email: email.text.trim(),
         password: rpwd.text,
         verificationCode: regCfg?.emailVerificationRequired == false ? '' : code.text.trim(),
+        // 服务端语义：邮箱验证开启时 send-code 消费 passToken、注册传空；关闭时注册需要 passToken
+        passToken: regCfg?.emailVerificationRequired == true ? '' : _capToken,
       );
       // 注册即登录：保存令牌（会话由网络层持久化），成功后进主界面
       await net.auth.signedIn(data);
@@ -412,21 +418,17 @@ class _LoginPageState extends State<LoginPage> {
   /// 注册表单里的人机验证区块。
   /// 演示 / 截图（net == null）：本地演示验证码；
   /// 服务端未启用（type none）：不显示，passToken 传空即可；
-  /// captchala：WebView 组件待接入，显示说明卡（发送验证码 / 注册时也会拦下）。
+  /// captchala：内嵌 WebView 桥接 captcha.la 官方控件（与桌面端同一集成方式），通过后拿 passToken。
   Widget? _captchaArea() {
     final net = context.appRead.net;
     if (net == null) return Captcha(key: capKey, onPass: (v) => setState(() => capOk = v));
     final c = cap;
     if (c == null || c.none) return null;
-    final pal = context.pal;
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: pal.warn.withValues(alpha: .08), borderRadius: BorderRadius.circular(16), border: Border.all(color: pal.warn.withValues(alpha: .35))),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Icon(ic('shield'), size: 16, color: pal.warn),
-        const SizedBox(width: 8),
-        Expanded(child: Text('此服务器已开启人机验证（captcha.la），移动端验证组件将在后续版本接入，当前暂无法注册。', style: ts(12, c: pal.t2, h: 1.5))),
-      ]),
+    return CaptchaLaBridge(
+      appKey: c.appKey,
+      action: c.action,
+      onVerified: (t) => setState(() => _capToken = t),
+      onError: (msg) => toast(msg, 'info'),
     );
   }
 

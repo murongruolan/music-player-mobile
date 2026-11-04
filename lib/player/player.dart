@@ -1,9 +1,11 @@
 // 全屏播放器：从底部升起（460ms），下拉关闭（>150px 或速度 >0.8），圆角随距离增大。
 // 背景层（模糊封面 / 静态流光 / 动态流光 + 噪点 + 压暗）、通用骨架（顶栏 / 信息 / 进度 / 主控 / 辅助行）。
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 import '../core/state.dart';
 import '../core/tokens.dart';
 import '../data/mock.dart';
@@ -48,8 +50,11 @@ Future<void> openPlayer(BuildContext context) async {
   _playerOpen = true;
   final st = context.appRead;
   final pal = context.pal.forceDark;
+  if (st.set.keepAwake) unawaited(WakelockPlus.enable()); // 播放页屏幕常亮
+
   await rootNav.currentState!.push(PlayerRoute(pageBuilder: (_, a, __) => AppScope(state: st, child: PalScope(pal: pal, child: const PlayerScreen()))));
   _playerOpen = false;
+  unawaited(WakelockPlus.disable()); // 离开播放页恢复系统息屏策略
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 }
 
