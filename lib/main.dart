@@ -65,6 +65,7 @@ Future<void> main() async {
   CoverTint.onReady = app.notify; // 封面取色完成后播放器背景重绘
   await app.cloud.init(); // 读本地听歌统计
   await app.taste.load(); // 关注的歌手、不感兴趣的歌
+  await app.platCreds.load(); // 平台登录凭证（钥匙串）
   await app.telemetry.init(); // 读上次没发完的埋点
   app.restoreSession();
   app.telemetry.track('app_launch', {'source': 'normal', 'loggedIn': app.authed});
