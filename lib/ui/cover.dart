@@ -70,6 +70,7 @@ class Cover extends StatelessWidget {
   Widget? _image(BuildContext context) {
     final u = coverUrl(url);
     if (u == null) return child;
+    print('[coverimg] enter url=$u');
     // UA 拦截见文件头说明；cacheWidth 拿不到（撑满容器的 Cover）时不缩放解码。
     final cacheW = _cacheW(context);
     final img = Image(
