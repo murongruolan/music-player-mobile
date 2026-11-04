@@ -1,10 +1,12 @@
 // 音乐库：我喜欢 · 最近 · 歌单 · 本地（A–Z 索引条 + 气泡）。
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../core/listening_stats.dart';
 import '../core/state.dart';
 import '../core/tokens.dart';
 import '../data/mock.dart';
 import '../shell/shell.dart';
+import '../sync/cloud_models.dart';
 import '../ui/icons.dart';
 import '../ui/kit.dart';
 import '../widgets/sheets.dart';
@@ -73,7 +75,41 @@ class _LibraryPageState extends State<LibraryPage> {
               : const Hint('还没有收藏的歌曲，点歌曲旁的 ♡ 收藏', align: TextAlign.center, padding: EdgeInsets.all(30)),
       ]);
     } else if (seg == '最近' && online) {
-      body.add(const EmptyState('history', '还没有播放记录', desc: '音源解析接入后，播放过的歌会按时间出现在这里。'));
+      // 真实播放记录：本机听歌统计（last = 最近一次完整听完的时间）按时间倒序，分今天 / 昨天 / 更早。
+      // 云端同步来的统计里可能有本目录没有的歌（其它设备播的）——用统计里的元数据注册进目录，
+      // 之后可以直接点播（走音源解析）；目录里已有的（本机播过的）保持原样不覆盖封面。
+      final entries = [for (final s in app.cloud.stats.songs.values) if (!s.isMock && s.last != null) s]
+        ..sort((a, b) => b.last!.compareTo(a.last!));
+      if (entries.isEmpty) {
+        body.add(const EmptyState('history', '还没有播放记录', desc: '完整听过一首歌后，它会按时间出现在这里。'));
+      } else {
+        final today = ListeningStats.dayKey(DateTime.now());
+        final yesterday = ListeningStats.dayKey(DateTime.now().subtract(const Duration(days: 1)));
+        final groups = <String, List<SongStat>>{'今天': [], '昨天': [], '更早': []};
+        for (final s in entries) {
+          final k = ListeningStats.dayKey(s.last!);
+          groups[k == today ? '今天' : k == yesterday ? '昨天' : '更早']!.add(s);
+        }
+        for (final g in groups.entries) {
+          final title = g.key;
+          final list = g.value;
+          if (list.isEmpty) continue;
+          body.add(Padding(padding: const EdgeInsets.fromLTRB(Tk.pad, 18, 0, 4), child: Text(title, style: ts(12.5, w: FontWeight.w600, c: pal.t3))));
+          for (final st in list) {
+            final id = app.library.idOfKey(st.key) ?? app.library.register(CloudTrack(
+                  id: st.key,
+                  platform: st.source,
+                  songId: st.songId,
+                  title: st.name.isEmpty ? '未知歌曲' : st.name,
+                  artist: st.artist,
+                  album: st.album,
+                  durationSec: st.durationSec,
+                ));
+            if (id >= songs.length) continue; // 注册失败等异常情况，跳过不渲染
+            body.add(SongRow(songs[id], list: 'all', listName: '最近播放'));
+          }
+        }
+      }
     } else if (seg == '最近') {
       for (final (g, ids) in [('今天', [app.cur, 5, 11, 2]), ('昨天', [7, 16, 18, 20, 9]), ('更早', [3, 14, 22])]) {
         body.add(Padding(padding: const EdgeInsets.fromLTRB(Tk.pad, 18, 0, 4), child: Text(g, style: ts(12.5, w: FontWeight.w600, c: pal.t3))));
