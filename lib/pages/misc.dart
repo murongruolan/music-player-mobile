@@ -832,11 +832,6 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
     super.dispose();
   }
 
-  void _e(String k, String msg) => setState(() {
-        err[k] = msg;
-        shake++;
-      });
-
   Future<void> _send() async {
     if (cd > 0) return;
     final app = context.appRead;
@@ -888,7 +883,6 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
   @override
   Widget build(BuildContext context) {
     final app = context.app;
-    final pal = context.pal;
     return SubPage(
       title: '修改密码',
       children: [

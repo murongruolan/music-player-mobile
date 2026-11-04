@@ -144,6 +144,7 @@ class AudioEngine {
         // 边听边缓存：just_audio 的锁定缓存源。文件按歌曲 key 命名（播放地址带时效签名，按地址命名几乎不会命中）；
         // 重新取链 / 试听换源时不走缓存，避免把试听片段或坏链接缓存下来。
         final key = base64Url.encode(utf8.encode(cacheKey)).replaceAll('=', '');
+        // ignore: experimental_member_use
         source = LockCachingAudioSource(uri, cacheFile: File('$_cacheDir/$key.audio'));
       } else {
         source = AudioSource.uri(uri);

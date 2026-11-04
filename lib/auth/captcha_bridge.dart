@@ -12,7 +12,6 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../core/state.dart';
 import '../core/tokens.dart';
 import '../ui/icons.dart';
-import '../ui/kit.dart';
 
 class CaptchaLaBridge extends StatefulWidget {
   final String appKey;
