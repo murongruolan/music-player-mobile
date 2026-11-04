@@ -486,9 +486,16 @@ void openShareCode(BuildContext context, {int? songId, String? playlistTitle, bo
 void openTimer(BuildContext context, {bool dark = false}) {
   showLSheet(context, title: '睡眠定时', dark: dark, builder: (c) {
     final app = c.app;
+    final left = app.sleepLeft;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: Tk.pad),
       child: Column(children: [
+        if (left > 0)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text('正在倒计时 · 剩 ${(left / 60).ceil()} 分钟（${(left / 60).floor()}:${(left % 60).toString().padLeft(2, '0')}）后停止播放',
+                style: ts(13, w: FontWeight.w600, c: c.pal.accText)),
+          ),
         GridView.count(
           crossAxisCount: 3,
           shrinkWrap: true,
@@ -500,7 +507,7 @@ void openTimer(BuildContext context, {bool dark = false}) {
             for (final m in const [0, 15, 30, 45, 60, 90])
               Press(
                 onTap: () {
-                  app.update(() => app.timer = m);
+                  app.setSleepTimer(m);
                   Navigator.of(c).pop();
                   toast(m == 0 ? '已关闭睡眠定时' : '$m 分钟后停止播放', 'moon');
                 },
@@ -671,11 +678,20 @@ void openSpeed(BuildContext context, {bool dark = false}) {
       padding: const EdgeInsets.symmetric(horizontal: Tk.pad),
       child: Column(children: [
         Text('${app.speed.toStringAsFixed(2)}×', style: ts(44, w: FontWeight.w800, c: pal.t1, num: true)),
-        LSlider(value: app.speed, min: .5, max: 2, step: .05, onChanged: (v) => app.update(() => app.speed = v)),
+        LSlider(value: app.speed, min: .5, max: 2, step: .05, onChanged: (v) => app.update(() {
+              app.speed = v;
+              app.applySpeedToEngine(); // 正在播放的这一首立即变速，不等下一首加载
+            })),
         const SizedBox(height: 10),
-        Wrap(spacing: 8, children: [for (final v in const [.75, 1.0, 1.25, 1.5, 2.0]) LChip('$v×', on: (app.speed - v).abs() < .01, onTap: () => app.update(() => app.speed = v))]),
+        Wrap(spacing: 8, children: [for (final v in const [.75, 1.0, 1.25, 1.5, 2.0]) LChip('$v×', on: (app.speed - v).abs() < .01, onTap: () => app.update(() {
+              app.speed = v;
+              app.applySpeedToEngine();
+            }))]),
         const SizedBox(height: 14),
-        Group(children: [Item(label: '保持音调', sub: '变速时不改变音高', sw: app.set.pitch, onSw: (v) => app.update(() => app.set.pitch = v))]),
+        Group(children: [Item(label: '保持音调', sub: '变速时不改变音高', sw: app.set.pitch, onSw: (v) => app.update(() {
+              app.set.pitch = v;
+              app.applySpeedToEngine(); // 音调跟随倍速 / 恢复 1.0，同样立即生效
+            }))]),
       ]),
     );
   });

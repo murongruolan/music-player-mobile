@@ -180,6 +180,7 @@ void main() {
     final app = await _boot(tester);
     await _settle(tester);
     // 原型：登录卡 + Banner + 快捷入口 + 精选 / 榜单 / 歌单 + 平台推荐区
+    // （快捷入口的「每日混音」已改为「歌单广场」，见 fix/discover-interactions）
     expect(find.text('登录网易云音乐'), findsOneWidget);
     expect(find.byType(BannerCarousel), findsOneWidget);
     // 快捷入口的「每日混音」已改为「歌单广场」（fix/discover-interactions）
