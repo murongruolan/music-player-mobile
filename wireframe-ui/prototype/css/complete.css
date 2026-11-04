@@ -133,3 +133,11 @@
 .terms42 span{grid-row:span 2;width:30px;height:30px;border-radius:9px;background:var(--accent-soft);color:var(--accent-text);display:flex;align-items:center;justify-content:center}
 .terms42 span svg{width:17px;height:17px}
 .terms42 b{font-size:14.5px} .terms42 p{font-size:13px;color:var(--t2);line-height:1.6;margin-top:2px}
+
+/* 登录设备 · 多选 */
+.it.pick42{cursor:pointer}
+.ck42{width:24px;height:24px;border-radius:8px;border:2px solid var(--line-strong);display:flex;align-items:center;justify-content:center;transition:all var(--d-base)}
+.ck42.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.ck42 svg{width:15px;height:15px;stroke-width:2.6}
+.devbar{position:absolute;left:var(--pad);right:var(--pad);bottom:180px;z-index:60;animation:popIn 420ms var(--ease-spring)}
+.devbar .btn{box-shadow:var(--shadow-2)}

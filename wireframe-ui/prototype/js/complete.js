@@ -283,3 +283,32 @@ const FIX_JUMPS = [
   ['使用须知（只读）', at('terms')],
   ['播放队列 · 存为歌单', () => { S.playerOpen = true; S.skin = 'vinyl'; S.dlg = { val:'' }; S.dialog = 'newPlaylist'; }],
 ];
+
+/* ================= 8. 登录设备：多选批量移除（对应 App #24） ================= */
+const DEVICES = [['phone', '阿栗的 iPhone', '本机 · iOS 19.1 · 上海', true], ['grid', 'Lyra 桌面端', 'Windows 11 · 2 小时前', false], ['tv', '客厅电视', 'Android TV · 昨天', false], ['car', '车机', 'Android Automotive · 3 天前', false], ['phone', '旧手机', 'Android 14 · 10-12 在线', false]];
+PAGES.devices = { render:() => {
+  const sel = S.devSel, on = !!sel;
+  return `${appBar('登录设备', { right:`<button class="ib" data-act="devMulti">${ic(on ? 'close' : 'check')}</button>` })}
+  <p class="hint" style="padding:0 var(--pad) 12px">${on ? '勾选要移除的设备（本机不可移除），点底部按钮批量移除。' : `最多同时登录 10 台设备，当前 ${DEVICES.length} 台。移除后该设备需要重新登录。右上角可进入多选。`}</p>
+  <div class="grp">${DEVICES.map(([i, n, d, me], k) => `<div class="it ${on && !me ? 'pick42' : ''}" ${on && !me ? `data-act="devPick" data-v="${k}"` : ''}><div class="tile" style="background:${me ? TILE.green : TILE.gray}">${ic(i)}</div><div class="lb"><b>${n}</b><small>${d}</small></div>
+    ${me ? '<span class="badge acc">本机</span>' : on ? `<span class="ck42 ${sel.has(k) ? 'on' : ''}">${sel.has(k) ? ic('check') : ''}</span>` : `<button class="btn danger sm" data-act="devOne" data-v="${k}">移除</button>`}</div>`).join('')}</div>
+  ${on && sel.size ? `<div class="devbar"><button class="btn danger block" data-act="dialog" data-v="devBatch">${ic('logout')}移除所选（${sel.size}）</button></div>` : ''}`;
+} };
+DIALOGS.devBatch = { i:'logout', t:'移除所选设备？', p:'被移除的设备需要重新登录。本机不会被移除。', a:[['取消', 'closeDialog', 'sec'], ['移除', 'devBatchGo', 'danger']] };
+Object.assign(ACT, {
+  devMulti: () => { S.devSel = S.devSel ? null : new Set(); render(); },
+  devPick: d => { const k = +d.v; S.devSel.has(k) ? S.devSel.delete(k) : S.devSel.add(k); render(); },
+  devOne: d => { S.dialog = 'devOne'; DIALOGS.devOne = { i:'logout', t:`移除「${DEVICES[+d.v][1]}」？`, p:'该设备需要重新登录。', a:[['取消', 'closeDialog', 'sec'], ['移除', 'devBatchGo', 'danger']] }; render(); },
+  devBatchGo: () => { const n = S.devSel ? S.devSel.size : 1; S.dialog = null; S.devSel = null; render(); toast(`已移除 ${n} 台设备`, 'logout'); },
+});
+const _fixReset2 = fixReset;
+fixReset = function () { _fixReset2(); S.devSel = null; };
+
+/* ================= 9. 发现 · 快捷入口：每日混音 → 歌单广场、排行榜 → 完整榜单页（对应 App #21） ================= */
+MODS.quick = () => `<div class="qk">
+    <button data-act="push" data-v="plSquare"><span class="ic">${ic('grid')}</span>歌单广场</button>
+    <button data-act="playAll" data-list="hot" data-shuffle="1"><span class="ic">${ic('wave')}</span>私人电台</button>
+    <button data-act="openScan" data-v="match"><span class="ic">${ic('mic')}</span>听歌识曲</button>
+    <button data-act="push" data-v="charts"><span class="ic">${ic('chart')}</span>排行榜</button></div>`;
+HOME_MOD_N.quick = ['快捷入口', '歌单广场、私人电台、识曲、排行榜'];
+FIX_JUMPS.push(['登录设备 · 多选', at('devices', {}, () => { S.devSel = new Set([2, 4]); })], ['登录设备 · 批量移除确认', at('devices', {}, () => { S.devSel = new Set([2, 4]); S.dialog = 'devBatch'; })]);
