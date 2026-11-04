@@ -246,7 +246,7 @@ class _SpringSkinState extends State<SpringSkin> {
               padding: const EdgeInsets.symmetric(horizontal: 28),
               child: Row(children: [
                 const Icon(Icons.volume_mute_rounded, color: Color(0x99FFFFFF), size: 18),
-                Expanded(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: LSlider(value: app.vol, min: 0, max: 1, color: Colors.white, onChanged: (v) => app.update(() => app.vol = v)))),
+                Expanded(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: LSlider(value: app.vol, min: 0, max: 1, color: Colors.white, onChanged: app.setVolume))),
                 const Icon(Icons.volume_up_rounded, color: Color(0x99FFFFFF), size: 18),
               ]),
             ),

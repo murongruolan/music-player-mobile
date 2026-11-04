@@ -165,6 +165,9 @@ class _OnlineResultsState extends State<_OnlineResults> {
   /// 各平台歌曲结果总数（平台筛选上的数字）。
   final totals = <String, int>{};
   bool lossless = false;
+
+  /// 歌曲结果排序（只排已加载的结果）：综合 = 平台默认的相关度。点一下切到下一种，和歌单详情页一致。
+  String sort = '综合';
   late final Future<List<String>> related = context.appRead.content.suggest(context.appRead.plat, widget.q).catchError((Object _) => <String>[]);
 
   _Bucket _bucket(String plat, SearchType t) => _b.putIfAbsent('$plat|${t.name}', _Bucket.new);
@@ -447,7 +450,10 @@ class _OnlineResultsState extends State<_OnlineResults> {
     final out = <Widget>[if (b.note != null) Hint(b.note!, padding: const EdgeInsets.fromLTRB(Tk.pad, 4, Tk.pad, 0))];
     switch (t) {
       case SearchType.song:
-        final ids = lossless ? b.songs.where((id) => !songs[id].plainQ).toList() : b.songs;
+        var ids = lossless ? b.songs.where((id) => !songs[id].plainQ).toList() : b.songs;
+        if (sort == '歌名') ids = [...ids]..sort((a, b) => songs[a].title.compareTo(songs[b].title));
+        if (sort == '歌手') ids = [...ids]..sort((a, b) => songs[a].artist.compareTo(songs[b].artist));
+        if (sort == '时长') ids = [...ids]..sort((a, b) => songs[a].dur.compareTo(songs[b].dur));
         // 音乐库里（收藏、歌单）匹配的歌，平台结果里没有的才列出
         final ql = q.toLowerCase();
         final lib = <int>{...app.liked, for (final p in app.myPlaylists) ...p.ids};
@@ -458,7 +464,7 @@ class _OnlineResultsState extends State<_OnlineResults> {
             child: Row(children: [
               Btn('播放全部', icon: 'play', small: true, onTap: ids.isEmpty ? null : () => app.play(ids.first, name: '搜索「$q」', ids: ids)),
               const SizedBox(width: 8),
-              LChip('综合排序', icon: 'sort', onTap: () => toast('按平台的默认相关度排序', 'sort')),
+              LChip('$sort排序', icon: 'sort', on: sort != '综合', onTap: () => setState(() => sort = const {'综合': '歌名', '歌名': '歌手', '歌手': '时长', '时长': '综合'}[sort]!)),
               const SizedBox(width: 8),
               LChip('只看无损', icon: 'hd', on: lossless, onTap: () => setState(() => lossless = !lossless)),
             ]),
@@ -491,7 +497,11 @@ class _OnlineResultsState extends State<_OnlineResults> {
               label: a.title,
               sub: [if (a.subtitle.isNotEmpty) a.subtitle, appPlatform(a.platform).name].join(' · '),
               onTap: () => openCatalog(context, a),
-              trailing: Btn.sec('主页', small: true, onTap: () => openCatalog(context, a)),
+              // 整行点击已经进主页，右侧按钮改为关注（记在本机，「我的 → 关注的歌手」）
+              trailing: Btn.sec(app.taste.follows(a.title) ? '已关注' : '关注', small: true, onTap: () {
+                final on = app.taste.toggleFollow(a.title, a.platform, catalogId: a.id, cover: a.cover);
+                toast(on ? '已关注 ${a.title}' : '已取消关注 ${a.title}', on ? 'heartf' : 'heart');
+              }),
             ),
         ]);
       case SearchType.mv:

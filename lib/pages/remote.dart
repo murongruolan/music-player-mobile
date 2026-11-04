@@ -250,6 +250,13 @@ class _RemoteCollectionPageState extends State<RemoteCollectionPage> {
                   }
                 }),
               ],
+              if (widget.type == CatalogType.artist) ...[
+                const SizedBox(width: 10),
+                IBtn(app.taste.follows(title) ? 'heartf' : 'heart', size: 48, bg: pal.s2, color: app.taste.follows(title) ? pal.accText : null, onTap: () {
+                  final on = app.taste.toggleFollow(title, widget.platform, catalogId: widget.id, cover: cover);
+                  toast(on ? '已关注 $title，可在「我的 → 关注的歌手」找到' : '已取消关注 $title', on ? 'heartf' : 'heart');
+                }),
+              ],
             ]),
           ),
         ]),

@@ -9,6 +9,7 @@ import '../core/tokens.dart';
 import '../data/mock.dart';
 import '../data/models.dart';
 import '../pages/detail.dart';
+import '../pages/radio.dart' show isRadioQueue;
 import '../pages/settings.dart';
 import '../shell/shell.dart';
 import '../ui/brand.dart';
@@ -111,6 +112,13 @@ void openSongMore(BuildContext context, int id, String ctx, {bool dark = false})
             close();
             push(context, ArtistPage(id: id));
           }),
+          // 电台里的歌：不感兴趣 = 从队列拿掉，以后的电台也不再放（记在本机）
+          if (isRadioQueue(app) && app.queue.contains(id))
+            Item(icon: 'nodislike', color: 'gray', label: '不感兴趣', sub: '从电台移除，以后的电台不再放这首', onTap: () {
+              close();
+              app.dislike(id);
+              toast('已从电台移除', 'nodislike');
+            }),
           if (s.key != null) Item(icon: 'info', color: 'gray', label: '来源', val: s.key, chev: false),
         ])
       else
@@ -129,9 +137,9 @@ void openSongMore(BuildContext context, int id, String ctx, {bool dark = false})
         }),
         if (ctx == 'daily')
           Item(icon: 'nodislike', color: 'gray', label: '不感兴趣', sub: '减少推荐相似歌曲', onTap: () {
-            app.update(() => app.disliked.add(id));
             close();
-            toast('明天会少推荐类似的歌', 'nodislike');
+            app.dislike(id);
+            toast('已移除，以后的推荐和电台不再放这首', 'nodislike');
           }),
         if (ctx == 'local')
           Item(icon: 'trash', color: 'red', label: '从设备删除', danger: true, onTap: () {

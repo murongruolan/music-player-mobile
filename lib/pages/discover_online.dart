@@ -98,10 +98,8 @@ class _OnlineDiscoverState extends State<_OnlineDiscover> {
                   mods.add(QuickGrid([
                     // 「每日混音」指向的每日页已在底栏 tab 上，改为进入歌单广场；排行榜同理进完整榜单页
                     ('sun', '歌单广场', () => push(context, PlaylistSquarePage(platform: code))),
-                    ('wave', '私人电台', () {
-                      final ids = [...d.hot]..shuffle();
-                      if (ids.isNotEmpty) app.play(ids.first, name: '私人电台', ids: ids);
-                    }),
+                    // 私人电台：收藏 + 此刻热门 + 飙升 / 新歌榜，去掉不感兴趣的，打乱
+                    ('wave', '私人电台', () => unawaited(playPersonalRadio(app, hot: d.hot, boards: bannerBoards(d.feed)))),
                     ('mic', '听歌识曲', () => pushFull(context, const ScanPage(match: true))),
                     ('chart', '排行榜', () => push(context, LeaderboardsPage(platform: code))),
                   ]));
