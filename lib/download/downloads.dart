@@ -198,13 +198,16 @@ class DownloadStore extends ChangeNotifier {
     String? audioFile;
     try {
       // 取链失败（ResolveException）也要走 finally，否则任务会一直卡在「下载中」
-      final uri = await _app.resolver?.resolve(song);
-      if (uri == null) throw const DownloadException('拿不到可下载的音频地址');
+      final rp = await _app.resolver?.resolve(song);
+      if (rp == null) throw const DownloadException('拿不到可下载的音频地址');
+      final uri = rp.uri;
       if (!uri.isScheme('http') && !uri.isScheme('https')) throw const DownloadException('音频地址不可下载');
 
       final quality = _app.resolver?.last?.quality;
       final base = '${dir!}${io.Platform.pathSeparator}${_safeName('${song.title} - ${song.artist}')}_${key.hashCode.abs()}';
-      final req = http.Request('GET', uri)..followRedirects = true;
+      final req = http.Request('GET', uri)
+        ..followRedirects = true
+        ..headers.addAll(rp.headers); // 直链可能要求 Referer（酷我 / 咪咕），不带会 403
       final res = await client.send(req).timeout(const Duration(seconds: 20));
       if (res.statusCode != 200) throw DownloadException('下载地址返回 ${res.statusCode}');
       // 扩展名按响应类型 / 地址判断（m4a 也常见）
