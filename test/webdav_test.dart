@@ -116,4 +116,12 @@ void main() {
     expect(merged.name, 'x2');
     expect(merged.tracks.map((t) => t.id), ['wy:1', dav.id]);
   });
+
+  test('href 里没编码的 # ? 不会截断文件名；+ 不当空格', () {
+    expect(WebDavClient.hrefPath('/dav/音乐/Live #1.wav'), '/dav/音乐/Live #1.wav');
+    expect(WebDavClient.hrefPath('/dav/a?b.flac'), '/dav/a?b.flac');
+    expect(WebDavClient.hrefPath('http://150.40.176.201:5244/dav/C%2B%2B%20mix.mp3'), '/dav/C++ mix.mp3');
+    expect(WebDavClient.hrefPath('/dav/a+b.ogg'), '/dav/a+b.ogg');
+    expect(WebDavClient.hrefPath('/dav/100%.mp3'), '/dav/100%.mp3');
+  });
 }

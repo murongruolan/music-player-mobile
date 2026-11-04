@@ -59,7 +59,15 @@ class _MiniPlayerState extends State<MiniPlayer> with SingleTickerProviderStateM
           child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Marquee(s.title, style: ts(14.5, w: FontWeight.w600, c: pal.t1)),
             const SizedBox(height: 2),
-            Text(app.castDev != null ? '投放到 ${app.castDev} · ${s.artist}' : s.artist, maxLines: 1, overflow: TextOverflow.ellipsis, style: ts(12, c: pal.t2)),
+            // 播放失败：副标题换成红色的失败原因，点播放键重试
+            if (app.playError != null)
+              Row(children: [
+                Icon(Icons.error_outline_rounded, size: 13, color: pal.danger),
+                const SizedBox(width: 3),
+                Expanded(child: Text('播放失败 · ${app.playError}', maxLines: 1, overflow: TextOverflow.ellipsis, style: ts(12, c: pal.danger))),
+              ])
+            else
+              Text(app.castDev != null ? '投放到 ${app.castDev} · ${s.artist}' : s.artist, maxLines: 1, overflow: TextOverflow.ellipsis, style: ts(12, c: pal.t2)),
           ]),
         ),
       ),
