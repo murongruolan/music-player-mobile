@@ -138,7 +138,7 @@ class AudioEngine {
       if (_shortOf(song, d) && !_tried.contains(ResolveReason.trial)) {
         // 时长明显不对：多半是试听片段，换音源
         _trialUri = uri;
-        return _load(song, seq, autoplay: autoplay, reason: ResolveReason.trial, at: at);
+        return await _load(song, seq, autoplay: autoplay, reason: ResolveReason.trial, at: at);
       }
       _loaded = true;
       await _player.setLoopMode(_loopOne ? LoopMode.one : LoopMode.off);
