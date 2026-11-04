@@ -923,7 +923,7 @@ void openTrace(BuildContext context, {bool dark = false}) {
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text('${_hhmmss(t.time)} · ${t.title}', style: ts(11, c: pal.t3, num: true), maxLines: 1, overflow: TextOverflow.ellipsis),
                     Text('${t.ok ? '取流成功' : '取流失败'} · ${t.platform} · ${t.quality}', style: ts(14, w: FontWeight.w600, c: pal.t1)),
-                    Text((t.source == '直链' ? '直链' : '音源脚本 · ${t.source}') + (t.note.isEmpty ? '' : ' · ${t.note}'), style: ts(12.5, c: t.ok ? pal.t2 : pal.danger)),
+                    Text((t.source == '直链' || t.source == 'WebDAV' || t.source == '已下载' ? t.source : '音源脚本 · ${t.source}') + (t.note.isEmpty ? '' : ' · ${t.note}'), style: ts(12.5, c: t.ok ? pal.t2 : pal.danger)),
                   ]),
                 ),
               ),

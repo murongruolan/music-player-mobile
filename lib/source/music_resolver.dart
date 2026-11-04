@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../audio/track_resolver.dart';
 import '../net/json.dart';
+import '../cloud/dav_store.dart' show davPlatform;
 import '../core/network.dart';
 import '../core/state.dart';
 import '../data/models.dart';
@@ -58,6 +59,14 @@ class MusicResolver implements TrackResolver {
     final t = a.library.trackOf(song.id);
     if (t == null) return _fail(a, song, '缺少平台信息，无法解析播放地址', '未知');
     if (t.isLocal) return _fail(a, song, '本地歌曲暂不支持在线解析', '本地');
+    // 音乐云盘（WebDAV）：直接播服务器上的文件，带 Basic 认证头
+    if (t.platform == davPlatform) {
+      final p = a.dav.playOf(t);
+      if (p == null) return _fail(a, song, '这首歌所在的云盘服务器已删除', '云盘', source: 'WebDAV');
+      last = ResolvedUrl(p.uri.toString(), '${(t.raw['qualities'] as List?)?.firstOrNull ?? '320k'}', 'dav', 'WebDAV', davPlatform);
+      _history(song, '云盘', 'WebDAV', '原档位', true, '直接播放云盘文件');
+      return ResolvedPlay(p.uri, p.headers);
+    }
     // 已下载的歌离线优先：本地文件存在就直接播，不走音源（断网可用）
     final downloaded = a.downloads.pathOf(t.id);
     if (downloaded != null && reason != ResolveReason.trial) { // 本地文件被判为试听片段时改走在线

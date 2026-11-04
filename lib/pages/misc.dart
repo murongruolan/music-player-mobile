@@ -24,6 +24,7 @@ import '../ui/kit.dart';
 import '../ui/markdown.dart';
 import '../widgets/announce.dart';
 import '../widgets/sheets.dart';
+import 'cloud.dart';
 import 'common.dart';
 import 'scan.dart';
 import 'settings.dart';
@@ -658,11 +659,7 @@ class _CloudPageState extends State<CloudPage> {
   Widget build(BuildContext context) {
     final app = context.app;
     final pal = context.pal;
-    if (app.online) {
-      return SubPage(title: '音乐云盘', children: [
-        const EmptyState('cloud', 'WebDAV 云盘接入中', desc: '连接坚果云 / Alist / Nextcloud / 群晖，直接播放 NAS 上的音乐、备份收藏和歌单。\n浏览和播放需要本地播放器接入后才能用，正在开发。'),
-      ]);
-    }
+    if (app.online) return const DavHome(); // 真实 WebDAV：pages/cloud.dart
     return SubPage(title: '音乐云盘', actions: [IBtn('plus', onTap: () => _davAdd(context))], children: [
       CardBox(
         margin: const EdgeInsets.fromLTRB(Tk.pad, 0, Tk.pad, 12),
