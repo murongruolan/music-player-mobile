@@ -15,6 +15,7 @@ import '../data/mock.dart';
 import '../api/update_api.dart';
 import '../data/models.dart';
 import '../net/net.dart';
+import '../source/music_resolver.dart';
 import '../platform/credentials.dart';
 import '../platform/prefetch.dart';
 import '../platform/registry.dart';
@@ -162,6 +163,7 @@ class AppState extends ChangeNotifier {
   bool get casting => cast?.connected == true;
   bool _suppressEnginePlaying = false; // 投放接管期间忽略本地引擎的播放态回调
 
+
   /// 歌词列表内容版本：换歌写入新词时 +1。歌词视图据此重建布局缓存，
   /// 防止旧歌的 tops/hs 布局数组被新歌词按旧长度索引（RangeError 崩溃）。
   int lyricsVersion = 0;
@@ -278,13 +280,13 @@ class AppState extends ChangeNotifier {
     if (c == null || r == null || !hasSong) return;
     final autoplay = playing;
     try {
-      final uri = await r.resolve(songs[cur]);
-      if (uri == null) return;
+      final rp = await r.resolve(songs[cur]);
+      if (rp == null) return;
       if (!casting) return; // 等待解析期间用户断开了投放
       _suppressEnginePlaying = true; // 本地引擎让位：暂停 / 卸载产生的回调不回写 UI
       if (engineActive) await engine!.setPlaying(false);
       await engine?.unload(); // 通知栏同步清空；断开投放后按播放键重载当前队列曲目
-      await c.cast(songs[cur], uri, autoplay: autoplay);
+      await c.cast(songs[cur], rp.uri, autoplay: autoplay);
       _suppressEnginePlaying = false;
     } on ResolveException catch (e) {
       _suppressEnginePlaying = false;

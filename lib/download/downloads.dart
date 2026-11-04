@@ -198,8 +198,9 @@ class DownloadStore extends ChangeNotifier {
     String? audioFile;
     try {
       // 取链失败（ResolveException）也要走 finally，否则任务会一直卡在「下载中」
-      final uri = await _app.resolver?.resolve(song);
-      if (uri == null) throw const DownloadException('拿不到可下载的音频地址');
+      final rp = await _app.resolver?.resolve(song);
+      if (rp == null) throw const DownloadException('拿不到可下载的音频地址');
+      final uri = rp.uri;
       if (!uri.isScheme('http') && !uri.isScheme('https')) throw const DownloadException('音频地址不可下载');
 
       final quality = _app.resolver?.last?.quality;

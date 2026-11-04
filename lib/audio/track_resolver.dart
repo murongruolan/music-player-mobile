@@ -1,4 +1,4 @@
-// 曲目播放地址解析。引擎只认「一个能播的 URI」，从曲目到 URI 的映射由实现方负责。
+// 曲目播放地址解析。引擎只认「一个能播的地址 + 请求头」，从曲目到地址的映射由实现方负责。
 //
 // 正式实现是 lib/source/music_resolver.dart（洛雪音源脚本在 QuickJS 里解析出直链），main.dart 注入。
 // [DemoTrackResolver] 用公开测试音频，只留给引擎的单元测试。
@@ -17,9 +17,17 @@ enum ResolveReason {
   trial,
 }
 
+/// 解析结果：播放地址 + 播放时必须带的请求头。
+/// （音源脚本的地址通常不带；平台直链可能需要 Referer / UA。）
+class ResolvedPlay {
+  final Uri uri;
+  final Map<String, String> headers;
+  const ResolvedPlay(this.uri, [this.headers = const {}]);
+}
+
 abstract class TrackResolver {
-  /// 返回可播放的 URI；null 表示当前无法解析（引擎会跳过并走下一首）。
-  Future<Uri?> resolve(Song song, {String quality = 'SQ', ResolveReason reason = ResolveReason.play});
+  /// 返回可播放的地址；null 表示当前无法解析（引擎会跳过并走下一首）。
+  Future<ResolvedPlay?> resolve(Song song, {String quality = 'SQ', ResolveReason reason = ResolveReason.play});
 }
 
 /// 测试桩：按曲目 id 确定性地映射到公开测试音频（SoundHelix 示例曲，MP3）。
@@ -29,8 +37,8 @@ class DemoTrackResolver implements TrackResolver {
   static const _count = 16; // SoundHelix-Song-1 .. 16
 
   @override
-  Future<Uri?> resolve(Song song, {String quality = 'SQ', ResolveReason reason = ResolveReason.play}) async {
+  Future<ResolvedPlay?> resolve(Song song, {String quality = 'SQ', ResolveReason reason = ResolveReason.play}) async {
     final n = song.id % _count + 1;
-    return Uri.parse('$_base/SoundHelix-Song-$n.mp3');
+    return ResolvedPlay(Uri.parse('$_base/SoundHelix-Song-$n.mp3'));
   }
 }
