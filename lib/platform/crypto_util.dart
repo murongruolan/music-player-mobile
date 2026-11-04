@@ -47,6 +47,12 @@ Uint8List aesCbcEncrypt(Object plain, Object key, Object iv) {
   return _run(cipher, _pkcs7(_bytes(plain)));
 }
 
+/// AES-128-CBC 解密，去 PKCS7 填充。
+Uint8List aesCbcDecrypt(Uint8List data, Object key, Object iv) {
+  final cipher = CBCBlockCipher(AESEngine())..init(false, ParametersWithIV(KeyParameter(_bytes(key)), _bytes(iv)));
+  return _unpad(_run(cipher, data));
+}
+
 /// 无填充 RSA（m^e mod n），网易 weapi 用。[data] 按大端整数处理，输出 [size] 字节。
 Uint8List rsaNoPadding(Uint8List data, BigInt modulus, BigInt exponent, {int size = 128}) {
   var m = BigInt.zero;
