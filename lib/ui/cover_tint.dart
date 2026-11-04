@@ -23,8 +23,8 @@ class CoverTint {
   static void ensure(String? url) {
     final u = coverUrl(url);
     if (url == null || u == null || _colors.containsKey(url) || _failed.contains(url) || !_pending.add(url)) return;
-    // 与 cover.dart 同款浏览器 UA：图床按 UA 拦截，默认 Dart UA 会 403
-    final stream = ResizeImage(NetworkImage(u, headers: const {'User-Agent': Cover.ua}), width: 24, height: 24).resolve(ImageConfiguration.empty);
+    // 与 cover.dart 同款 UaImage：图床按 UA 拦截且 headers 参数不透传（见 cover.dart 文件头）
+    final stream = ResizeImage(UaImage(u), width: 24, height: 24).resolve(ImageConfiguration.empty);
     late final ImageStreamListener l;
     l = ImageStreamListener((info, _) async {
       stream.removeListener(l);
