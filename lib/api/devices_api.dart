@@ -63,4 +63,13 @@ class DevicesApi {
     await _c.delete('/auth/devices/$id', retry: true);
     _c.clearCache('/auth/devices');
   }
+
+  /// 批量移除（POST /auth/devices/batch-remove，body {ids: number[]}）。
+  /// 返回实际移除台数；含当前登录设备整体拒绝（400）、没有可移除的设备 404，
+  /// 两类都会以 ApiException 抛出，由页面 toast 展示。
+  Future<int> batchRemove(List<int> ids) async {
+    final d = asJson(await _c.post('/auth/devices/batch-remove', body: {'ids': ids}));
+    _c.clearCache('/auth/devices');
+    return (d['removed'] as num?)?.toInt() ?? 0;
+  }
 }

@@ -59,7 +59,7 @@ class AppState extends ChangeNotifier {
   double vol = .7, speed = 1;
   String mode = 'loop'; // loop | one | shuffle | order
   String quality = 'SQ';
-  int timer = 0;
+  int timer = 0; // 睡眠定时设定值（分钟）；0 = 未开启
   String? castDev;
   List<int> queue = List.generate(16, (i) => i);
   String queueName = '深夜城市漫游 · 霓虹与雨';
@@ -175,7 +175,7 @@ class AppState extends ChangeNotifier {
     e.onPlaying = (p) {
       if (playing != p) update(() => playing = p); // 通知栏 / 线控改的状态同步回 UI
     };
-    e.onCompleted = () => _step(1); // 单曲循环由引擎 LoopMode.one 自循环，不会走到这
+    e.onCompleted = _onEngineCompleted; // 单曲循环由引擎 LoopMode.one 自循环，不会走到这
     e.onError = (msg) {
       // 解析 / 加载失败：界面回到暂停态并提示原因
       if (playing) update(() => playing = false);
@@ -199,18 +199,131 @@ class AppState extends ChangeNotifier {
     };
   }
 
-  /// 引擎加载完成后的收尾：套用速度并刷新通知栏（带真实收藏态）。
+  /// 引擎加载完成后的收尾：套用速度 / 音调并刷新通知栏（带真实收藏态）。
   void _engineAfterLoad() {
     final e = engine!;
     if (!e.loaded) return;
-    e.setSpeed(speed);
+    _restoreSleepVolume(); // 淡出中用户切了歌：恢复音量，淡出窗口由 _sleepTick 重新进入
+    applySpeedToEngine();
     if (e.playingNow != playing) unawaited(e.setPlaying(playing)); // 加载期间用户可能已按暂停/切歌
     e.updateNotification(playing: playing, liked: liked.contains(cur));
+  }
+
+  /// 引擎播完一首：睡眠定时「播完当前歌曲再停」挂起时到点停播，否则切下一首。
+  void _onEngineCompleted() {
+    if (_stopAfterSong) {
+      unawaited(_sleepStop());
+      return;
+    }
+    _step(1);
+  }
+
+  /// 把倍速 / 音调开关同步到正在播放的引擎（改倍速立即生效，不用等下一首）；
+  /// 引擎加载完成后的收尾（_engineAfterLoad）也会走这里，保证换歌后速度不丢。
+  /// 「保持音调」开启（默认）时音高不变；关闭时让音高跟随倍速。
+  void applySpeedToEngine() {
+    if (!engineActive) return;
+    unawaited(engine!.setSpeed(speed));
+    unawaited(engine!.setPitch(set.pitch ? 1.0 : speed));
   }
 
   /// 把 UI 均衡器（10 段曲线 + 开关）下发到设备 EQ；非 Android 平台引擎内部静默跳过。
   void applyEqToEngine() {
     if (engineActive) unawaited(engine!.applyEq(eqOn, eq));
+  }
+
+  // ---------- 睡眠定时 ----------
+
+  DateTime? _sleepEnd;
+  Timer? _sleepT;
+  bool _stopAfterSong = false; // 「播完当前歌曲再停」：到点时若在播放，挂到引擎 completed
+  bool _sleepFading = false; // 「停止前 30 秒淡出」进行中（音量正按剩余秒线性降低）
+  double? _sleepVolBase; // 淡出前的用户音量，停止 / 取消后恢复
+
+  /// 睡眠定时剩余秒数（未开启为 0）。
+  int get sleepLeft {
+    final e = _sleepEnd;
+    if (e == null) return 0;
+    final left = e.difference(DateTime.now()).inSeconds;
+    return left <= 0 ? 0 : left;
+  }
+
+  /// 设置睡眠定时（分钟；0 = 取消）。到点后按「播完当前歌曲再停」
+  /// 与「停止前 30 秒淡出」两个开关执行；开启时若在播放立即生效。
+  void setSleepTimer(int minutes) {
+    _sleepT?.cancel();
+    _sleepT = null;
+    _stopAfterSong = false;
+    _restoreSleepVolume();
+    if (minutes <= 0) {
+      _sleepEnd = null;
+      timer = 0;
+      notifyListeners();
+      return;
+    }
+    timer = minutes;
+    _sleepEnd = DateTime.now().add(Duration(minutes: minutes));
+    _sleepT = Timer.periodic(const Duration(seconds: 1), (_) => _sleepTick());
+    notifyListeners();
+  }
+
+  void _sleepTick() {
+    final left = sleepLeft;
+    if (left <= 0) {
+      // 时间到：在播且开了「播完当前歌」就挂到曲末，否则立即停止。
+      _sleepT?.cancel();
+      _sleepT = null;
+      if (playing && set.finishSong) {
+        // 等这首播完再停：先把淡出压低的音量恢复，否则剩下的部分会静音播完
+        _restoreSleepVolume();
+        _stopAfterSong = true;
+        return;
+      }
+      unawaited(_sleepStop());
+      return;
+    }
+    // 淡出期间用户暂停了就先把音量恢复回来，别把静音留在下一首。
+    if (_sleepFading && !playing) _restoreSleepVolume();
+    // 停止前 30 秒淡出：引擎音量随剩余秒线性降到 0（不动用户设置的 vol）。
+    if (set.fadeStop && playing && left <= 30) {
+      if (!_sleepFading) {
+        _sleepFading = true;
+        _sleepVolBase = vol;
+        notifyListeners();
+      }
+      if (engineActive) unawaited(engine!.setVolume(vol * left / 30));
+    }
+    // 剩余分钟跨过整分（以及最后 5 秒）时刷新一次界面上的剩余显示。
+    if (left % 60 == 0 || left <= 5) notifyListeners();
+  }
+
+  /// 到点停止播放：淡出收尾（如在进行中）→ 暂停 → 恢复音量 → 提示。
+  Future<void> _sleepStop() async {
+    _stopAfterSong = false;
+    _sleepEnd = null;
+    _sleepT?.cancel();
+    _sleepT = null;
+    if (engineActive && _sleepFading && playing) {
+      final e = engine!;
+      for (var i = 1; i <= 10; i++) {
+        await e.setVolume((_sleepVolBase ?? vol) * (1 - i / 10));
+        await Future.delayed(const Duration(milliseconds: 120));
+      }
+    }
+    _restoreSleepVolume();
+    timer = 0;
+    if (playing) update(() => playing = false);
+    if (engine != null) unawaited(engine!.setPlaying(false));
+    if (engineActive) engine!.updateNotification(playing: false, liked: liked.contains(cur));
+    notice?.call('睡眠定时时间到，已停止播放', 'moon');
+  }
+
+  void _restoreSleepVolume() {
+    if (_sleepFading) {
+      _sleepFading = false;
+      if (engineActive && _sleepVolBase != null) unawaited(engine!.setVolume(_sleepVolBase!));
+    }
+    _sleepVolBase = null;
   }
 
   /// 加载当前曲目到引擎（engineActive 时才调）。
@@ -581,6 +694,7 @@ class AppState extends ChangeNotifier {
     telemetry.dispose();
     library.dispose();
     _clock?.cancel();
+    _sleepT?.cancel();
     pos.dispose();
     super.dispose();
   }
