@@ -8,8 +8,8 @@ import 'live_util.dart';
 
 void main() {
   test('netease login live', () async {
-    final l = NeteaseLogin(liveHttp());
-    final key = await probe('qrKey', l.qrKey, (k) => 'unikey 长度 ${k.length}', required: true);
+    final l = NeteaseLogin(liveHttp(), log: (m) => print('  · $m'));
+    final key = await probe('qrKey', l.qrKey, (k) => 'unikey 长度 ${k.length}，二维码 ${l.qrContent(k).replaceAll(k, '<key>')}', required: true);
     if (key != null) {
       await probe('qrCheck (未扫码)', () => l.qrCheck(key), (r) => '${r.state} ${r.message}');
     }

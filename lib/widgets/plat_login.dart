@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' hide PlatformException;
 import 'package:qr/qr.dart';
+import '../core/app_log.dart';
 import '../core/state.dart';
 import '../core/tokens.dart';
 import '../data/mock.dart' show platformBy;
@@ -41,6 +42,7 @@ void openRealPlatLogin(BuildContext context, String pid, {String mode = '扫码'
 
 Future<void> _finish(BuildContext sheet, PlatformCredential cred, Platform p) async {
   final app = sheet.appRead;
+  AppLog.instance.add('平台登录', '${p.name}登录成功（${cred.vipActive ? '会员' : '非会员'}）');
   await app.savePlatformLogin(cred);
   if (sheet.mounted) Navigator.of(sheet).pop();
   toast('已登录${p.name}${(cred.nickname?.isNotEmpty ?? false) ? ' · ${cred.nickname}' : ''}', 'check');
@@ -86,13 +88,14 @@ class _NeteaseQrLoginState extends State<_NeteaseQrLogin> {
     try {
       final k = await context.appRead.neteaseLogin.qrKey();
       if (!mounted) return;
-      final qr = QrCode.fromData(data: NeteaseLogin.qrContent(k), errorCorrectLevel: QrErrorCorrectLevel.M);
+      final qr = QrCode.fromData(data: context.appRead.neteaseLogin.qrContent(k), errorCorrectLevel: QrErrorCorrectLevel.M);
       setState(() {
         key = k;
         img = QrImage(qr);
       });
       _t = Timer.periodic(const Duration(milliseconds: 2500), (_) => _poll());
     } catch (e) {
+      _logFail('网易云取二维码', e);
       if (mounted) setState(() => error = _msg(e));
     }
   }
@@ -118,6 +121,7 @@ class _NeteaseQrLoginState extends State<_NeteaseQrLogin> {
           setState(() => state = r.state);
         case NeteaseQrState.failed:
           _t?.cancel();
+          AppLog.instance.add('平台登录', '网易云扫码失败：${r.message}');
           setState(() {
             state = r.state;
             error = r.message;
@@ -131,6 +135,7 @@ class _NeteaseQrLoginState extends State<_NeteaseQrLogin> {
     } catch (e) {
       // 单次轮询失败（网络抖动）不打断，下一次再试；拿账号信息失败才显示
       if (mounted && state == NeteaseQrState.ok) {
+        _logFail('网易云读取账号信息', e);
         setState(() {
           state = NeteaseQrState.failed;
           error = _msg(e);
@@ -245,6 +250,7 @@ class _CookieLoginState extends State<_CookieLogin> {
       }
       if (mounted) await _finish(context, cred, widget.p);
     } catch (e) {
+      _logFail('${widget.p.name} Cookie 登录', e);
       if (mounted) setState(() => error = _msg(e));
     } finally {
       if (mounted) setState(() => busy = false);
@@ -275,6 +281,9 @@ class _CookieLoginState extends State<_CookieLogin> {
 }
 
 String _msg(Object e) => e is PlatformException ? e.message : platformError(e);
+
+/// 登录失败：界面上显示的原因同时写进应用日志（设置 → 关于 → 应用日志），方便排查。
+void _logFail(String where, Object e) => AppLog.instance.add('平台登录', '$where失败：${e is PlatformException ? e.message : e}');
 
 // ---------------------------------------------------------------- 酷狗手机验证码
 
@@ -324,8 +333,10 @@ class _KugouPhoneLoginState extends State<_KugouPhoneLogin> {
       });
       toast('验证码已发送', 'phone');
     } on KugouCaptchaRequired {
+      AppLog.instance.add('平台登录', '酷狗发验证码：需要人机验证');
       if (mounted) setState(() => error = '酷狗要求人机验证，请在酷狗官方 App 登录一次后再回来，或改用其它平台');
     } catch (e) {
+      _logFail('酷狗发验证码', e);
       if (mounted) setState(() => error = _msg(e));
     } finally {
       if (mounted) setState(() => busy = false);
@@ -345,6 +356,7 @@ class _KugouPhoneLoginState extends State<_KugouPhoneLogin> {
       final cred = await app.kugouLogin.loginByCode(phone.text, code.text.trim(), dev);
       if (mounted) await _finish(context, cred, widget.p);
     } catch (e) {
+      _logFail('酷狗验证码登录', e);
       if (mounted) setState(() => error = _msg(e));
     } finally {
       if (mounted) setState(() => busy = false);
