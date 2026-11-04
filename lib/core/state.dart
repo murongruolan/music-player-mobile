@@ -8,6 +8,7 @@ import '../data/mock.dart';
 import '../api/update_api.dart';
 import '../data/models.dart';
 import '../net/net.dart';
+import '../platform/credentials.dart';
 import '../platform/prefetch.dart';
 import '../platform/registry.dart';
 import 'announcements.dart';
@@ -159,6 +160,10 @@ class AppState extends ChangeNotifier {
 
   /// 各音乐平台的公开内容（发现页、搜索、歌单 / 榜单详情）。测试可以注入假平台。
   final PlatformHub content;
+
+  /// 平台登录凭证（网易云 / QQ / 酷狗），存系统钥匙串，只留在本机。
+  /// 登录层写入，直链层等只经 [CredentialStore] 接口读。测试 / 演示模式只在内存里。
+  late final platCreds = PlatformCredentials(net?.store);
 
   /// 空闲时预载其他平台的发现页（只在 Wi-Fi 下）。
   late final prefetch = IdlePrefetch(content);
@@ -777,6 +782,7 @@ class AppState extends ChangeNotifier {
     _clock?.cancel();
     _sleepT?.cancel();
     prefetch.stop();
+    platCreds.dispose();
     pos.dispose();
     super.dispose();
   }
