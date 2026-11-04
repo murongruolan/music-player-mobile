@@ -10,6 +10,7 @@ import 'audio/audio_engine.dart';
 import 'audio/media_handler.dart';
 import 'auth/auth.dart';
 import 'core/app_log.dart';
+import 'core/network.dart' show watchNetworkForLog;
 import 'core/shots.dart';
 import 'core/state.dart';
 import 'core/tokens.dart';
@@ -62,6 +63,7 @@ Future<void> main() async {
   AppLog.instance.onCrash = (c) {
     if (app.set.crash) app.telemetry.track('app_crash', {'message': c.message.length > 500 ? c.message.substring(0, 500) : c.message, 'stack': c.stack.length > 3000 ? c.stack.substring(0, 3000) : c.stack, 'version': ApiConfig.appVersion});
   };
+  watchNetworkForLog((m) => AppLog.instance.add('网络', m));
   AppLog.instance.add('启动', 'v${ApiConfig.appVersion} (${ApiConfig.buildNumber}) · ${net == null ? '演示模式' : '联网模式'}');
   resolver.app = app;
   resolver.direct = DirectLinkResolver(app.platCreds); // 平台直链（凭证只读 platCreds）

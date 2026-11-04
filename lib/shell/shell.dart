@@ -1,6 +1,7 @@
 // 主界面外壳：内容区（嵌套 Navigator，二级页右侧推入 + 左缘右滑返回）+ 迷你播放条 + 底栏。
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import '../core/app_log.dart';
 import '../core/state.dart';
 import '../core/tokens.dart';
 import '../pages/daily.dart';
@@ -19,14 +20,17 @@ final tabScroll = List.generate(5, (_) => ScrollController());
 
 /// 二级页：在内容区内推入（保留迷你播放条与底栏）。
 Future<T?> push<T>(BuildContext context, Widget page) {
+  AppLog.instance.add('页面', '打开 ${page.runtimeType}');
   final nav = contentNav.currentState;
   if (nav == null) return Future.value();
   return nav.push<T>(CupertinoPageRoute(builder: (_) => page));
 }
 
 /// 全屏页：盖住迷你播放条与底栏（扫一扫、识曲、登录流程）。
-Future<T?> pushFull<T>(BuildContext context, Widget page) =>
-    rootNav.currentState!.push<T>(CupertinoPageRoute(fullscreenDialog: false, builder: (_) => page));
+Future<T?> pushFull<T>(BuildContext context, Widget page) {
+  AppLog.instance.add('页面', '打开 ${page.runtimeType}（全屏）');
+  return rootNav.currentState!.push<T>(CupertinoPageRoute(fullscreenDialog: false, builder: (_) => page));
+}
 
 void popToRoot() => contentNav.currentState?.popUntil((r) => r.isFirst);
 
@@ -59,10 +63,12 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState s) {
+    AppLog.instance.add('应用', '前后台：${s.name}');
     if (s == AppLifecycleState.resumed) detectClipboard(context.appRead);
   }
 
   void _onTab(int i) {
+    AppLog.instance.add('页面', '切换到底栏第 ${i + 1} 个');
     final app = context.appRead;
     final canPop = contentNav.currentState?.canPop() ?? false;
     if (i == app.tab && !canPop) {

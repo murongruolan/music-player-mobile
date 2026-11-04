@@ -212,7 +212,9 @@ class _LyricViewState extends State<LyricView> with TickerProviderStateMixin {
         },
         child: Stack(children: [
           Positioned.fill(
-            child: ShaderMask(
+            // 歌词是自绘的，上方的行会画到自己区域外面（压到封面 / 歌名那一行上），这里裁掉
+            child: ClipRect(
+              child: ShaderMask(
               shaderCallback: (r) => const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black, Colors.black, Colors.transparent], stops: [0, .18, .72, 1]).createShader(r),
               blendMode: BlendMode.dstIn,
               child: RepaintBoundary(
@@ -221,6 +223,7 @@ class _LyricViewState extends State<LyricView> with TickerProviderStateMixin {
                   size: Size.infinite,
                 ),
               ),
+            ),
             ),
           ),
           if (manualMode)

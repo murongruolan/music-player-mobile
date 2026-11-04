@@ -29,11 +29,24 @@ android {
         versionName = flutter.versionName
     }
 
+    // 测试包签名：固定的测试 keystore（提交在仓库里，口令公开，只用于内部测试包）。
+    // 每次 CI 打包签名一致，新包可以直接覆盖安装，不用卸载、不丢登录态。
+    // 正式上架前要换成单独保管的发布 keystore（通过 CI secret 注入），不能用这把。
+    signingConfigs {
+        create("lyraTest") {
+            storeFile = file("lyra-test.jks")
+            storePassword = "lyratest"
+            keyAlias = "lyra-test"
+            keyPassword = "lyratest"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("lyraTest")
+        }
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("lyraTest")
         }
     }
 }

@@ -247,7 +247,10 @@ class _BottomNavState extends State<BottomNav> with TickerProviderStateMixin {
             onHorizontalDragEnd: (_) {
               final i = (((dragX ?? 0) - padX) / itemW).floor().clamp(0, n - 1);
               setState(() => dragX = null);
-              if (tabs[i] != widget.tab) widget.onTab(tabs[i]);
+              if (tabs[i] != widget.tab) {
+                haptic(context); // 拖动切换也震一下（手指稍微一滑，点击就会被识别成拖动）
+                widget.onTab(tabs[i]);
+              }
             },
             child: stack,
           )

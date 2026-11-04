@@ -5,6 +5,7 @@
 // 网易 / QQ 图床按 UA 拦截，Dart 默认 UA 一律 403；且 Image.network 的 headers 参数
 // 在本工程实测不透传（带上 UA 请求仍以 Dart UA 出网，宿主 curl 双向验证过 2026-11-04）。
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show SynchronousFuture;
 import 'package:flutter/material.dart';
@@ -31,11 +32,36 @@ class Cover extends StatelessWidget {
   factory Cover.pl(Playlist p, {double size = 140, double radius = 16, Widget? child}) =>
       Cover(hue: p.hue, variant: p.variant, size: size, radius: radius, url: p.cover, child: child);
 
-  /// 按显示尺寸解码，避免大图占内存。
+  /// 按显示尺寸解码，避免大图占内存。宽度按档位取整（192 / 384 / 768），
+  /// 列表行、迷你播放条、卡片这些尺寸相近的封面共用同一份解码结果，切换时不会再闪占位图。
   int? _cacheW(BuildContext context) {
     final w = width ?? size;
     if (w <= 0 || !w.isFinite) return null;
-    return (w * MediaQuery.devicePixelRatioOf(context)).round();
+    return coverBucket(w * MediaQuery.devicePixelRatioOf(context));
+  }
+
+  /// 物理像素宽 → 解码档位；超过 768 的不缩放（全屏封面）。
+  static int? coverBucket(double px) {
+    for (final b in const [192, 384, 768]) {
+      if (px <= b) return b;
+    }
+    return null;
+  }
+
+  /// 提前加载一首歌在迷你播放条（44dp）和播放器（全尺寸）上要用的封面，进内存缓存。
+  /// 点歌时调用：等迷你条 / 播放器出现时直接同步命中，不闪占位图。
+  static void warm(String? url) {
+    final u = coverUrl(url);
+    if (u == null) return;
+    final views = ui.PlatformDispatcher.instance.views;
+    final dpr = views.isEmpty ? 3.0 : views.first.devicePixelRatio;
+    final mini = coverBucket(44 * dpr);
+    for (final p in <ImageProvider>[UaImage(u), if (mini != null) ResizeImage(UaImage(u), width: mini)]) {
+      final stream = p.resolve(ImageConfiguration.empty);
+      late final ImageStreamListener l;
+      l = ImageStreamListener((_, __) => stream.removeListener(l), onError: (_, __) => stream.removeListener(l));
+      stream.addListener(l);
+    }
   }
 
   @override
@@ -137,6 +163,34 @@ class UaImage extends ImageProvider<UaImage> {
   /// 所有封面共用一个连接池（列表一屏几十张图，每张新建连接太浪费）。
   static final http.Client _client = http.Client();
 
+  /// 下载好的原始字节（最近 80 张）：同一张封面按不同尺寸解码时不用重新下载；同时请求的同一张只下载一次。
+  static final _bytes = <String, Uint8List>{};
+  static final _inflight = <String, Future<Uint8List>>{};
+
+  static Future<Uint8List> _fetch(String url) {
+    final hit = _bytes.remove(url);
+    if (hit != null) {
+      _bytes[url] = hit; // 移到最新
+      return SynchronousFuture(hit);
+    }
+    return _inflight[url] ??= () async {
+      try {
+        final r = await _client.get(Uri.parse(url), headers: const {'User-Agent': Cover.ua}).timeout(const Duration(seconds: 12));
+        if (r.statusCode != 200 || r.bodyBytes.isEmpty) throw StateError('封面 HTTP ${r.statusCode}');
+        _bytes[url] = r.bodyBytes;
+        while (_bytes.length > 80) {
+          _bytes.remove(_bytes.keys.first);
+        }
+        return r.bodyBytes;
+      } finally {
+        _inflight.remove(url);
+      }
+    }();
+  }
+
+  /// 清除缓存时一起清掉。
+  static void clearBytes() => _bytes.clear();
+
   @override
   Future<UaImage> obtainKey(covariant ImageConfiguration configuration) => SynchronousFuture<UaImage>(this);
 
@@ -146,9 +200,8 @@ class UaImage extends ImageProvider<UaImage> {
   }
 
   Future<ui.Codec> _load(UaImage key, ImageDecoderCallback decode) async {
-    final r = await _client.get(Uri.parse(key.url), headers: const {'User-Agent': Cover.ua}).timeout(const Duration(seconds: 12));
-    if (r.statusCode != 200 || r.bodyBytes.isEmpty) throw StateError('封面 HTTP ${r.statusCode}');
-    final buffer = await ui.ImmutableBuffer.fromUint8List(r.bodyBytes);
+    final bytes = await _fetch(key.url);
+    final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
     return decode(buffer);
   }
 

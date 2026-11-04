@@ -32,10 +32,11 @@ import 'script_store.dart';
 import 'taste.dart';
 import 'telemetry.dart';
 import 'tokens.dart';
+import '../ui/cover.dart' show Cover, UaImage;
 
 class Settings {
   bool trans = true, roma = false, conv = false, blur = true, glow = true;
-  double lfs = 26, ltfs = 15, lgap = 10, loff = 0;
+  double lfs = 22, ltfs = 14, lgap = 10, loff = 0;
   bool fade = true, autoplay = false, autoOpen = false, keepAwake = true;
   bool smart = true, gradual = true, crossScript = true, crossPlat = true, autoNext = true;
   bool nQ = true, nS = true, nA = false, allowDown = true;
@@ -511,6 +512,7 @@ class AppState extends ChangeNotifier {
 
   /// 播放器音量条（0..1，相对系统音量）。睡眠淡出进行中时只记下新值，淡出结束后生效。
   void setVolume(double v) {
+    if ((v - vol).abs() >= .2 || v == 0 || v == 1) AppLog.instance.add('操作', '播放器音量 ${(v * 100).round()}%');
     vol = v.clamp(0.0, 1.0);
     if (engineActive && !_sleepFading) unawaited(engine!.setVolume(vol));
     notifyListeners();
@@ -552,6 +554,7 @@ class AppState extends ChangeNotifier {
     ic.clearLiveImages();
     content.invalidate();
     lyricStore.clear();
+    UaImage.clearBytes();
     net?.client.clearCache();
     final dir = _streamCacheDir;
     if (dir != null) {
@@ -569,6 +572,7 @@ class AppState extends ChangeNotifier {
   /// 加载当前曲目到引擎（engineActive 时才调）。
   void _enginePlayCurrent() {
     playError = null;
+    if (hasSong) Cover.warm(songs[cur].cover); // 迷你条 / 播放器的封面先加载好，出现时不闪占位图
     if (online) lyricStore.load(cur);
     unawaited(engine!.playSong(songs[cur], autoplay: playing, loopOne: mode == 'one').then((_) => _engineAfterLoad()));
   }
@@ -616,6 +620,14 @@ class AppState extends ChangeNotifier {
   /// 能不能真正播放。联网模式下音源解析（脚本运行时 / 平台取流）还没接入，先拦下来并提示，
   /// 不再用计时器假装在播放。
   bool get canPlay => !online || (engine != null && sources.sources.isNotEmpty);
+
+  /// 日志用：「歌名 - 歌手 [平台]」。
+  String _songLabel(int id) {
+    if (id < 0 || id >= songs.length) return '#$id';
+    final s = songs[id];
+    final k = s.key;
+    return '「${s.title} - ${s.artist}」${k == null ? '' : ' [${k.split(':').first}]'}';
+  }
 
   /// [id] 是云盘歌曲时，不需要音源脚本也能播。
   bool _blockPlay([int? id]) {
@@ -735,6 +747,7 @@ class AppState extends ChangeNotifier {
 
   /// [ids]：明确的播放队列（平台歌单 / 榜单 / 搜索结果）；不给时按 [list] 取。
   void play(int id, {String? list, String? name, List<int>? ids}) {
+    AppLog.instance.add('操作', '点播 ${_songLabel(id)}${name == null ? '' : ' · 队列「$name」'}${ids == null ? '' : '（${ids.length} 首）'}');
     if (_blockPlay(id)) return;
     if (ids != null) {
       queue = [...ids];
@@ -759,6 +772,7 @@ class AppState extends ChangeNotifier {
   }
 
   void playAll(String list, {bool shuffle = false, String? name}) {
+    AppLog.instance.add('操作', '播放全部 $list${shuffle ? '（随机）' : ''}');
     if (_blockPlay()) return;
     queue = listOf(list);
     if (shuffle) queue.shuffle(math.Random(7));
@@ -780,6 +794,7 @@ class AppState extends ChangeNotifier {
   void toggle() {
     if (!hasSong) return;
     playing = !playing;
+    AppLog.instance.add('操作', '${playing ? '播放' : '暂停'} ${_songLabel(cur)}${engineActive ? '' : '（引擎未加载，${playing ? '开始加载' : '仅界面'}）'}');
     notifyListeners();
     if (casting) {
       unawaited(cast!.setPlaying(playing));
@@ -796,8 +811,12 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  void next() => _step(1);
+  void next() {
+    AppLog.instance.add('操作', '下一首');
+    _step(1);
+  }
   void prev() {
+    AppLog.instance.add('操作', pos.value > 3 ? '回到开头' : '上一首');
     if (pos.value > 3) {
       if (casting) {
         unawaited(cast!.seek(0)); // 投放中：渲染端回到曲目开头
@@ -831,6 +850,7 @@ class AppState extends ChangeNotifier {
   }
 
   void seek(double sec) {
+    AppLog.instance.add('操作', '拖动进度到 ${sec.round()}s');
     if (!hasSong) return;
     final d = song.dur.toDouble();
     if (casting) {
@@ -845,6 +865,7 @@ class AppState extends ChangeNotifier {
   }
 
   void cycleMode() {
+    AppLog.instance.add('操作', '切换播放模式');
     const order = ['loop', 'one', 'shuffle', 'order'];
     mode = order[(order.indexOf(mode) + 1) % order.length];
     if (engineActive) unawaited(engine!.setLoopOne(mode == 'one'));
@@ -855,6 +876,7 @@ class AppState extends ChangeNotifier {
 
   bool toggleLike(int id) {
     final on = !liked.contains(id);
+    AppLog.instance.add('操作', '${on ? '收藏' : '取消收藏'} ${_songLabel(id)}');
     on ? liked.add(id) : liked.remove(id);
     notifyListeners();
     if (online) library.favoritesChanged();

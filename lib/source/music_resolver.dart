@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import '../audio/track_resolver.dart';
 import '../net/json.dart';
 import '../cloud/dav_store.dart' show davPlatform;
+import '../core/app_log.dart';
 import '../core/network.dart';
 import '../core/state.dart';
 import '../data/models.dart';
@@ -179,6 +180,7 @@ class MusicResolver implements TrackResolver {
   }
 
   void _history(Song song, String platform, String source, String quality, bool ok, String note) {
+    AppLog.instance.add('取流', '${ok ? '成功' : '失败'}「${song.title}」$platform · $source · $quality${note.isEmpty ? '' : ' · $note'}');
     history.insert(
         0,
         ResolveTrace(
