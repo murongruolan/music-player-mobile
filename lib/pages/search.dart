@@ -231,7 +231,13 @@ class _SearchPageState extends State<SearchPage> {
             radius: 27,
             color: pal.glassStrong,
             shadow: const [BoxShadow(color: Color(0x40000000), blurRadius: 24, offset: Offset(0, 8))],
-            child: Row(children: [
+            // 点放大镜 / 两侧空白也聚焦（输入区只有一行字高）
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                if (!fn.hasFocus) fn.requestFocus();
+              },
+              child: Row(children: [
               const SizedBox(width: 16),
               Icon(ic('search'), color: pal.t2, size: 20),
               const SizedBox(width: 8),
@@ -257,6 +263,7 @@ class _SearchPageState extends State<SearchPage> {
                 IBtn('mic', size: 40, iconSize: 20, color: pal.t2, onTap: () => pushFull(context, const ScanPage(match: true))),
               const SizedBox(width: 4),
             ]),
+            ),
           ),
         ),
         const SizedBox(width: 10),

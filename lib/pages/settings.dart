@@ -634,7 +634,7 @@ void _scriptPaste(BuildContext context) {
               height: 200,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(color: pal.s2, borderRadius: BorderRadius.circular(14)),
-              child: TextField(controller: tc, maxLines: null, onChanged: (_) => set(() {}), style: TextStyle(fontFamily: 'monospace', fontSize: 12.5, color: pal.t1, height: 1.5), decoration: InputDecoration.collapsed(hintText: '/* 在此粘贴脚本内容 */', hintStyle: TextStyle(color: pal.t3, fontFamily: 'monospace'))),
+              child: TextField(controller: tc, maxLines: null, expands: true, textAlignVertical: TextAlignVertical.top, onChanged: (_) => set(() {}), style: TextStyle(fontFamily: 'monospace', fontSize: 12.5, color: pal.t1, height: 1.5), decoration: InputDecoration.collapsed(hintText: '/* 在此粘贴脚本内容 */', hintStyle: TextStyle(color: pal.t3, fontFamily: 'monospace'))),
             ),
             Padding(padding: const EdgeInsets.only(top: 6), child: Text('${tc.text.isEmpty ? 0 : '\n'.allMatches(tc.text).length + 1} 行', textAlign: TextAlign.right, style: ts(11, c: pal.t3, num: true))),
             const SizedBox(height: 10),

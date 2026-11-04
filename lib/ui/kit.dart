@@ -1347,3 +1347,52 @@ class HScroll extends StatelessWidget {
         ),
       );
 }
+
+/// 横向滚动行的边缘渐隐：右侧（和已经往右滑过时的左侧）淡出 [fade] 像素，提示后面还有内容。
+/// 只包一个横向 [ScrollView]（ListView 等）。
+class EdgeFade extends StatefulWidget {
+  final Widget child;
+  final double fade;
+  const EdgeFade({super.key, required this.child, this.fade = 28});
+  @override
+  State<EdgeFade> createState() => _EdgeFadeState();
+}
+
+class _EdgeFadeState extends State<EdgeFade> {
+  bool left = false, right = true;
+
+  bool _onScroll(ScrollMetrics m) {
+    final l = m.pixels > 1, r = m.pixels < m.maxScrollExtent - 1;
+    if (l != left || r != right) {
+      setState(() {
+        left = l;
+        right = r;
+      });
+    }
+    return false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return NotificationListener<ScrollMetricsNotification>(
+      onNotification: (n) => _onScroll(n.metrics),
+      child: NotificationListener<ScrollNotification>(
+        onNotification: (n) => _onScroll(n.metrics),
+        child: ShaderMask(
+          blendMode: BlendMode.dstIn,
+          shaderCallback: (r) {
+            final f = (widget.fade / r.width).clamp(0.0, .5);
+            return LinearGradient(colors: [
+              left ? Colors.transparent : Colors.black,
+              Colors.black,
+              Colors.black,
+              right ? Colors.transparent : Colors.black,
+            ], stops: [0, f, 1 - f, 1]).createShader(r);
+          },
+          child: widget.child,
+        ),
+      ),
+    );
+  }
+}
+
