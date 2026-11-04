@@ -36,7 +36,7 @@ class MePage extends StatelessWidget {
             onTap: () => push(context, const AccountPage()),
             padding: const EdgeInsets.all(18),
             child: Row(children: [
-              Avatar(avatarText(app), size: 64),
+              Avatar(avatarText(app), size: 64, url: avatarUrl(app, size: 64)),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

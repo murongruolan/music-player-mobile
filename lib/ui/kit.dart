@@ -599,7 +599,10 @@ class Avatar extends StatelessWidget {
   final String text;
   final double size;
   final VoidCallback? onTap;
-  const Avatar(this.text, {super.key, this.size = 36, this.onTap});
+
+  /// 头像图片地址；加载中 / 失败时显示首字占位。
+  final String? url;
+  const Avatar(this.text, {super.key, this.size = 36, this.onTap, this.url});
   @override
   Widget build(BuildContext context) {
     final pal = context.pal;
@@ -611,7 +614,21 @@ class Avatar extends StatelessWidget {
         height: size,
         alignment: Alignment.center,
         decoration: BoxDecoration(shape: BoxShape.circle, gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [pal.acc, Color.lerp(pal.acc, Colors.black, .45)!])),
-        child: Text(text, style: ts(size * .42, w: FontWeight.w700, c: pal.ink)),
+        child: url == null
+            ? Text(text, style: ts(size * .42, w: FontWeight.w700, c: pal.ink))
+            : Stack(fit: StackFit.expand, alignment: Alignment.center, children: [
+                Center(child: Text(text, style: ts(size * .42, w: FontWeight.w700, c: pal.ink))),
+                ClipOval(
+                  child: Image.network(
+                    url!,
+                    fit: BoxFit.cover,
+                    cacheWidth: (size * MediaQuery.devicePixelRatioOf(context)).round(),
+                    gaplessPlayback: true,
+                    frameBuilder: (_, ch, frame, sync) => sync ? ch : AnimatedOpacity(opacity: frame == null ? 0 : 1, duration: const Duration(milliseconds: 220), child: ch),
+                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                  ),
+                ),
+              ]),
       ),
     );
   }

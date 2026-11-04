@@ -72,7 +72,7 @@ class _OnlineDiscoverState extends State<_OnlineDiscover> {
         IBtn('scan', onTap: () => pushFull(context, const ScanPage())),
         IBtn('bell', dot: app.unread > 0, onTap: () => push(context, const AnnouncementsPage())),
         const SizedBox(width: 4),
-        Avatar(avatarText(app), onTap: () => app.update(() => app.tab = 4)),
+        Avatar(avatarText(app), url: avatarUrl(app), onTap: () => app.update(() => app.tab = 4)),
       ],
       children: [
         const Padding(padding: EdgeInsets.fromLTRB(Tk.pad, 2, Tk.pad, 12), child: SourceBar()),
