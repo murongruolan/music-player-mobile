@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
+import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -301,6 +302,8 @@ class _ProgressBarState extends State<ProgressBar> {
               final th = dragP != null ? widget.trackDrag : widget.track;
               return GestureDetector(
                 behavior: HitTestBehavior.opaque,
+                dragStartBehavior: DragStartBehavior.down,
+                onHorizontalDragCancel: () => setState(() => dragP = null),
                 onHorizontalDragStart: (d) => setState(() => dragP = (d.localPosition.dx / w).clamp(0, 1)),
                 onHorizontalDragUpdate: (d) => setState(() => dragP = (d.localPosition.dx / w).clamp(0, 1)),
                 onHorizontalDragEnd: (_) {
@@ -309,7 +312,7 @@ class _ProgressBarState extends State<ProgressBar> {
                 },
                 onTapUp: (d) => app.seek((d.localPosition.dx / w).clamp(0, 1) * dur),
                 child: SizedBox(
-                  height: 20,
+                  height: 40, // 触控区：轨道只有几像素，原来 20 高很难按住
                   child: Stack(alignment: Alignment.centerLeft, clipBehavior: Clip.none, children: [
                     AnimatedContainer(duration: Tk.base, curve: Tk.spring, height: th, decoration: BoxDecoration(color: widget.color.withValues(alpha: .18), borderRadius: BorderRadius.circular(th))),
                     AnimatedContainer(duration: Tk.base, curve: Tk.spring, height: th, width: w * math.min(1, p + .22), decoration: BoxDecoration(color: widget.color.withValues(alpha: .22), borderRadius: BorderRadius.circular(th))),

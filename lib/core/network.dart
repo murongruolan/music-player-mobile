@@ -22,3 +22,10 @@ Future<NetKind> currentNetwork() async {
     return NetKind.unknown;
   }
 }
+
+/// 网络类型变化记进应用日志（Wi-Fi ↔ 移动网络 ↔ 断网），排查播放 / 同步问题时用。
+void watchNetworkForLog(void Function(String) log) {
+  try {
+    Connectivity().onConnectivityChanged.listen((r) => log('网络变为 ${r.map((e) => e.name).join('+')}'), onError: (Object _) {});
+  } catch (_) {}
+}

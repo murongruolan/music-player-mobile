@@ -80,8 +80,15 @@ class AudioEngine {
       _player.durationStream.listen((d) {
         if (d != null) onDuration?.call(d.inMicroseconds / 1e6);
       }),
-      _player.playingStream.listen((p) => onPlaying?.call(p)),
+      // 切歌时 stop() 会先发一次 playing=false：那不是用户暂停，不转给 AppState，
+      // 否则 AppState 以为暂停了，加载完又把刚开始播的歌暂停掉（「下一曲不自动播放 / 播几秒自己停」）
+      _player.playingStream.listen((p) {
+        if (!_loaded) return;
+        onPlaying?.call(p);
+      }),
       _player.processingStateStream.listen((s) {
+        if (s != _lastState) AppLog.instance.add('播放', '状态 ${_lastState?.name ?? '-'} → ${s.name}${_loaded ? '' : '（加载中）'}');
+        _lastState = s;
         if (s == ProcessingState.completed) _completed();
       }),
       // 播放中途出错（链接过期、403、断流）：从当前位置重新取一次地址续播，还不行再报错
@@ -198,6 +205,8 @@ class AudioEngine {
     }
   }
 
+  ProcessingState? _lastState;
+
   /// 本首歌是否已经因为「被打断」重试过一次。
   bool _interruptRetried = false;
 
@@ -243,6 +252,12 @@ class AudioEngine {
 
   /// 播放结束：没播到歌曲时长的 85% 就结束了，判定为试听，换音源从结束处续播。
   void _completed() {
+    // 没加载成功（加载失败 / 切歌中）时的 completed 不是「播完了」：不切下一首。
+    // 原来会转给 AppState 切下一首，下一首加载又把上一首打断，失败就一路跑完整张列表。
+    if (!_loaded) {
+      AppLog.instance.add('播放', '忽略未加载状态下的 completed');
+      return;
+    }
     final s = _current;
     final p = _player.position;
     if (s != null && _loaded && !_tried.contains(ResolveReason.trial) && s.dur >= 30 && p.inMilliseconds < s.dur * 1000 * trialRatio) {
@@ -276,17 +291,26 @@ class AudioEngine {
   /// 暂停 / 恢复的音量淡入淡出开关（400ms）。
   void setFade(bool on) => _fade = on;
 
-  Future<void> _rampVolume(double from, double to) async {
+  /// 每次淡入 / 淡出 +1：新的一次开始后，旧的那次立刻停下（快速连点暂停 / 播放时不会互相打架，音量不会停在半路）。
+  int _rampGen = 0;
+
+  /// 返回 false 表示被新的淡入 / 淡出打断了。
+  Future<bool> _rampVolume(double from, double to) async {
+    final gen = ++_rampGen;
     const steps = 6, stepMs = Duration(milliseconds: 66);
     for (var i = 1; i <= steps; i++) {
+      if (gen != _rampGen) return false;
       await _player.setVolume(from + (to - from) * i / steps);
       await Future<void>.delayed(stepMs);
     }
+    return gen == _rampGen;
   }
 
   Future<void> pause() async {
+    _wantPlaying = false;
     if (_fade) {
       await _rampVolume(_vol, 0);
+      if (_wantPlaying) return; // 淡出途中用户又点了播放：不暂停（被拖音量 / 睡眠淡出打断时照样暂停）
       await _player.pause();
       await _player.setVolume(_vol); // 恢复音量，下次播放正常响度
     } else {
@@ -294,13 +318,21 @@ class AudioEngine {
     }
   }
 
+  /// 最近一次是要播放还是暂停（淡出途中按了播放，淡出结束后就不再暂停）。
+  bool _wantPlaying = true;
+
   Future<void> resume() async {
+    _wantPlaying = true;
+    // just_audio 的 play() 要到播放结束 / 被暂停才返回：不能 await，
+    // 否则淡入永远不执行，音量停在 0（「手动开始后没声音，拖一下音量条才有」）
     if (_fade) {
-      await _player.setVolume(0);
-      await _player.play();
-      await _rampVolume(0, _vol);
+      final from = _player.playing ? _player.volume : 0.0; // 淡出途中继续：从当前音量接着淡入
+      await _player.setVolume(from);
+      unawaited(_player.play());
+      if (!await _rampVolume(from, _vol)) return;
+      await _player.setVolume(_vol);
     } else {
-      await _player.play();
+      unawaited(_player.play());
     }
   }
   Future<void> seek(double seconds) => _player.seek(Duration(milliseconds: (seconds * 1000).round()));
@@ -313,6 +345,7 @@ class AudioEngine {
   /// 引擎侧音量（0..1）：用户音量条（AppState.vol）和睡眠定时淡出都经这里。
   Future<void> setVolume(double v) {
     _vol = v.clamp(0.0, 1.0);
+    _rampGen++; // 用户拖音量条 / 睡眠淡出：以它为准，停掉正在进行的淡入淡出
     return _player.setVolume(_vol);
   }
 

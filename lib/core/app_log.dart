@@ -22,7 +22,7 @@ class AppLog {
   AppLog._();
   static final instance = AppLog._();
 
-  static const _max = 400, _maxCrash = 20, _kCrash = 'diag.crashes.v1';
+  static const _max = 1500, _maxCrash = 20, _kCrash = 'diag.crashes.v1';
   final _lines = ListQueue<String>();
   final _crashes = <CrashRecord>[];
   KvStore? _prefs;

@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
+import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../core/state.dart';
@@ -63,7 +64,8 @@ class _PressState extends State<Press> {
 }
 
 void haptic(BuildContext c) {
-  if (c.appRead.set.haptics) HapticFeedback.selectionClick();
+  // selectionClick 在很多安卓机上对应 CLOCK_TICK，几乎感觉不到或被系统忽略；lightImpact 对应 VIRTUAL_KEY，和按键反馈一致
+  if (c.appRead.set.haptics) HapticFeedback.lightImpact();
 }
 
 // ============ 按钮 ============
@@ -434,12 +436,18 @@ class _LSliderState extends State<LSlider> {
       final w = cs.maxWidth;
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onHorizontalDragStart: (d) => setState(() => drag = true),
+        // 按下就跟手（不等滑动距离超过阈值），触控区 44 高
+        dragStartBehavior: DragStartBehavior.down,
+        onHorizontalDragStart: (d) {
+          setState(() => drag = true);
+          _set(d.localPosition.dx, w);
+        },
         onHorizontalDragUpdate: (d) => _set(d.localPosition.dx, w),
         onHorizontalDragEnd: (_) => setState(() => drag = false),
+        onHorizontalDragCancel: () => setState(() => drag = false),
         onTapDown: (d) => _set(d.localPosition.dx, w),
         child: SizedBox(
-          height: 32,
+          height: 44,
           child: Stack(alignment: Alignment.centerLeft, clipBehavior: Clip.none, children: [
             Container(height: 4, decoration: BoxDecoration(color: pal.s3, borderRadius: BorderRadius.circular(2))),
             Container(width: w * p, height: 4, decoration: BoxDecoration(color: widget.color ?? pal.acc, borderRadius: BorderRadius.circular(2))),
@@ -714,6 +722,8 @@ class _MarqueeState extends State<Marquee> with SingleTickerProviderStateMixin {
       if (!_overflow) return Text(widget.text, maxLines: 1, style: widget.style);
       final gap = 40.0, span = tp.width + gap;
       return ShaderMask(
+        // 必须 dstIn（只取渐变的透明度）：默认的 modulate 会把文字颜色乘成黑色——长歌名滚动时变黑就是这个
+        blendMode: BlendMode.dstIn,
         shaderCallback: (r) => const LinearGradient(colors: [Colors.transparent, Colors.black, Colors.black, Colors.transparent], stops: [0, .06, .92, 1]).createShader(r),
         child: ClipRect(
           child: SizedBox(
