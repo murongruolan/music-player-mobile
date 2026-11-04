@@ -4,7 +4,9 @@
 // 网络注意：部分出口会把 /weapi、/eapi 整条路径拦掉（返回 200 空体，桌面端 2026-11-01 实测），
 // 明文 /api 不受影响。所以扫码的两个接口先走 weapi，返回空体 / 非 JSON 时退回明文 /api；
 // 账号信息只走明文 /api。
+import 'dart:convert';
 import 'dart:math';
+import 'package:crypto/crypto.dart' show md5;
 import '../../net/json.dart';
 import '../credentials.dart';
 import '../http.dart';
@@ -130,13 +132,26 @@ class NeteaseLogin {
     );
   }
 
-  /// 游客 Cookie：52 位大写十六进制用户名 → /register/anonimous → 返回带 MUSIC_A 的 Cookie。
+  /// 游客 Cookie：随机设备 id（52 位大写十六进制）→ 用户名 = base64("设备id 编码id") → /register/anonimous。
+  /// 编码 id = base64(md5(设备id 按 `3go8&$8*3*3h0k(2)2` 异或))，和开源客户端（NeteaseCloudMusicApi）一致；
+  /// 直接把设备 id 当用户名会被拒（实测 code=400）。MUSIC_A 可能在响应体的 cookie 字段，也可能只在 Set-Cookie 头里。
   Future<String> anonymousCookie() async {
-    final username = List.generate(52, (_) => _random.nextInt(16).toRadixString(16).toUpperCase()).join();
-    final j = await _post('/register/anonimous', {'username': username, 'csrf_token': ''});
-    final cookie = sanitizeNeteaseCookie(j.str('cookie'));
+    final deviceId = List.generate(52, (_) => _random.nextInt(16).toRadixString(16).toUpperCase()).join();
+    final username = anonymousUsername(deviceId);
+    final res = await http.send(Plat.wy, 'POST', Uri.parse('$_host/weapi/register/anonimous'),
+        headers: {..._headers, 'Content-Type': 'application/x-www-form-urlencoded'}, body: weapi({'username': username}));
+    final j = asJson(PlatformHttp.decodeJson(Plat.wy, utf8.decode(res.bodyBytes, allowMalformed: true)));
+    // http 包把多个 Set-Cookie 用逗号拼在一起，清洗时会处理段首逗号
+    final cookie = sanitizeNeteaseCookie([j.str('cookie'), res.headers['set-cookie'] ?? ''].where((x) => x.isNotEmpty).join('; ').replaceAll(RegExp(r',(?=\s*[A-Za-z_][A-Za-z0-9_]*=)'), ';'));
     if (_cookieValue(cookie, 'MUSIC_A') == null) throw PlatformException(Plat.wy, 'registerAnonymousCookie failed: code=${j['code']}');
     return cookie;
+  }
+
+  static String anonymousUsername(String deviceId) {
+    const k = '3go8&\$8*3*3h0k(2)2';
+    final xored = String.fromCharCodes([for (var i = 0; i < deviceId.length; i++) deviceId.codeUnitAt(i) ^ k.codeUnitAt(i % k.length)]);
+    final encoded = base64Encode(md5.convert(utf8.encode(xored)).bytes);
+    return base64Encode(utf8.encode('$deviceId $encoded'));
   }
 
   static String? _cookieValue(String cookie, String name) {
