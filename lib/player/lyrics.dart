@@ -55,10 +55,17 @@ class _LyricViewState extends State<LyricView> with TickerProviderStateMixin {
   void _onPos() {
     if (!mounted || _h == 0 || tops.isEmpty) return;
     final nk = _app!.lyricIndex;
-    if (nk != k) setState(() => _retarget(nk, _h));
+    // nk 越界说明歌词刚被换过而布局还没跟上（等 build 里的版本比对重测），先跳过
+    if (nk != k && nk >= 0 && nk < tops.length) setState(() => _retarget(nk, _h));
   }
   int k = -1;
+  int _lyricsVersion = -1; // 上次布局对应的歌词版本（AppState.lyricsVersion）
   List<double> from = [], to = [];
+
+  /// 测试观测口：布局缓存覆盖的歌词行数（正常应恒等于 lyrics.length；
+  /// 若小于它说明布局缓存没跟上换歌，正是 RangeError 崩溃的来源）。
+  @visibleForTesting
+  int get layoutLines => tops.length;
   double manual = 0;
   bool manualMode = false;
   Timer? back;
@@ -75,7 +82,7 @@ class _LyricViewState extends State<LyricView> with TickerProviderStateMixin {
   }
 
   double _visual(int i) {
-    if (to.isEmpty || i >= to.length) return 0;
+    if (to.isEmpty || i >= to.length || i >= from.length) return 0;
     final total = c.duration!.inMilliseconds.toDouble();
     final d = math.max(0, i - k).clamp(0, 9) * 46.0;
     final t = c.isAnimating || c.value > 0 ? ((c.value * total - d) / 720).clamp(0.0, 1.0) : 1.0;
@@ -101,6 +108,8 @@ class _LyricViewState extends State<LyricView> with TickerProviderStateMixin {
   }
 
   void _retarget(int nk, double viewH) {
+    // 布局数组还没跟上新歌词（换歌窗口期）：跳过，等 build 的版本比对重测
+    if (nk < 0 || nk >= tops.length) return;
     final anchorY = viewH * widget.anchor;
     final off = anchorY - (tops[nk] + hs[nk] / 2);
     final n = lyrics.length;
@@ -120,8 +129,12 @@ class _LyricViewState extends State<LyricView> with TickerProviderStateMixin {
     final tr = ts(s.ltfs, w: FontWeight.w500, h: 1.3);
     return LayoutBuilder(builder: (context, cs) {
       final w = cs.maxWidth - widget.padding.horizontal;
-      if (w != lastW || tops.isEmpty) {
+      // 歌词内容变化（换歌）或宽度变化时重测布局；否则 tops/hs 还是旧歌的，
+      // 新歌词行数更多时按旧长度索引会直接 RangeError
+      final lv = app.lyricsVersion;
+      if (w != lastW || tops.isEmpty || lv != _lyricsVersion) {
         _layout(w, main, tr, s.trans, s.lgap);
+        _lyricsVersion = lv;
         lastW = w;
         to = [];
         k = -1;
@@ -130,7 +143,7 @@ class _LyricViewState extends State<LyricView> with TickerProviderStateMixin {
       return Builder(
         builder: (_) {
           final nk = app.lyricIndex;
-          if (nk != k) _retarget(nk, cs.maxHeight);
+          if (nk != k && nk >= 0 && nk < tops.length) _retarget(nk, cs.maxHeight);
           return GestureDetector(
             behavior: HitTestBehavior.opaque,
             onVerticalDragStart: (_) {
@@ -148,7 +161,7 @@ class _LyricViewState extends State<LyricView> with TickerProviderStateMixin {
               child: AnimatedBuilder(
                 animation: Listenable.merge([c, waveC]),
                 builder: (_, __) => Stack(clipBehavior: Clip.hardEdge, children: [
-                  for (var i = 0; i < lyrics.length; i++)
+                  for (var i = 0; i < lyrics.length && i < tops.length; i++)
                     if (_visible(i, cs.maxHeight)) _line(context, i, nk, main, tr, pal),
                   if (manualMode)
                     Positioned(
@@ -266,6 +279,7 @@ class Lyric3 extends StatelessWidget {
     return ValueListenableBuilder<double>(
       valueListenable: app.pos,
       builder: (_, __, ___) {
+        if (lyrics.isEmpty) return const SizedBox.shrink(); // 换歌窗口期 / 空歌词
         final k = app.lyricIndex, p = app.lineProgress;
         final f = fill ?? Colors.white;
         return Column(mainAxisSize: MainAxisSize.min, children: [

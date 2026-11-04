@@ -568,6 +568,7 @@ class _StageSkinState extends State<StageSkin> {
                 valueListenable: app.pos,
                 builder: (_, __, ___) {
                   final k = app.lyricIndex;
+                  if (lyrics.isEmpty || k >= lyrics.length) return const SizedBox.shrink(); // 换歌窗口期
                   return Column(mainAxisSize: MainAxisSize.min, children: [
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -615,9 +616,10 @@ class PosterSkin extends StatelessWidget {
         const Spacer(),
         ValueListenableBuilder<double>(
           valueListenable: app.pos,
-          builder: (_, __, ___) {
-            final k = app.lyricIndex;
-            return Padding(
+            builder: (_, __, ___) {
+              final k = app.lyricIndex;
+              if (lyrics.isEmpty || k >= lyrics.length) return const SizedBox.shrink(); // 换歌窗口期
+              return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 26),
               child: SizedBox(
                 width: double.infinity,

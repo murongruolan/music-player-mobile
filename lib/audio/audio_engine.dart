@@ -112,6 +112,9 @@ class AudioEngine {
       if (autoplay) unawaited(_player.play());
       _syncNotification(playing: autoplay);
     } catch (e) {
+      // 快速切歌时旧加载被新请求打断（「Loading interrupted」）是正常竞态：
+      // 已经有更新代际的加载介入时，旧结果静默丢弃，不弹错误也不踩新歌的状态。
+      if (seq != _seq) return;
       _loaded = false;
       onError?.call('播放失败：${_short(e)}');
     }
