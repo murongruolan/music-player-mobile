@@ -307,8 +307,10 @@ class AudioEngine {
   }
 
   Future<void> pause() async {
+    _wantPlaying = false;
     if (_fade) {
-      if (!await _rampVolume(_vol, 0)) return; // 淡出途中用户又点了播放：不暂停
+      await _rampVolume(_vol, 0);
+      if (_wantPlaying) return; // 淡出途中用户又点了播放：不暂停（被拖音量 / 睡眠淡出打断时照样暂停）
       await _player.pause();
       await _player.setVolume(_vol); // 恢复音量，下次播放正常响度
     } else {
@@ -316,7 +318,11 @@ class AudioEngine {
     }
   }
 
+  /// 最近一次是要播放还是暂停（淡出途中按了播放，淡出结束后就不再暂停）。
+  bool _wantPlaying = true;
+
   Future<void> resume() async {
+    _wantPlaying = true;
     // just_audio 的 play() 要到播放结束 / 被暂停才返回：不能 await，
     // 否则淡入永远不执行，音量停在 0（「手动开始后没声音，拖一下音量条才有」）
     if (_fade) {
