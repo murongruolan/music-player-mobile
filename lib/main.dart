@@ -15,6 +15,7 @@ import 'core/state.dart';
 import 'core/tokens.dart';
 import 'net/api_config.dart';
 import 'net/net.dart';
+import 'player/player.dart';
 import 'shell/shell.dart';
 import 'source/music_resolver.dart';
 import 'ui/cover_tint.dart';
@@ -51,7 +52,7 @@ Future<void> main() async {
     engine = AudioEngine(resolver: resolver);
     await engine.init(handler);
   }
-  final app = AppState(net: net, engine: engine)
+  final app = AppState(net: net, engine: engine, resolver: resolver)
     ..notice = (msg, icon) {
       AppLog.instance.add('提示', msg); // 提示气泡（含播放失败原因）都记进应用日志
       toast(msg, icon);
@@ -67,7 +68,10 @@ Future<void> main() async {
   await app.taste.load(); // 关注的歌手、不感兴趣的歌
   await app.platCreds.load(); // 平台登录凭证（钥匙串）
   await app.telemetry.init(); // 读上次没发完的埋点
+  await app.downloads.init(); // 下载清单 + 目录
+  unawaited(app.applyCacheToEngine()); // 边听边缓存开关联动引擎
   app.restoreSession();
+  if (app.authed) unawaited(app.autoplayLast()); // 「启动时自动播放」：音乐库和音源脚本已在 cloud.init 里读好
   app.telemetry.track('app_launch', {'source': 'normal', 'loggedIn': app.authed});
   unawaited(app.checkUpdate());
   if (shot != null) applyShotState(app, shot);
@@ -160,7 +164,12 @@ class _RootState extends State<Root> {
     super.initState();
     if (widget.shot != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) => Future.delayed(const Duration(milliseconds: 400), () => applyShotUi(context, widget.shot!)));
+      return;
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final app = context.app;
+      if (app.set.autoOpen && app.hasSong) openPlayer(context); // 「启动时打开播放页」
+    });
   }
 
   @override

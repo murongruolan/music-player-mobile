@@ -5,6 +5,8 @@
 // - 引擎模式下 AppState 的 pos / playing / 时长全部由本引擎的回调驱动；
 // - 队列逻辑（下一首是谁）仍归 AppState，引擎只负责「把给定的曲目播出来」。
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
@@ -34,6 +36,9 @@ class AudioEngine {
   Song? _current;
   bool _loaded = false;
   int _seq = 0;
+  bool _cacheOn = false; // 边听边缓存：LockCachingAudioSource 边播边落盘
+  String? _cacheDir;
+  bool _fade = false; // 暂停 / 恢复的音量淡入淡出
   bool _eqOn = false;
   List<double> _eqCurve = List.filled(10, 0);
 
@@ -133,7 +138,17 @@ class AudioEngine {
     _current = song;
     try {
       _loaded = false;
-      final d = await _player.setAudioSource(AudioSource.uri(uri), initialPosition: at);
+      final AudioSource source;
+      final cacheKey = song.key ?? uri.toString();
+      if (_cacheOn && reason == ResolveReason.play && _cacheDir != null && _cacheDir!.isNotEmpty && !uri.isScheme('file')) {
+        // 边听边缓存：just_audio 的锁定缓存源。文件按歌曲 key 命名（播放地址带时效签名，按地址命名几乎不会命中）；
+        // 重新取链 / 试听换源时不走缓存，避免把试听片段或坏链接缓存下来。
+        final key = base64Url.encode(utf8.encode(cacheKey)).replaceAll('=', '');
+        source = LockCachingAudioSource(uri, cacheFile: File('$_cacheDir/$key.audio'));
+      } else {
+        source = AudioSource.uri(uri);
+      }
+      final d = await _player.setAudioSource(source, initialPosition: at);
       if (seq != _seq) return;
       if (_shortOf(song, d) && !_tried.contains(ResolveReason.trial)) {
         // 时长明显不对：多半是试听片段，换音源
@@ -212,8 +227,43 @@ class AudioEngine {
     onError?.call('播放中断：${describePlayError(e)}');
   }
 
-  Future<void> pause() => _player.pause();
-  Future<void> resume() => _player.play();
+
+  /// 边听边缓存：开关 + 缓存目录（path_provider 临时目录）。
+  Future<void> setCache({required bool enabled, String? dir}) async {
+    _cacheOn = enabled;
+    _cacheDir = dir;
+  }
+
+  /// 暂停 / 恢复的音量淡入淡出开关（400ms）。
+  void setFade(bool on) => _fade = on;
+
+  Future<void> _rampVolume(double from, double to) async {
+    const steps = 6, stepMs = Duration(milliseconds: 66);
+    for (var i = 1; i <= steps; i++) {
+      await _player.setVolume(from + (to - from) * i / steps);
+      await Future<void>.delayed(stepMs);
+    }
+  }
+
+  Future<void> pause() async {
+    if (_fade) {
+      await _rampVolume(_vol, 0);
+      await _player.pause();
+      await _player.setVolume(_vol); // 恢复音量，下次播放正常响度
+    } else {
+      await _player.pause();
+    }
+  }
+
+  Future<void> resume() async {
+    if (_fade) {
+      await _player.setVolume(0);
+      await _player.play();
+      await _rampVolume(0, _vol);
+    } else {
+      await _player.play();
+    }
+  }
   Future<void> seek(double seconds) => _player.seek(Duration(milliseconds: (seconds * 1000).round()));
   Future<void> setSpeed(double v) => _player.setSpeed(v.clamp(0.5, 3.0));
 
@@ -221,15 +271,21 @@ class AudioEngine {
   /// 平台不支持时 just_audio 内部忽略，调用方无需区分。
   Future<void> setPitch(double v) => _player.setPitch(v.clamp(0.5, 2.0)).catchError((Object _) {}); // 部分平台不支持变调，静默忽略
 
-  /// 引擎侧音量（0..1），睡眠定时淡出用；用户音量条（AppState.vol）目前不经引擎。
-  Future<void> setVolume(double v) => _player.setVolume(v.clamp(0.0, 1.0));
+  /// 引擎侧音量（0..1）：用户音量条（AppState.vol）和睡眠定时淡出都经这里。
+  Future<void> setVolume(double v) {
+    _vol = v.clamp(0.0, 1.0);
+    return _player.setVolume(_vol);
+  }
+
+  /// 当前目标音量（用户音量条 / 睡眠淡出），淡入淡出以它为终点。
+  double _vol = 1;
   Future<void> setLoopOne(bool one) {
     _loopOne = one;
     return _player.setLoopMode(one ? LoopMode.one : LoopMode.off);
   }
 
   /// 通知栏按钮触发的播放/暂停（ AppState 已算好目标状态后调用）。
-  Future<void> setPlaying(bool play) => play ? _player.play() : _player.pause();
+  Future<void> setPlaying(bool play) => play ? resume() : pause();
 
   /// 卸载当前音源（退出登录 / 清空队列等场景）。
   Future<void> unload() async {
