@@ -210,7 +210,9 @@ class NeteaseLogin {
     final deviceId = List.generate(52, (_) => _random.nextInt(16).toRadixString(16).toUpperCase()).join();
     final username = anonymousUsername(deviceId);
     final res = await http.send(Plat.wy, 'POST', Uri.parse('$_host/weapi/register/anonimous'),
-        headers: {..._headers, 'Content-Type': 'application/x-www-form-urlencoded'}, body: weapi({'username': username}));
+        // 设备 id 要和用户名里编码的那个一致，放进 Cookie（开源客户端同样带 os=iOS + deviceId），否则常被拒（code=400）
+        headers: {..._headers, 'Content-Type': 'application/x-www-form-urlencoded', 'Cookie': 'os=iOS; deviceId=$deviceId; appver=8.20.20; channel=distribution'},
+        body: weapi({'username': username}));
     final j = asJson(PlatformHttp.decodeJson(Plat.wy, utf8.decode(res.bodyBytes, allowMalformed: true)));
     // http 包把多个 Set-Cookie 用逗号拼在一起，清洗时会处理段首逗号
     final cookie = sanitizeNeteaseCookie([j.str('cookie'), res.headers['set-cookie'] ?? ''].where((x) => x.isNotEmpty).join('; ').replaceAll(RegExp(r',(?=\s*[A-Za-z_][A-Za-z0-9_]*=)'), ';'));
