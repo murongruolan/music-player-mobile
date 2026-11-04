@@ -187,6 +187,7 @@ class AppState extends ChangeNotifier {
       if (playing != p) update(() => playing = p); // 通知栏 / 线控改的状态同步回 UI
     };
     e.onCompleted = _onEngineCompleted; // 单曲循环由引擎 LoopMode.one 自循环，不会走到这
+    e.onNotice = (msg) => notice?.call(msg, 'refresh'); // 自动换源 / 重新取链的提示
     e.onError = (msg) {
       // 解析 / 加载失败：界面回到暂停态并提示原因
       if (playing) update(() => playing = false);

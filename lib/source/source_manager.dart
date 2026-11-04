@@ -6,6 +6,7 @@ import '../net/json.dart';
 import '../platform/models.dart';
 import '../platform/registry.dart';
 import '../sync/cloud_models.dart';
+import 'failure.dart';
 import 'lx_runtime.dart';
 import 'lx_track.dart';
 
@@ -17,6 +18,9 @@ class ResolveException implements Exception {
   @override
   String toString() => message;
 }
+
+/// 播放地址探测发现的问题。
+enum UrlIssue { trial, forbidden, notFound }
 
 /// 一次成功的解析。
 class ResolvedUrl {
@@ -40,9 +44,12 @@ class SourceManager {
   /// 初始化失败的原因。
   final initErrors = <String, String>{};
 
-  /// 播放地址缓存：`音源:曲目:音质` → (地址, 时间)。平台直链一般几十分钟内有效。
+  /// 播放地址缓存：`音源:曲目:音质` → (地址, 时间)。各平台直链的有效期普遍在 15 分钟以上，按 15 分钟算。
   final _urlCache = <String, (String, DateTime)>{};
-  static const urlTtl = Duration(minutes: 20);
+  static const urlTtl = Duration(minutes: 15);
+
+  /// 试听判定：文件大小低于「时长 × 128kbps」的这个比例，就认为是试听片段（酷我常见 11 秒试听）。
+  static const trialRatio = .75;
 
   /// 能力 / 初始化状态变化（界面刷新用）。
   void Function()? onChanged;
@@ -98,13 +105,22 @@ class SourceManager {
 
   /// 按优先顺序尝试音源，解析 [track]（桌面端 Track 结构）的播放地址。
   /// [sources] 已按优先级排好（当前选中的在前）。全部失败抛 [ResolveException]（带最后一个错误）。
-  Future<ResolvedUrl> resolveUrl(Json track, String preferred, List<CloudSource> sources, {bool forceRefresh = false}) async {
+  ///
+  /// [probe]：拿到地址后先发一个 `Range: bytes=0-1` 请求看文件多大、能不能访问：
+  /// 试听片段 / 404 换下一个音源，403 重新取一次地址仍不行再换。探测本身失败（超时、不支持 Range）不拦截。
+  /// [avoid]：这次跳过的音源 id（上一个地址被判定为试听片段时）。
+  Future<ResolvedUrl> resolveUrl(Json track, String preferred, List<CloudSource> sources, {bool forceRefresh = false, bool probe = false, Set<String> avoid = const {}}) async {
     final platform = '${track['platform']}';
     if (platform == 'local' || platform.isEmpty) throw const ResolveException('本地歌曲不需要在线解析');
     if (sources.isEmpty) throw const ResolveException('还没有导入音源脚本');
     final errors = <String>[];
     final trackQualities = [for (final q in (track['qualities'] as List? ?? const [])) '$q'];
+    final duration = track['duration'] is num ? (track['duration'] as num).toInt() : 0;
     for (final s in sources) {
+      if (avoid.contains(s.id)) {
+        errors.add('${s.name}：只拿到试听片段');
+        continue;
+      }
       LxRuntime rt;
       try {
         rt = await runtime(s);
@@ -126,15 +142,58 @@ class SourceManager {
       final hit = _urlCache[key];
       if (!forceRefresh && hit != null && DateTime.now().difference(hit.$2) < urlTtl) return ResolvedUrl(hit.$1, q, s.id, s.name, platform, fromCache: true);
       try {
-        final url = await rt.request('musicUrl', platform, toLegacyTrack(track, q), quality: q) as String;
+        Future<String> fetch() async => await rt.request('musicUrl', platform, toLegacyTrack(track, q), quality: q) as String;
+        var url = await fetch();
+        if (probe) {
+          var issue = await checkUrl(url, duration);
+          if (issue == UrlIssue.forbidden) {
+            // 403：多半是签名 / 时效问题，重新取一次
+            url = await fetch();
+            issue = await checkUrl(url, duration);
+          }
+          if (issue != null) {
+            errors.add('${s.name}：${const {UrlIssue.trial: '只拿到试听片段', UrlIssue.forbidden: '播放地址被拒绝（403）', UrlIssue.notFound: '播放地址不存在（404）'}[issue]}');
+            continue;
+          }
+        }
         _urlCache[key] = (url, DateTime.now());
         return ResolvedUrl(url, q, s.id, s.name, platform);
       } catch (e) {
         errors.add('${s.name}：$e');
       }
     }
-    throw ResolveException(errors.isEmpty ? '当前音源不支持这首歌曲或所选平台' : errors.last);
+    throw ResolveException(errors.isEmpty ? '当前音源不支持这首歌曲或所选平台' : summarizeFailures(errors));
   }
+
+  /// 探测播放地址：只取前 2 个字节，从 Content-Range / Content-Length 读出文件大小。
+  /// 返回 null 表示没发现问题（包括探测失败、服务器不给大小的情况）。
+  Future<UrlIssue?> checkUrl(String url, int durationSec) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null || !uri.hasScheme) return null;
+    http.StreamedResponse res;
+    try {
+      final req = http.Request('GET', uri)
+        ..followRedirects = true
+        ..headers['Range'] = 'bytes=0-1'
+        ..headers['User-Agent'] = _probeUa;
+      res = await _client.send(req).timeout(const Duration(seconds: 4));
+    } catch (_) {
+      return null;
+    }
+    // 不读正文：服务器忽略 Range 返回整个文件时，取消订阅即断开
+    unawaited(res.stream.listen(null, onError: (_) {}, cancelOnError: true).cancel());
+    if (res.statusCode == 401 || res.statusCode == 403) return UrlIssue.forbidden;
+    if (res.statusCode == 404 || res.statusCode == 410) return UrlIssue.notFound;
+    if (res.statusCode >= 300) return null;
+    int? total;
+    final range = res.headers['content-range'];
+    if (range != null) total = int.tryParse(range.split('/').last.trim());
+    if (total == null && res.statusCode == 200) total = int.tryParse(res.headers['content-length'] ?? '');
+    if (total == null || total <= 0 || durationSec < 30) return null;
+    return total < durationSec * 16000 * trialRatio ? UrlIssue.trial : null;
+  }
+
+  static const _probeUa = 'Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36';
 
   /// 去掉某首歌的缓存链接（播放器报错、链接过期时）。
   void forget(String trackId) => _urlCache.removeWhere((k, _) => k.contains(':$trackId:'));
