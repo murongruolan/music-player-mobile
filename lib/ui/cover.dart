@@ -70,7 +70,6 @@ class Cover extends StatelessWidget {
   Widget? _image(BuildContext context) {
     final u = coverUrl(url);
     if (u == null) return child;
-    print('[coverimg] enter url=$u');
     // UA 拦截见文件头说明；cacheWidth 拿不到（撑满容器的 Cover）时不缩放解码。
     final cacheW = _cacheW(context);
     final img = Image(
@@ -144,18 +143,10 @@ class UaImage extends ImageProvider<UaImage> {
   }
 
   Future<ui.Codec> _load(UaImage key, ImageDecoderCallback decode) async {
-    try {
-      final r = await http.get(Uri.parse(key.url), headers: const {'User-Agent': Cover.ua}).timeout(const Duration(seconds: 12));
-      if (r.statusCode != 200 || r.bodyBytes.isEmpty) {
-        print('[cover] HTTP ${r.statusCode} len=${r.bodyBytes.length} ua=${Cover.ua.length}ch $key');
-        throw StateError('封面 HTTP ${r.statusCode}');
-      }
-      final buffer = await ui.ImmutableBuffer.fromUint8List(r.bodyBytes);
-      return decode(buffer);
-    } catch (e) {
-      print('[cover] load failed: $e $key');
-      rethrow;
-    }
+    final r = await http.get(Uri.parse(key.url), headers: const {'User-Agent': Cover.ua}).timeout(const Duration(seconds: 12));
+    if (r.statusCode != 200 || r.bodyBytes.isEmpty) throw StateError('封面 HTTP ${r.statusCode}');
+    final buffer = await ui.ImmutableBuffer.fromUint8List(r.bodyBytes);
+    return decode(buffer);
   }
 
   @override

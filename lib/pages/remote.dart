@@ -518,14 +518,7 @@ class _LeaderboardsPageState extends State<LeaderboardsPage> {
       if (error != null) EmptyState('info', '排行榜没有加载出来', desc: error, action: Btn.sec('重试', icon: 'refresh', small: true, onTap: _load)),
       if (l != null && l.isEmpty) EmptyState('chart', '${plat.name}没有返回排行榜'),
       if (l != null)
-        for (final x in l)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Builder(builder: (_) {
-              print('[boards] ${x.title} cover=${x.cover}');
-              return BoardBigCard(x, key: ValueKey(x.id));
-            }),
-          ),
+        for (final x in l) Padding(padding: const EdgeInsets.only(bottom: 12), child: BoardBigCard(x, key: ValueKey(x.id))),
     ]);
   }
 }
