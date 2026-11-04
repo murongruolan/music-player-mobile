@@ -1,6 +1,5 @@
 // 二级页：歌单详情（模糊背景视差 + 多选）、歌手、听歌统计。
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import '../core/state.dart';
 import '../core/tokens.dart';
@@ -71,12 +70,8 @@ class _PlaylistPageState extends State<PlaylistPage> {
         child: ShaderMask(
           shaderCallback: (r) => const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.black, Colors.transparent]).createShader(r),
           blendMode: BlendMode.dstIn,
-          child: ClipRect(
-            child: ImageFiltered(
-              imageFilter: ui.ImageFilter.blur(sigmaX: 40, sigmaY: 40, tileMode: TileMode.decal),
-              child: Opacity(opacity: pal.dark ? .65 : .45, child: Transform.scale(scale: 1.3 + math.max(0, -y) / 400, child: Cover.pl(pl, size: 0, radius: 0))),
-            ),
-          ),
+          // 极小图放大代替 sigma 40 的实时高斯模糊（滚动时每帧重算，老机型掉帧）
+          child: ClipRect(child: Opacity(opacity: pal.dark ? .65 : .45, child: Transform.scale(scale: 1.3 + math.max(0, -y) / 400, child: BlurCover(hue: pl.hue, variant: pl.variant, url: pl.cover)))),
         ),
       ),
       floating: multi ? _multiBar(context, ids) : null,

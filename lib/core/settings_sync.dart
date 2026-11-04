@@ -44,6 +44,7 @@ final Map<String, _F<bool>> _bools = {
   'navAutoMin': ((s) => s.navAutoMin, (s, v) => s.navAutoMin = v),
   'clipDetect': ((s) => s.clipDetect, (s, v) => s.clipDetect = v),
   'reduceMotion': ((s) => s.reduceMotion, (s, v) => s.reduceMotion = v),
+  'reduceBlur': ((s) => s.reduceBlur, (s, v) => s.reduceBlur = v),
   'standbyAuto': ((s) => s.standbyAuto, (s, v) => s.standbyAuto = v),
   'autoDowngrade': ((s) => s.autoDowngrade, (s, v) => s.autoDowngrade = v),
   'mobileLow': ((s) => s.mobileLow, (s, v) => s.mobileLow = v),

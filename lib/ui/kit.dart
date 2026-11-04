@@ -618,6 +618,11 @@ class Avatar extends StatelessWidget {
 }
 
 // ============ 玻璃 ============
+/// 背景模糊开关：「减少模糊效果」开启时不做 BackdropFilter（每帧对背后内容做高斯模糊，是老机型掉帧大户），
+/// 调用方需在 [child] 里用 [opaque] 换成不透明底色。
+bool reduceBlur(BuildContext context) => context.appRead.set.reduceBlur;
+Widget backdrop(BuildContext context, ui.ImageFilter filter, Widget child) => reduceBlur(context) ? child : BackdropFilter(filter: filter, child: child);
+
 class Glass extends StatelessWidget {
   final Widget child;
   final double radius, blur;
@@ -632,10 +637,11 @@ class Glass extends StatelessWidget {
       decoration: BoxDecoration(borderRadius: BorderRadius.circular(radius), boxShadow: shadow),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(radius),
-        child: BackdropFilter(
-          filter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-          child: Container(
-            decoration: BoxDecoration(color: color ?? pal.glass, borderRadius: BorderRadius.circular(radius), border: border ?? Border.all(color: pal.line)),
+        child: backdrop(
+          context,
+          ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+          Container(
+            decoration: BoxDecoration(color: reduceBlur(context) ? pal.bgElev : color ?? pal.glass, borderRadius: BorderRadius.circular(radius), border: border ?? Border.all(color: pal.line)),
             child: child,
           ),
         ),

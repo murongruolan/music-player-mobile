@@ -262,9 +262,10 @@ class _BottomNavState extends State<BottomNav> with TickerProviderStateMixin {
         );
       case 'frosted':
         return ClipRect(
-          child: BackdropFilter(
-            filter: ui.ImageFilter.blur(sigmaX: 13, sigmaY: 13),
-            child: Container(color: pal.glassStrong, child: Align(alignment: Alignment.topCenter, child: SizedBox(height: itemH, child: drag))),
+          child: backdrop(
+            context,
+            ui.ImageFilter.blur(sigmaX: 13, sigmaY: 13),
+            Container(color: reduceBlur(context) ? pal.bgElev : pal.glassStrong, child: Align(alignment: Alignment.topCenter, child: SizedBox(height: itemH, child: drag))),
           ),
         );
       case 'bubble':
@@ -279,11 +280,12 @@ class _BottomNavState extends State<BottomNav> with TickerProviderStateMixin {
           decoration: BoxDecoration(borderRadius: BorderRadius.circular(33), boxShadow: const [BoxShadow(color: Color(0x40000000), blurRadius: 30, offset: Offset(0, 12))]),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(33),
-            child: BackdropFilter(
-              filter: ui.ImageFilter.compose(outer: ui.ImageFilter.blur(sigmaX: 6, sigmaY: 6), inner: const ColorFilter.matrix(_saturate)),
-              child: CustomPaint(
+            child: backdrop(
+              context,
+              ui.ImageFilter.compose(outer: ui.ImageFilter.blur(sigmaX: 6, sigmaY: 6), inner: const ColorFilter.matrix(_saturate)),
+              CustomPaint(
                 foregroundPainter: _LiquidRim(spec, pal.dark),
-                child: Container(color: pal.dark ? const Color(0x8A14151E) : const Color(0xA6FFFFFF), child: drag),
+                child: Container(color: reduceBlur(context) ? pal.bgElev : pal.dark ? const Color(0x8A14151E) : const Color(0xA6FFFFFF), child: drag),
               ),
             ),
           ),

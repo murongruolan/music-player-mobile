@@ -27,6 +27,8 @@ class Settings {
   double dlConc = 3;
   bool dlCover = true, dlLyric = true, wifiOnly = true, cache = true, vinylSpin = true, haptics = true, pitch = true;
   bool finishSong = true, fadeStop = true, cloudSync = true, autoBackup = true, crash = true, navAutoMin = true, clipDetect = true;
+  /// 减少模糊效果：玻璃 / 毛玻璃导航栏等背景模糊（BackdropFilter）改成不透明底色，老机型上明显更流畅。
+  bool reduceBlur = false;
   bool reduceMotion = false, standbyAuto = true, autoDowngrade = true, mobileLow = true;
   String onlineQ = 'SQ', dlQ = 'Hi-Res', mode = '列表循环', fontSize = '标准';
 }

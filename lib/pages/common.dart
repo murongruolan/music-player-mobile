@@ -88,12 +88,13 @@ class _TabPageState extends State<TabPage> {
               child: Opacity(
                 opacity: k,
                 child: ClipRect(
-                  child: BackdropFilter(
-                    filter: ui.ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-                    child: Container(
+                  child: backdrop(
+                    context,
+                    ui.ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                    Container(
                       height: top + 44,
                       padding: EdgeInsets.only(top: top),
-                      color: pal.bg.withValues(alpha: .78),
+                      color: reduceBlur(context) ? pal.bg : pal.bg.withValues(alpha: .78),
                       alignment: Alignment.center,
                       child: Text(widget.title, style: ts(16, w: FontWeight.w700, c: pal.t1)),
                     ),
