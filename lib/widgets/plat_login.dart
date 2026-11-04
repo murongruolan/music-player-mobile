@@ -1,6 +1,7 @@
 // 平台账号登录（联网模式）：网易云扫码 / 导入 Cookie，QQ音乐导入 Cookie。
 // 凭证经 AppState.savePlatformLogin 存系统钥匙串，只留在本机。演示模式的假流程在 sheets.dart 里。
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' hide PlatformException;
 import 'package:qr/qr.dart';
@@ -9,6 +10,7 @@ import '../core/tokens.dart';
 import '../data/mock.dart' show platformBy;
 import '../data/models.dart' show Platform;
 import '../platform/credentials.dart';
+import '../platform/login/kugou_login.dart';
 import '../platform/login/netease_login.dart';
 import '../platform/models.dart' show PlatformException;
 import '../platform/registry.dart' show platformError;
@@ -24,14 +26,14 @@ void openRealPlatLogin(BuildContext context, String pid, {String mode = '扫码'
   if (!AppState.loginPlatforms.contains(pid)) {
     return openPendingFeature(context, '登录${p.name}', '${p.name}的手机验证码登录正在接入，完成后可以在这里登录。');
   }
-  final modes = pid == 'netease' ? const ['扫码', 'Cookie'] : const ['Cookie'];
+  final modes = switch (pid) { 'netease' => const ['扫码', 'Cookie'], 'kugou' => const ['验证码'], _ => const ['Cookie'] };
   var m = modes.contains(mode) ? mode : modes.first;
   showLSheet(context, title: '登录${p.name}', builder: (c) => StatefulBuilder(builder: (c, set) {
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: Tk.pad),
           child: Column(children: [
             if (modes.length > 1) ...[Seg(modes, m, (v) => set(() => m = v), margin: EdgeInsets.zero), const SizedBox(height: 18)],
-            if (m == '扫码') _NeteaseQrLogin(p) else _CookieLogin(p),
+            if (m == '验证码') _KugouPhoneLogin(p) else if (m == '扫码') _NeteaseQrLogin(p) else _CookieLogin(p),
           ]),
         );
       }));
@@ -273,3 +275,94 @@ class _CookieLoginState extends State<_CookieLogin> {
 }
 
 String _msg(Object e) => e is PlatformException ? e.message : platformError(e);
+
+// ---------------------------------------------------------------- 酷狗手机验证码
+
+class _KugouPhoneLogin extends StatefulWidget {
+  final Platform p;
+  const _KugouPhoneLogin(this.p);
+  @override
+  State<_KugouPhoneLogin> createState() => _KugouPhoneLoginState();
+}
+
+class _KugouPhoneLoginState extends State<_KugouPhoneLogin> {
+  final phone = TextEditingController();
+  final code = TextEditingController();
+  KugouDevice? device;
+  String? error;
+  int cd = 0;
+  Timer? _cdt;
+  bool busy = false;
+
+  @override
+  void dispose() {
+    _cdt?.cancel();
+    phone.dispose();
+    code.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    if (cd > 0) return;
+    final app = context.appRead;
+    final dev = device ??= KugouDevice.random(Random());
+    setState(() {
+      error = null;
+      busy = true;
+    });
+    try {
+      await app.kugouLogin.sendCode(phone.text, dev);
+      if (!mounted) return;
+      setState(() => cd = 60);
+      _cdt = Timer.periodic(const Duration(seconds: 1), (t) {
+        if (cd <= 1) {
+          t.cancel();
+          if (mounted) setState(() => cd = 0);
+        } else {
+          setState(() => cd--);
+        }
+      });
+      toast('验证码已发送', 'phone');
+    } on KugouCaptchaRequired {
+      if (mounted) setState(() => error = '酷狗要求人机验证，请在酷狗官方 App 登录一次后再回来，或改用其它平台');
+    } catch (e) {
+      if (mounted) setState(() => error = _msg(e));
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _login() async {
+    if (code.text.trim().isEmpty) return setState(() => error = '请输入验证码');
+    final app = context.appRead;
+    final dev = device;
+    if (dev == null) return setState(() => error = '请先获取验证码');
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      final cred = await app.kugouLogin.loginByCode(phone.text, code.text.trim(), dev);
+      if (mounted) await _finish(context, cred, widget.p);
+    } catch (e) {
+      if (mounted) setState(() => error = _msg(e));
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pal = context.pal;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      LField(controller: phone, label: '手机号', icon: 'phone', keyboard: TextInputType.phone, onChanged: (_) => setState(() => error = null)),
+      const SizedBox(height: 10),
+      LField(controller: code, label: '短信验证码', icon: 'key', keyboard: TextInputType.number, suffix: cd > 0 ? '${cd}s' : '获取验证码', onSuffix: busy ? null : _send, error: error, onChanged: (_) => setState(() => error = null)),
+      const SizedBox(height: 14),
+      Btn('登录', block: true, busy: busy, onTap: busy ? null : _login),
+      const SizedBox(height: 10),
+      Text('登录信息只保存在本机钥匙串，用于以你的身份获取播放地址。', style: ts(12, c: pal.t3, h: 1.6)),
+      const SizedBox(height: 8),
+    ]);
+  }
+}

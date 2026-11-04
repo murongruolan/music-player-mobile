@@ -17,6 +17,7 @@ import '../data/models.dart';
 import '../net/net.dart';
 import '../platform/credentials.dart';
 import '../platform/login/netease_login.dart';
+import '../platform/login/kugou_login.dart';
 import '../platform/login/qq_login.dart';
 import '../platform/models.dart' show Plat;
 import '../platform/prefetch.dart';
@@ -192,9 +193,10 @@ class AppState extends ChangeNotifier {
   /// 平台登录流程（网易云扫码 / Cookie，QQ Cookie）。
   late final neteaseLogin = NeteaseLogin(content.http);
   late final qqLogin = QqLogin(content.http);
+  late final kugouLogin = KugouLogin(content.http);
 
-  /// 有登录入口的平台（App 平台 id）。酷我 / 咪咕没有账号体系；酷狗验证码登录还没做。
-  static const loginPlatforms = {'netease', 'qq'};
+  /// 有登录入口的平台（App 平台 id）。酷我 / 咪咕没有账号体系。
+  static const loginPlatforms = {'netease', 'qq', 'kugou'};
 
   /// 启动时读完凭证后调用：同步「已登录」显示，并在后台准备网易云游客 Cookie。
   Future<void> initPlatformLogin() async {
