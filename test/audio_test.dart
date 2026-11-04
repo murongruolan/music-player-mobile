@@ -32,21 +32,21 @@ void main() {
   group('DemoTrackResolver', () {
     test('同 id 确定性映射，且落在 1..16', () async {
       final r = DemoTrackResolver();
-      final u1 = await r.resolve(songs[0]);
-      final u2 = await r.resolve(songs[0]);
-      final u3 = await r.resolve(songs[23]);
-      expect(u1, u2); // 确定性
-      expect(u1!.path, endsWith('.mp3'));
-      expect(u3!.path, endsWith('.mp3'));
-      final n1 = int.parse(u1.path.split('-').last.split('.').first);
+      final u1 = (await r.resolve(songs[0]))!;
+      final u2 = (await r.resolve(songs[0]))!;
+      final u3 = (await r.resolve(songs[23]))!;
+      expect(u1.uri, u2.uri); // 确定性
+      expect(u1.uri.path, endsWith('.mp3'));
+      expect(u3.uri.path, endsWith('.mp3'));
+      final n1 = int.parse(u1.uri.path.split('-').last.split('.').first);
       expect(n1, inInclusiveRange(1, 16));
     });
 
     test('不同 id 尽量分散到不同测试曲', () async {
       final r = DemoTrackResolver();
-      final a = await r.resolve(songs[0]);
-      final b = await r.resolve(songs[1]);
-      expect(a, isNot(b));
+      final a = (await r.resolve(songs[0]))!;
+      final b = (await r.resolve(songs[1]))!;
+      expect(a.uri, isNot(b.uri));
     });
   });
 

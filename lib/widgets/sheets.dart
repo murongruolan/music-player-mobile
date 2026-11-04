@@ -902,7 +902,7 @@ void openTrace(BuildContext context, {bool dark = false}) {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('还没有取流记录', style: ts(14, w: FontWeight.w600, c: pal.t1)),
           const SizedBox(height: 6),
-          Text('播放一首歌后，这里会显示解析脚本、实际音质、缓存命中与换平台过程。', style: ts(12.5, c: pal.t3, h: 1.6)),
+          Text('播放一首歌后，这里会显示每次尝试用的是「直链」还是「音源脚本」，以及实际音质、缓存命中与换平台过程。', style: ts(12.5, c: pal.t3, h: 1.6)),
         ]),
       );
     }
@@ -923,7 +923,7 @@ void openTrace(BuildContext context, {bool dark = false}) {
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text('${_hhmmss(t.time)} · ${t.title}', style: ts(11, c: pal.t3, num: true), maxLines: 1, overflow: TextOverflow.ellipsis),
                     Text('${t.ok ? '取流成功' : '取流失败'} · ${t.platform} · ${t.quality}', style: ts(14, w: FontWeight.w600, c: pal.t1)),
-                    Text(t.source + (t.note.isEmpty ? '' : ' · ${t.note}'), style: ts(12.5, c: t.ok ? pal.t2 : pal.danger)),
+                    Text((t.source == '直链' ? '直链' : '音源脚本 · ${t.source}') + (t.note.isEmpty ? '' : ' · ${t.note}'), style: ts(12.5, c: t.ok ? pal.t2 : pal.danger)),
                   ]),
                 ),
               ),

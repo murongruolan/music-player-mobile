@@ -116,9 +116,9 @@ class AudioEngine {
 
   Future<void> _load(Song song, int seq, {required bool autoplay, ResolveReason reason = ResolveReason.play, Duration? at, bool ended = false}) async {
     if (reason != ResolveReason.play) _tried.add(reason);
-    Uri? uri;
+    ResolvedPlay? rp;
     try {
-      uri = await _resolver.resolve(song, reason: reason);
+      rp = await _resolver.resolve(song, reason: reason);
     } catch (e) {
       if (seq != _seq) return;
       if (reason == ResolveReason.trial) return _trialFallback(song, seq, autoplay: autoplay, ended: ended, why: _short(e));
@@ -126,34 +126,34 @@ class AudioEngine {
       return;
     }
     if (seq != _seq) return;
-    if (uri == null) {
+    if (rp == null) {
       if (reason == ResolveReason.trial) return _trialFallback(song, seq, autoplay: autoplay, ended: ended);
       onError?.call('无法解析播放地址：${song.title}');
       return;
     }
-    if (!isLikelySupported(uri)) {
-      onError?.call('暂不支持 ${formatLabel(formatOfUri(uri))} 格式：${song.title}');
+    if (!isLikelySupported(rp.uri)) {
+      onError?.call('暂不支持 ${formatLabel(formatOfUri(rp.uri))} 格式：${song.title}');
       return;
     }
     _current = song;
     try {
       _loaded = false;
       final AudioSource source;
-      final cacheKey = song.key ?? uri.toString();
-      if (_cacheOn && reason == ResolveReason.play && _cacheDir != null && _cacheDir!.isNotEmpty && !uri.isScheme('file')) {
+      final cacheKey = song.key ?? rp.uri.toString();
+      if (_cacheOn && reason == ResolveReason.play && _cacheDir != null && _cacheDir!.isNotEmpty && !rp.uri.isScheme('file')) {
         // 边听边缓存：just_audio 的锁定缓存源。文件按歌曲 key 命名（播放地址带时效签名，按地址命名几乎不会命中）；
         // 重新取链 / 试听换源时不走缓存，避免把试听片段或坏链接缓存下来。
         final key = base64Url.encode(utf8.encode(cacheKey)).replaceAll('=', '');
         // ignore: experimental_member_use
-        source = LockCachingAudioSource(uri, cacheFile: File('$_cacheDir/$key.audio'));
+        source = LockCachingAudioSource(rp.uri, cacheFile: File('$_cacheDir/$key.audio'), headers: rp.headers);
       } else {
-        source = AudioSource.uri(uri);
+        source = AudioSource.uri(rp.uri, headers: rp.headers);
       }
       final d = await _player.setAudioSource(source, initialPosition: at);
       if (seq != _seq) return;
       if (_shortOf(song, d) && !_tried.contains(ResolveReason.trial)) {
         // 时长明显不对：多半是试听片段，换音源
-        _trialUri = uri;
+        _trialUri = rp;
         return await _load(song, seq, autoplay: autoplay, reason: ResolveReason.trial, at: at);
       }
       _loaded = true;
@@ -178,7 +178,7 @@ class AudioEngine {
   }
 
   /// 被判定为试听的地址（换源失败时退回来播它）。
-  Uri? _trialUri;
+  ResolvedPlay? _trialUri;
 
   /// 换音源没成功：加载阶段发现的试听片段就照样播，并告诉用户；曲终发现的直接走下一首。
   Future<void> _trialFallback(Song song, int seq, {required bool autoplay, required bool ended, String? why}) async {
@@ -191,7 +191,7 @@ class AudioEngine {
     }
     onNotice?.call('「${song.title}」只找到试听片段，先播试听版');
     try {
-      await _player.setAudioSource(AudioSource.uri(u));
+      await _player.setAudioSource(AudioSource.uri(u.uri, headers: u.headers));
       if (seq != _seq) return;
       _loaded = true;
       await _player.setLoopMode(_loopOne ? LoopMode.one : LoopMode.off);

@@ -17,6 +17,7 @@ import 'net/api_config.dart';
 import 'net/net.dart';
 import 'player/player.dart';
 import 'shell/shell.dart';
+import 'source/direct/direct.dart';
 import 'source/music_resolver.dart';
 import 'ui/cover_tint.dart';
 import 'ui/kit.dart';
@@ -63,6 +64,7 @@ Future<void> main() async {
   };
   AppLog.instance.add('启动', 'v${ApiConfig.appVersion} (${ApiConfig.buildNumber}) · ${net == null ? '演示模式' : '联网模式'}');
   resolver.app = app;
+  resolver.direct = DirectLinkResolver(app.platCreds); // 平台直链（凭证只读 platCreds）
   CoverTint.onReady = app.notify; // 封面取色完成后播放器背景重绘
   await app.cloud.init(); // 读本地听歌统计
   await app.taste.load(); // 关注的歌手、不感兴趣的歌

@@ -1,10 +1,14 @@
 // 播放链路与音源的汇合点：实现 lib/audio 的 TrackResolver。
 // 歌曲 → 本机曲目信息 → 依次尝试音源脚本（音质回退）→ 原平台都失败时按设置换到其它平台的同名歌。
 // 对齐桌面端 MusicService.resolve（music-service.ts）。
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../audio/track_resolver.dart';
+import '../net/json.dart';
 import '../core/network.dart';
 import '../core/state.dart';
 import '../data/models.dart';
+import 'direct/direct.dart';
 import 'failure.dart';
 import 'lx_track.dart';
 import 'source_manager.dart';
@@ -38,6 +42,9 @@ class MusicResolver implements TrackResolver {
   /// 取流记录（播放链路页）：最新在前，最多 8 条，成功与失败都记。
   final List<ResolveTrace> history = [];
 
+  /// 平台直链层（main.dart 建好 AppState 后注入；为 null = 不用直链，例如测试）。
+  DirectLinkResolver? direct;
+
   /// 每首歌（曲目 key）被判定只给试听片段的音源 id，这次会话内不再用它们解析这首歌。
   final _trialSources = <String, Set<String>>{};
 
@@ -45,7 +52,7 @@ class MusicResolver implements TrackResolver {
   final _trialAlts = <String, Set<String>>{};
 
   @override
-  Future<Uri?> resolve(Song song, {String quality = 'SQ', ResolveReason reason = ResolveReason.play}) async {
+  Future<ResolvedPlay?> resolve(Song song, {String quality = 'SQ', ResolveReason reason = ResolveReason.play}) async {
     final a = app;
     if (a == null) return null;
     final t = a.library.trackOf(song.id);
@@ -56,7 +63,7 @@ class MusicResolver implements TrackResolver {
     if (downloaded != null && reason != ResolveReason.trial) { // 本地文件被判为试听片段时改走在线
       last = ResolvedUrl(downloaded, 'local', 'download', '本地文件', 'local', fromCache: true);
       _history(song, '本地', '已下载', '原档位', true, '离线优先：直接播放本地文件');
-      return Uri.file(downloaded);
+      return ResolvedPlay(Uri.file(downloaded));
     }
     final track = lxTrackOf(t);
     var preferred = lxQualityOf(a.set.onlineQ);
@@ -81,6 +88,10 @@ class MusicResolver implements TrackResolver {
     if (fresh) manager.forget('${track['id']}');
     final avoid = _trialSources[key] ?? const <String>{};
     final why = switch (reason) { ResolveReason.reload => '链接失效，重新取链', ResolveReason.trial => '上一个地址是试听片段，换音源', _ => '' };
+
+    // ---------- 平台直链优先（reload 不用缓存、trial 本曲不再用直链——direct 内部处理） ----------
+    final viaDirect = await resolveDirect(track, song, preferred, reason, manager: manager);
+    if (viaDirect != null) return viaDirect;
     try {
       if (_trialAlts[key]?.isNotEmpty ?? false) throw const ResolveException('只拿到试听片段');
       final r = await manager.resolveUrl(track, preferred, sources, forceRefresh: fresh, probe: true, avoid: avoid);
@@ -106,16 +117,54 @@ class MusicResolver implements TrackResolver {
     }
   }
 
-  Uri _done(AppState a, Song song, String platform, ResolvedUrl r, {String note = ''}) {
+  ResolvedPlay _done(AppState a, Song song, String platform, ResolvedUrl r, {String note = ''}) {
     last = r;
     _history(song, _name(r.platform), r.sourceName, appQualityOf(r.quality), true,
         note.isEmpty && r.fromCache ? '取流地址缓存命中' : note);
     final q = appQualityOf(r.quality);
     if (a.quality != q) a.update(() => a.quality = q);
-    return Uri.parse(r.url);
+    return ResolvedPlay(Uri.parse(r.url));
   }
 
-  Uri? _fail(AppState a, Song song, String message, String platform, {String source = '音源解析'}) {
+  /// 平台直链优先：拿到 → checkUrl 检测 → 通过则返回（带请求头）；
+  /// 拿不到 / 检测不过（试听记黑名单）/ 任何异常 → 返回 null，调用方回退音源脚本。
+  /// [checkUrl] 仅供测试注入（正式用 SourceManager.checkUrl）。
+  @visibleForTesting
+  Future<ResolvedPlay?> resolveDirect(Json track, Song song, String preferred, ResolveReason reason,
+      {Future<UrlIssue?> Function(String url, int duration)? checkUrl, SourceManager? manager}) async {
+    final a = app;
+    if (a == null) return null;
+    final direct = this.direct;
+    if (direct == null) return null;
+    try {
+      final d = await direct.resolve(track, preferred, reason: reason);
+      if (d == null) return null;
+      final duration = track['duration'] is num ? (track['duration'] as num).toInt() : 0;
+      final issue = await (checkUrl ?? manager!.checkUrl)(d.url, duration);
+      if (issue == null) {
+        last = ResolvedUrl(d.url, d.quality, 'direct:${d.platform}', '直链', d.platform);
+        _history(song, _name(d.platform), '直链', d.quality, true, d.trial ? '试听片段' : '');
+        final q = d.quality;
+        if (a.quality != q) a.update(() => a.quality = q);
+        return ResolvedPlay(Uri.parse(d.url), d.headers);
+      }
+      if (issue == UrlIssue.trial) direct.blacklist(track); // 本曲不再用直链
+      _history(song, _name(d.platform), '直链', d.quality, false, '地址检测未过（${_issueName(issue)}），回退音源脚本');
+      return null;
+    } on ResolveException {
+      rethrow;
+    } catch (_) {
+      return null; // 直链层任何意外（网络 / 解析）：回退音源脚本
+    }
+  }
+
+  static String _issueName(UrlIssue issue) => switch (issue) {
+        UrlIssue.trial => '只拿到试听片段',
+        UrlIssue.forbidden => '播放地址被拒绝（403）',
+        UrlIssue.notFound => '播放地址不存在（404）',
+      };
+
+  ResolvedPlay? _fail(AppState a, Song song, String message, String platform, {String source = '音源解析'}) {
     _history(song, platform, source, a.set.onlineQ, false, message);
     throw ResolveException(message);
   }
