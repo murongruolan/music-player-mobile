@@ -173,6 +173,9 @@ class AppState extends ChangeNotifier {
   /// 防止旧歌的 tops/hs 布局数组被新歌词按旧长度索引（RangeError 崩溃）。
   int lyricsVersion = 0;
 
+  /// 当前歌曲最近一次播放失败的原因（迷你播放条显示）；换歌 / 重新播放时清空。
+  String? playError;
+
   /// 播放链路错误出口（气泡提示等），由 main.dart 注入；state 不直接依赖 UI。
   void Function(String message)? onEngineError;
 
@@ -268,8 +271,9 @@ class AppState extends ChangeNotifier {
     e.onNotice = (msg) => notice?.call(msg, 'refresh'); // 自动换源 / 重新取链的提示
     e.setFade(set.fade); // 淡入淡出开关联动引擎
     e.onError = (msg) {
-      // 解析 / 加载失败：界面回到暂停态并提示原因
-      if (playing) update(() => playing = false);
+      // 解析 / 加载失败：界面回到暂停态，迷你条显示原因
+      playError = msg.replaceFirst(RegExp(r'^播放失败[：:]\s*'), '');
+      update(() => playing = false);
       notice?.call(msg, 'info');
       onEngineError?.call(msg);
     };
@@ -564,6 +568,7 @@ class AppState extends ChangeNotifier {
 
   /// 加载当前曲目到引擎（engineActive 时才调）。
   void _enginePlayCurrent() {
+    playError = null;
     if (online) lyricStore.load(cur);
     unawaited(engine!.playSong(songs[cur], autoplay: playing, loopOne: mode == 'one').then((_) => _engineAfterLoad()));
   }

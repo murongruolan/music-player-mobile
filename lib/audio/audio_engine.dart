@@ -13,6 +13,7 @@ import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, Tar
 import 'package:just_audio/just_audio.dart';
 
 import '../data/models.dart';
+import '../core/app_log.dart';
 import '../source/failure.dart';
 import 'equalizer.dart';
 import 'formats.dart';
@@ -29,6 +30,9 @@ class AudioEngine {
   static final AndroidEqualizer _equalizer = AndroidEqualizer();
   final AudioPlayer _player = AudioPlayer(
     audioPipeline: AudioPipeline(androidAudioEffects: [_equalizer]),
+    // 带请求头的音源（云盘 Basic 认证、直链 Referer）不走 just_audio 的本机代理（127.0.0.1）：
+    // Android 上 ExoPlayer 原生支持请求头；代理按「路径?查询」查表，查不到直接崩，请求根本出不去。
+    useProxyForRequestHeaders: false,
   );
   LyraMediaHandler? _handler;
   final List<StreamSubscription<dynamic>> _subs = [];
@@ -97,10 +101,15 @@ class AudioEngine {
     // 解析要几百毫秒到几秒；期间用户可能已经切到别的歌，旧的结果直接丢掉
     final seq = ++_seq;
     _tried.clear();
+    _interruptRetried = false;
     _loopOne = loopOne;
     if (_loaded) {
       _loaded = false;
-      unawaited(_player.stop());
+      // 必须等 stop() 完成：它是异步停用平台播放器，没停完就开始下一首的 setAudioSource，
+      // just_audio 会判定为被打断，抛「Loading interrupted」（请求都没发出去）。
+      // 平台歌曲解析要几百毫秒，碰巧躲过去了；云盘 / 已下载的歌地址是本地拼的，每次都撞上。
+      await _player.stop().catchError((Object _) {});
+      if (seq != _seq) return;
     }
     await _load(song, seq, autoplay: autoplay);
   }
@@ -140,7 +149,8 @@ class AudioEngine {
       _loaded = false;
       final AudioSource source;
       final cacheKey = song.key ?? rp.uri.toString();
-      if (_cacheOn && reason == ResolveReason.play && _cacheDir != null && _cacheDir!.isNotEmpty && !rp.uri.isScheme('file')) {
+      // 需要请求头的音源不走锁定缓存：缓存源必须经本机代理转发，带头时有已知问题（just_audio #832）
+      if (_cacheOn && rp.headers.isEmpty && reason == ResolveReason.play && _cacheDir != null && _cacheDir!.isNotEmpty && !rp.uri.isScheme('file')) {
         // 边听边缓存：just_audio 的锁定缓存源。文件按歌曲 key 命名（播放地址带时效签名，按地址命名几乎不会命中）；
         // 重新取链 / 试听换源时不走缓存，避免把试听片段或坏链接缓存下来。
         final key = base64Url.encode(utf8.encode(cacheKey)).replaceAll('=', '');
@@ -149,8 +159,11 @@ class AudioEngine {
       } else {
         source = AudioSource.uri(rp.uri, headers: rp.headers);
       }
+      final sw = Stopwatch()..start();
       final d = await _player.setAudioSource(source, initialPosition: at);
       if (seq != _seq) return;
+      _interruptRetried = false;
+      AppLog.instance.add('播放', '加载成功 ${sw.elapsedMilliseconds}ms · ${_describe(rp)}${d == null ? '' : ' · 时长 ${d.inSeconds}s'}');
       if (_shortOf(song, d) && !_tried.contains(ResolveReason.trial)) {
         // 时长明显不对：多半是试听片段，换音源
         _trialUri = rp;
@@ -169,12 +182,37 @@ class AudioEngine {
       // 已经有更新代际的加载介入时，旧结果静默丢弃，不弹错误也不踩新歌的状态。
       if (seq != _seq) return;
       _loaded = false;
+      AppLog.instance.add('播放', '加载失败（${reason.name}）· ${_describe(rp)} · ${_errDetail(e)}');
+      // 被打断（不是链接问题）：等一下用同一个地址再加载一次，不算作「重新取链」
+      if (e is PlayerInterruptedException && !_interruptRetried) {
+        _interruptRetried = true;
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+        if (seq != _seq) return;
+        return _load(song, seq, autoplay: autoplay, reason: reason, at: at, ended: ended);
+      }
       if (!_tried.contains(ResolveReason.reload)) {
         // 链接可能已过期 / 被拒（403）：不用缓存重新取一次
         return _load(song, seq, autoplay: autoplay, reason: ResolveReason.reload, at: at);
       }
       onError?.call('播放失败：${describePlayError(e)}');
     }
+  }
+
+  /// 本首歌是否已经因为「被打断」重试过一次。
+  bool _interruptRetried = false;
+
+  /// 日志用：地址只留协议 + 主机 + 扩展名，请求头只列名字（不记认证内容）。
+  static String _describe(ResolvedPlay rp) {
+    final u = rp.uri;
+    final ext = formatOfUri(u);
+    return '${u.scheme}://${u.host}${u.hasPort ? ':${u.port}' : ''}${ext.isEmpty ? '' : ' .$ext'}${rp.headers.isEmpty ? '' : ' · 头 ${rp.headers.keys.join(',')}'}';
+  }
+
+  static String _errDetail(Object e) {
+    if (e is PlayerException) return 'PlayerException(code=${e.code}, ${e.message})';
+    if (e is PlayerInterruptedException) return 'PlayerInterruptedException(${e.message})';
+    final s = '$e';
+    return s.length > 160 ? s.substring(0, 160) : s;
   }
 
   /// 被判定为试听的地址（换源失败时退回来播它）。

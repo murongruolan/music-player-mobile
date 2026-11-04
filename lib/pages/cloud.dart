@@ -215,6 +215,7 @@ class DavBrowsePage extends StatefulWidget {
 
 class _DavBrowsePageState extends State<DavBrowsePage> {
   late Future<List<DavEntry>> f;
+  String? _logged;
 
   @override
   void initState() {
@@ -251,12 +252,20 @@ class _DavBrowsePageState extends State<DavBrowsePage> {
         builder: (c, s) {
           if (s.connectionState != ConnectionState.done) return const Padding(padding: EdgeInsets.all(40), child: Center(child: CircularProgressIndicator(strokeWidth: 2.5)));
           if (s.hasError) {
-            return EmptyState('wifi', '没有读到这个文件夹', desc: '${s.error}', action: Btn.sec('重试', icon: 'refresh', small: true, onTap: () => setState(() => f = _load())));
+            return EmptyState('wifi', '没有读到这个文件夹', desc: '${s.error}', action: Btn.sec('重试', icon: 'refresh', small: true, onTap: () => setState(() {
+                  _logged = null;
+                  f = _load();
+                })));
           }
           final all = s.data!;
           final dirs = all.where((e) => e.isDir).toList();
           final audio = all.where((e) => e.isAudio).toList();
           final other = all.length - dirs.length - audio.length;
+          if (_logged != widget.path) {
+            _logged = widget.path;
+            final others = [for (final e in all) if (!e.isDir && !e.isAudio) e.name];
+            AppLog.instance.add('音乐云盘', '列目录 ${widget.path}：${dirs.length} 个文件夹、${audio.length} 首${others.isEmpty ? '' : '，未列出 ${others.length} 个：${others.take(8).join('、')}'}');
+          }
           if (server == null) return const EmptyState('cloud', '这台服务器已删除');
           // 登记进歌曲目录：之后可以收藏、加歌单、下载
           final ids = [for (final e in audio) app.library.register(DavStore.trackOf(server, e))];

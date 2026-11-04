@@ -121,7 +121,7 @@ class WebDavClient {
     for (final r in doc.descendants.whereType<XmlElement>().where((e) => e.name.local == 'response')) {
       final href = text(r, 'href');
       if (href == null || href.isEmpty) continue;
-      var p = Uri.decodeFull(Uri.parse(href).path);
+      var p = hrefPath(href);
       if (_norm(p) == self) continue; // 目录自身
       final isDir = r.descendants.whereType<XmlElement>().any((x) => x.name.local == 'collection');
       // 转成相对根地址的路径
@@ -143,6 +143,20 @@ class WebDavClient {
   }
 
   static String _norm(String p) => p.endsWith('/') ? p : '$p/';
+
+  /// href → 解码后的路径。不用 Uri.parse：有的服务器（如 Alist）文件名里的 `#` `?` 不编码，
+  /// Uri.parse 会把它们当成片段 / 查询截掉，文件名就丢了扩展名。
+  static String hrefPath(String href) {
+    var h = href.trim();
+    final m = RegExp(r'^[a-zA-Z][a-zA-Z0-9+.-]*://[^/]*').firstMatch(h);
+    if (m != null) h = h.substring(m.end);
+    if (!h.startsWith('/')) h = '/$h';
+    try {
+      return Uri.decodeComponent(h.replaceAll('+', '%2B'));
+    } catch (_) {
+      return h; // 编码不合法（含裸 %）：原样用
+    }
+  }
 
   static DateTime? _httpDate(String? s) {
     if (s == null || s.isEmpty) return null;
