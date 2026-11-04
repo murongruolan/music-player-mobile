@@ -165,6 +165,7 @@ class AppState extends ChangeNotifier {
       scriptOrder[p.id] = scripts.where((s) => s.platforms.contains(p.id)).map((s) => s.id).toList();
     }
     _clock = Timer.periodic(const Duration(milliseconds: 50), (_) => _tick());
+    pos.addListener(_posClock.reset); // 每次有新的进度上报，平滑位置从这里重新起算
     _bindEngine();
   }
 
@@ -414,8 +415,20 @@ class AppState extends ChangeNotifier {
     return (name: s.name, ms: s.ms, ok: s.ok);
   }
 
-  int get lyricIndex {
-    final p = pos.value + set.loff;
+  /// 平滑的播放位置：引擎大约每 200ms 才报一次进度，逐帧动画（歌词填充）在两次上报之间
+  /// 按经过的时间 × 倍速往前推，最多推 0.6 秒（防止卡顿 / 缓冲时跑过头）。
+  double get smoothPos {
+    final p = pos.value;
+    if (!playing || !hasSong && online) return p;
+    final dt = math.min(_posClock.elapsedMicroseconds / 1e6, 0.6);
+    return p + dt * speed;
+  }
+
+  final _posClock = Stopwatch()..start();
+
+  int get lyricIndex => lyricIndexAt(smoothPos + set.loff);
+
+  int lyricIndexAt(double p) {
     var k = 0;
     for (var i = 0; i < lyrics.length; i++) {
       if (lyrics[i].t <= p) k = i;
@@ -423,11 +436,13 @@ class AppState extends ChangeNotifier {
     return k;
   }
 
-  /// 当前行内进度 0..1（只有行时间时按行时长 × 0.92 均匀插值）。
+  /// 当前行内进度 0..1：有逐字时间按字走，否则按估算的演唱时长插值（见 [LyricLine.progressAt]）。
   double get lineProgress {
     if (lyrics.isEmpty) return 0;
-    final l = lyrics[lyricIndex];
-    return ((pos.value + set.loff - l.t) / (l.d * .92)).clamp(0, 1);
+    final p = smoothPos + set.loff;
+    final k = lyricIndexAt(p);
+    if (k >= lyrics.length) return 0;
+    return lyrics[k].progressAt(p);
   }
 
   /// 模拟节拍包络 0..1（112 BPM）。
