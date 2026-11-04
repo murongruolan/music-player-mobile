@@ -145,3 +145,12 @@
 /* v4.3 QQ 头像：图片盖在首字上，加载失败时露出首字 */
 .avatar.qq{position:relative;overflow:hidden}
 .avatar.qq img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:inherit}
+
+/* v4.4 关注的歌手 / 崩溃报告 */
+.fw44{width:40px;height:40px;border-radius:20px;flex:none}
+.empty44{display:flex;flex-direction:column;align-items:center;gap:6px;padding:56px var(--pad) 24px;text-align:center;color:var(--t3)}
+.empty44 svg{width:40px;height:40px;opacity:.7}
+.empty44 b{color:var(--t1);font-size:15px}
+.empty44 small{font-size:12.5px;line-height:1.5}
+.cl44{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-all}
+.st44{margin:10px 0 0;padding:10px 12px;max-height:260px;overflow:auto;background:var(--s2);border-radius:12px;font:11px/1.5 ui-monospace,Menlo,monospace;color:var(--t2);white-space:pre-wrap;word-break:break-all}
