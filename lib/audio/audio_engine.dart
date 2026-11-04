@@ -11,6 +11,7 @@ import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, Tar
 import 'package:just_audio/just_audio.dart';
 
 import '../data/models.dart';
+import '../source/failure.dart';
 import 'equalizer.dart';
 import 'formats.dart';
 import 'media_handler.dart';
@@ -50,6 +51,9 @@ class AudioEngine {
   void Function()? onCompleted;
   void Function(String message)? onError;
 
+  /// 自动补救（换音源 / 重新取链）时给用户的提示。
+  void Function(String message)? onNotice;
+
   /// 媒体通知 / 耳机线控的动作（play/pause/next/prev/like），由 AppState 路由。
   void Function(String action)? onMediaAction;
 
@@ -69,29 +73,56 @@ class AudioEngine {
       }),
       _player.playingStream.listen((p) => onPlaying?.call(p)),
       _player.processingStateStream.listen((s) {
-        if (s == ProcessingState.completed) onCompleted?.call();
+        if (s == ProcessingState.completed) _completed();
       }),
+      // 播放中途出错（链接过期、403、断流）：从当前位置重新取一次地址续播，还不行再报错
+      _player.playbackEventStream.listen((_) {}, onError: (Object e, StackTrace _) => _streamError(e)),
     ]);
   }
 
   /// 加载并（可选）播放一首。解析不到地址 / 格式不支持 / 加载失败都会走 [onError]，
   /// 不抛异常——调用方（AppState）不该为播放失败写 try-catch。
+  ///
+  /// 自动补救（每首歌各一次）：
+  /// - 加载失败（多为 403 / 链接过期）→ 不用缓存重新取地址再试；
+  /// - 加载后时长明显短于歌曲时长（< 85%）→ 判定为试听片段，换音源；
+  /// - 播放中途出错 → 从当前位置重新取地址续播；
+  /// - 没播到歌曲时长的 85% 就结束了 → 判定为试听片段，换音源后从结束处接着播。
   Future<void> playSong(Song song, {required bool autoplay, required bool loopOne}) async {
     // 解析要几百毫秒到几秒；期间用户可能已经切到别的歌，旧的结果直接丢掉
     final seq = ++_seq;
+    _tried.clear();
+    _loopOne = loopOne;
     if (_loaded) {
       _loaded = false;
       unawaited(_player.stop());
     }
+    await _load(song, seq, autoplay: autoplay);
+  }
+
+  /// 本首歌已经用过的补救方式（每种一次，避免来回重试）。
+  final _tried = <ResolveReason>{};
+  bool _loopOne = false;
+
+  /// 播放时长低于歌曲时长的这个比例，认为是试听片段。
+  static const trialRatio = .85;
+
+  bool _shortOf(Song song, Duration? d) => d != null && song.dur >= 30 && d.inMilliseconds > 0 && d.inMilliseconds < song.dur * 1000 * trialRatio;
+
+  Future<void> _load(Song song, int seq, {required bool autoplay, ResolveReason reason = ResolveReason.play, Duration? at, bool ended = false}) async {
+    if (reason != ResolveReason.play) _tried.add(reason);
     Uri? uri;
     try {
-      uri = await _resolver.resolve(song);
+      uri = await _resolver.resolve(song, reason: reason);
     } catch (e) {
-      if (seq == _seq) onError?.call('${song.title}：${_short(e)}');
+      if (seq != _seq) return;
+      if (reason == ResolveReason.trial) return _trialFallback(song, seq, autoplay: autoplay, ended: ended, why: _short(e));
+      onError?.call('${song.title}：${_short(e)}');
       return;
     }
     if (seq != _seq) return;
     if (uri == null) {
+      if (reason == ResolveReason.trial) return _trialFallback(song, seq, autoplay: autoplay, ended: ended);
       onError?.call('无法解析播放地址：${song.title}');
       return;
     }
@@ -101,10 +132,16 @@ class AudioEngine {
     }
     _current = song;
     try {
-      await _player.setAudioSource(AudioSource.uri(uri));
+      _loaded = false;
+      final d = await _player.setAudioSource(AudioSource.uri(uri), initialPosition: at);
       if (seq != _seq) return;
+      if (_shortOf(song, d) && !_tried.contains(ResolveReason.trial)) {
+        // 时长明显不对：多半是试听片段，换音源
+        _trialUri = uri;
+        return await _load(song, seq, autoplay: autoplay, reason: ResolveReason.trial, at: at);
+      }
       _loaded = true;
-      await _player.setLoopMode(loopOne ? LoopMode.one : LoopMode.off);
+      await _player.setLoopMode(_loopOne ? LoopMode.one : LoopMode.off);
       await applyEq(_eqOn, _eqCurve); // 换源后重新套用 EQ 曲线
       // just_audio 的 play() 返回的 Future 要到播放完成/被打断时才 complete，
       // await 会把 playSong 挂到曲终——通知同步与 AppState 的加载收尾（速度/EQ/收藏态）
@@ -116,8 +153,63 @@ class AudioEngine {
       // 已经有更新代际的加载介入时，旧结果静默丢弃，不弹错误也不踩新歌的状态。
       if (seq != _seq) return;
       _loaded = false;
-      onError?.call('播放失败：${_short(e)}');
+      if (!_tried.contains(ResolveReason.reload)) {
+        // 链接可能已过期 / 被拒（403）：不用缓存重新取一次
+        return _load(song, seq, autoplay: autoplay, reason: ResolveReason.reload, at: at);
+      }
+      onError?.call('播放失败：${describePlayError(e)}');
     }
+  }
+
+  /// 被判定为试听的地址（换源失败时退回来播它）。
+  Uri? _trialUri;
+
+  /// 换音源没成功：加载阶段发现的试听片段就照样播，并告诉用户；曲终发现的直接走下一首。
+  Future<void> _trialFallback(Song song, int seq, {required bool autoplay, required bool ended, String? why}) async {
+    final u = _trialUri;
+    _trialUri = null;
+    if (ended || u == null) {
+      onNotice?.call('「${song.title}」只找到试听片段${why == null ? '' : '（$why）'}');
+      if (ended) onCompleted?.call();
+      return;
+    }
+    onNotice?.call('「${song.title}」只找到试听片段，先播试听版');
+    try {
+      await _player.setAudioSource(AudioSource.uri(u));
+      if (seq != _seq) return;
+      _loaded = true;
+      await _player.setLoopMode(_loopOne ? LoopMode.one : LoopMode.off);
+      await applyEq(_eqOn, _eqCurve);
+      if (autoplay) unawaited(_player.play());
+      _syncNotification(playing: autoplay);
+    } catch (e) {
+      if (seq == _seq) onError?.call('播放失败：${describePlayError(e)}');
+    }
+  }
+
+  /// 播放结束：没播到歌曲时长的 85% 就结束了，判定为试听，换音源从结束处续播。
+  void _completed() {
+    final s = _current;
+    final p = _player.position;
+    if (s != null && _loaded && !_tried.contains(ResolveReason.trial) && s.dur >= 30 && p.inMilliseconds < s.dur * 1000 * trialRatio) {
+      _trialUri = null;
+      unawaited(_load(s, _seq, autoplay: true, reason: ResolveReason.trial, at: p, ended: true));
+      return;
+    }
+    onCompleted?.call();
+  }
+
+  void _streamError(Object e) {
+    final s = _current;
+    if (s == null || !_loaded) return; // 加载阶段的错误由 _load 的 catch 处理
+    if (!_tried.contains(ResolveReason.reload)) {
+      final at = _player.position;
+      onNotice?.call('播放中断，正在重新获取播放地址');
+      unawaited(_load(s, _seq, autoplay: true, reason: ResolveReason.reload, at: at));
+      return;
+    }
+    _loaded = false;
+    onError?.call('播放中断：${describePlayError(e)}');
   }
 
   Future<void> pause() => _player.pause();
@@ -131,7 +223,10 @@ class AudioEngine {
 
   /// 引擎侧音量（0..1），睡眠定时淡出用；用户音量条（AppState.vol）目前不经引擎。
   Future<void> setVolume(double v) => _player.setVolume(v.clamp(0.0, 1.0));
-  Future<void> setLoopOne(bool one) => _player.setLoopMode(one ? LoopMode.one : LoopMode.off);
+  Future<void> setLoopOne(bool one) {
+    _loopOne = one;
+    return _player.setLoopMode(one ? LoopMode.one : LoopMode.off);
+  }
 
   /// 通知栏按钮触发的播放/暂停（ AppState 已算好目标状态后调用）。
   Future<void> setPlaying(bool play) => play ? _player.play() : _player.pause();
