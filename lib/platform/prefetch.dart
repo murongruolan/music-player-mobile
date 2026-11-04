@@ -5,8 +5,8 @@
 //   - 只拉列表数据（推荐歌单 / 榜单 / 此刻热门 / 歌单分类），不拉图片、不进二级页；
 //   - 失败不重试（PlatformHub 不缓存失败结果，真切过去时会正常重新请求）。
 import 'dart:async';
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/gestures.dart';
+import '../core/network.dart';
 import 'models.dart';
 import 'registry.dart';
 
@@ -82,12 +82,5 @@ class IdlePrefetch {
   }
 }
 
-/// 当前是否在 Wi-Fi / 有线网络。插件不可用（测试、桌面未实现）或判断失败时返回 false。
-Future<bool> onUnmeteredNetwork() async {
-  try {
-    final r = await Connectivity().checkConnectivity();
-    return r.contains(ConnectivityResult.wifi) || r.contains(ConnectivityResult.ethernet);
-  } catch (_) {
-    return false;
-  }
-}
+/// 当前是否在 Wi-Fi / 有线网络。判断不了时按非 Wi-Fi 处理（不预载）。
+Future<bool> onUnmeteredNetwork() async => await currentNetwork() == NetKind.unmetered;
