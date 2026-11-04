@@ -66,13 +66,59 @@ bool hasNeteaseMusicU(String cookie) => RegExp(r'(?:^|;\s*)MUSIC_U=[^;]+').hasMa
 class NeteaseLogin {
   final PlatformHttp http;
   final Random _random;
-  NeteaseLogin(this.http, {Random? random}) : _random = random ?? Random.secure();
+  /// 游客 Cookie（MUSIC_A），有的话带上，请求看起来更像正常客户端。
+  final String? Function()? anonCookie;
+
+  /// 登录过程日志（写进应用日志；不含 Cookie 原文）。
+  void Function(String msg)? log;
+
+  NeteaseLogin(this.http, {Random? random, this.anonCookie, this.log}) : _random = random ?? Random.secure();
 
   static const _host = 'https://music.163.com';
+  static const _eapiHost = 'https://interface.music.163.com';
   static const _headers = {'Origin': 'https://music.163.com', 'Referer': 'https://music.163.com/'};
+  static const _pcUa = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.164 NeteaseMusicDesktop/3.1.17.204416 Safari/537.36';
 
-  /// 二维码内容（网易云 App 扫这个）。
-  static String qrContent(String unikey) => 'https://music.163.com/login?codekey=$unikey';
+  /// 本次运行的设备 id：二维码 chainId 和 eapi 请求头里都用它，同一次扫码必须一致。
+  late final String deviceId = List.generate(32, (_) => _random.nextInt(16).toRadixString(16).toUpperCase()).join();
+
+  /// 这次取 key 走的通道（轮询必须用同一条）：true = eapi（PC 客户端风格），false = 旧 weapi。
+  bool _eapiQr = true;
+
+  /// 二维码内容（网易云 App 扫这个）。eapi 通道要带 chainId，
+  /// 不带的话扫码确认后会被风控拦下（8821「请切换其他登录方式或升级新版本再试」）。
+  String qrContent(String unikey) => _eapiQr
+      ? 'https://music.163.com/login?codekey=$unikey&chainId=v1_${deviceId}_pc_login_${DateTime.now().millisecondsSinceEpoch}'
+      : 'https://music.163.com/login?codekey=$unikey';
+
+  /// PC 客户端风格的 eapi 请求：客户端信息同时放进 Cookie 和 payload.header。返回（响应 JSON，Set-Cookie 原文）。
+  Future<(Json, String)> _eapiPost(String api, Map<String, Object?> payload) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final musicA = RegExp(r'MUSIC_A=([^;]+)').firstMatch(anonCookie?.call() ?? '')?.group(1);
+    final header = <String, String>{
+      'os': 'pc',
+      'appver': '3.1.17.204416',
+      'osver': 'Microsoft-Windows-10-Professional-build-19045-64bit',
+      'deviceId': deviceId,
+      'sDeviceId': deviceId,
+      'versioncode': '140',
+      'buildver': '${now ~/ 1000}',
+      'resolution': '1920x1080',
+      'channel': 'netease',
+      '__csrf': '',
+      'requestId': '${now}_${_random.nextInt(1000).toString().padLeft(4, '0')}',
+      if (musicA != null) 'MUSIC_A': musicA,
+    };
+    final res = await http.send(Plat.wy, 'POST', Uri.parse('$_eapiHost/eapi${api.substring(4)}'),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': _pcUa,
+          'Cookie': header.entries.map((e) => '${e.key}=${e.value}').join('; '),
+        },
+        body: eapi(api, {...payload, 'header': header, 'e_r': false}));
+    final text = utf8.decode(res.bodyBytes, allowMalformed: true);
+    return (asJson(PlatformHttp.decodeJson(Plat.wy, text)), res.headers['set-cookie'] ?? '');
+  }
 
   /// weapi 优先，被拦截（空体 / 非 JSON）时退回明文 /api。[path] 形如 `/login/qrcode/unikey`。
   Future<Json> _post(String path, Map<String, Object?> payload, {String? cookie}) async {
@@ -90,17 +136,42 @@ class NeteaseLogin {
 
   /// ① 取二维码 key。
   Future<String> qrKey() async {
+    // 先走 eapi（PC 客户端 type=3，现在官方客户端用的方式）；空体 / 失败再退回旧 weapi（type=1）
+    try {
+      final (j, _) = await _eapiPost('/api/login/qrcode/unikey', {'type': 3});
+      final key = j.str('unikey', asJson(j['data']).str('unikey'));
+      log?.call('取二维码 key（eapi）：code=${j['code']}${key.isEmpty ? '' : '，成功'}');
+      if (key.isNotEmpty) {
+        _eapiQr = true;
+        return key;
+      }
+    } catch (e) {
+      log?.call('取二维码 key（eapi）失败：$e');
+    }
     final j = await _post('/login/qrcode/unikey', {'type': 1});
     final key = j.str('unikey', asJson(j['data']).str('unikey'));
+    log?.call('取二维码 key（weapi）：code=${j['code']}${key.isEmpty ? '' : '，成功'}');
     if (key.isEmpty) throw const PlatformException(Plat.wy, '获取二维码 key 失败');
+    _eapiQr = false;
     return key;
   }
 
   /// ② 轮询一次扫码状态（建议 2~3 秒一次）。
   Future<NeteaseQrPoll> qrCheck(String key) async {
-    final j = await _post('/login/qrcode/client/login', {'key': key, 'type': 1});
+    Json j;
+    var setCookie = '';
+    if (_eapiQr) {
+      (j, setCookie) = await _eapiPost('/api/login/qrcode/client/login', {'key': key, 'type': 3});
+    } else {
+      j = await _post('/login/qrcode/client/login', {'key': key, 'type': 1});
+    }
     final code = int.tryParse('${j['code']}');
     final msg = j.str('message', j.str('msg'));
+    if (code != 801) log?.call('扫码状态（${_eapiQr ? 'eapi' : 'weapi'}）：code=$code${msg.isEmpty ? '' : ' $msg'}');
+    // 803 时 Cookie 可能只在 Set-Cookie 头里（eapi 通道常见）
+    if (code == 803 && !hasNeteaseMusicU(j.str('cookie')) && setCookie.isNotEmpty) {
+      j = {...j, 'cookie': setCookie.replaceAll(RegExp(r',(?=\s*[A-Za-z_][A-Za-z0-9_]*=)'), ';')};
+    }
     return switch (code) {
       800 => NeteaseQrPoll(NeteaseQrState.expired, message: msg.isEmpty ? '二维码已过期' : msg),
       801 => const NeteaseQrPoll(NeteaseQrState.waiting),
@@ -139,7 +210,9 @@ class NeteaseLogin {
     final deviceId = List.generate(52, (_) => _random.nextInt(16).toRadixString(16).toUpperCase()).join();
     final username = anonymousUsername(deviceId);
     final res = await http.send(Plat.wy, 'POST', Uri.parse('$_host/weapi/register/anonimous'),
-        headers: {..._headers, 'Content-Type': 'application/x-www-form-urlencoded'}, body: weapi({'username': username}));
+        // 设备 id 要和用户名里编码的那个一致，放进 Cookie（开源客户端同样带 os=iOS + deviceId），否则常被拒（code=400）
+        headers: {..._headers, 'Content-Type': 'application/x-www-form-urlencoded', 'Cookie': 'os=iOS; deviceId=$deviceId; appver=8.20.20; channel=distribution'},
+        body: weapi({'username': username}));
     final j = asJson(PlatformHttp.decodeJson(Plat.wy, utf8.decode(res.bodyBytes, allowMalformed: true)));
     // http 包把多个 Set-Cookie 用逗号拼在一起，清洗时会处理段首逗号
     final cookie = sanitizeNeteaseCookie([j.str('cookie'), res.headers['set-cookie'] ?? ''].where((x) => x.isNotEmpty).join('; ').replaceAll(RegExp(r',(?=\s*[A-Za-z_][A-Za-z0-9_]*=)'), ';'));

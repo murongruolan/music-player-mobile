@@ -23,6 +23,7 @@ import '../platform/models.dart' show Plat;
 import '../platform/prefetch.dart';
 import '../platform/registry.dart';
 import 'announcements.dart';
+import 'app_log.dart';
 import 'cloud.dart';
 import 'library_store.dart';
 import 'lyric_store.dart';
@@ -191,7 +192,7 @@ class AppState extends ChangeNotifier {
   late final platCreds = PlatformCredentials(net?.store);
 
   /// 平台登录流程（网易云扫码 / Cookie，QQ Cookie）。
-  late final neteaseLogin = NeteaseLogin(content.http);
+  late final neteaseLogin = NeteaseLogin(content.http, anonCookie: () => platCreds.anonymousCookie(Plat.wy), log: (m) => AppLog.instance.add('网易云登录', m));
   late final qqLogin = QqLogin(content.http);
   late final kugouLogin = KugouLogin(content.http);
 
