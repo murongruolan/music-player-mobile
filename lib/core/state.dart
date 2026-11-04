@@ -16,6 +16,9 @@ import '../api/update_api.dart';
 import '../data/models.dart';
 import '../net/net.dart';
 import '../platform/credentials.dart';
+import '../platform/login/netease_login.dart';
+import '../platform/login/qq_login.dart';
+import '../platform/models.dart' show Plat;
 import '../platform/prefetch.dart';
 import '../platform/registry.dart';
 import 'announcements.dart';
@@ -184,6 +187,41 @@ class AppState extends ChangeNotifier {
   /// 平台登录凭证（网易云 / QQ / 酷狗），存系统钥匙串，只留在本机。
   /// 登录层写入，直链层等只经 [CredentialStore] 接口读。测试 / 演示模式只在内存里。
   late final platCreds = PlatformCredentials(net?.store);
+
+  /// 平台登录流程（网易云扫码 / Cookie，QQ Cookie）。
+  late final neteaseLogin = NeteaseLogin(content.http);
+  late final qqLogin = QqLogin(content.http);
+
+  /// 有登录入口的平台（App 平台 id）。酷我 / 咪咕没有账号体系；酷狗验证码登录还没做。
+  static const loginPlatforms = {'netease', 'qq'};
+
+  /// 启动时读完凭证后调用：同步「已登录」显示，并在后台准备网易云游客 Cookie。
+  Future<void> initPlatformLogin() async {
+    await platCreds.load();
+    _platSub ??= platCreds.changes.listen((_) => _syncPlatLogin());
+    _syncPlatLogin();
+    if (online && platCreds.anonymousCookie(Plat.wy) == null) {
+      // 后台取，不挡启动；游客 Cookie 只是锦上添花，失败不提示，下次启动再试
+      unawaited(neteaseLogin.anonymousCookie().then((c) => platCreds.saveAnonymous(Plat.wy, c), onError: (Object _) {}));
+    }
+  }
+
+  StreamSubscription<String>? _platSub;
+
+  /// 联网模式：「已登录」显示（platLogin）以凭证为准；被标记失效的不算已登录。
+  void _syncPlatLogin() {
+    if (!online) return;
+    platLogin
+      ..clear()
+      ..addAll({
+        for (final c in platCreds.all)
+          if (platCreds.of(c.platform) != null) Plat.toAppId[c.platform] ?? c.platform: (c.nickname?.isNotEmpty ?? false) ? c.nickname! : '已登录',
+      });
+    notifyListeners();
+  }
+
+  /// 平台登录成功：保存凭证（钥匙串）。
+  Future<void> savePlatformLogin(PlatformCredential c) => platCreds.save(c);
 
   /// 空闲时预载其他平台的发现页（只在 Wi-Fi 下）。
   late final prefetch = IdlePrefetch(content);
@@ -868,6 +906,7 @@ class AppState extends ChangeNotifier {
   void logout(String pid) {
     platLogin.remove(pid);
     notifyListeners();
+    if (online) unawaited(platCreds.remove(pid)); // 联网模式：删掉钥匙串里的凭证
   }
 
   // ---------- Lyra 账号会话 ----------
@@ -926,6 +965,7 @@ class AppState extends ChangeNotifier {
     _clock?.cancel();
     _sleepT?.cancel();
     prefetch.stop();
+    _platSub?.cancel();
     platCreds.dispose();
     pos.dispose();
     super.dispose();

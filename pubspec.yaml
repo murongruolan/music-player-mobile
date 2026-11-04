@@ -48,6 +48,8 @@ dependencies:
   wakelock_plus: ^1.8.2
   # 「仅 Wi-Fi 下载」的网络类型感知，官方生态插件
   connectivity_plus: ^7.3.2
+  # 平台扫码登录的二维码编码（纯 Dart，kevmoo/qr.dart），画法自己做
+  qr: ^3.0.2
   # DLNA 投屏的设备描述 / SOAP 响应解析（UPnP 就是 HTTP+XML，无需第三方投屏包）
   xml: ^7.1.0
 

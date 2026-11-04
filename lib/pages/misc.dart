@@ -15,6 +15,7 @@ import '../data/mock.dart';
 import '../data/models.dart';
 import '../net/api_config.dart';
 import '../net/net.dart';
+import '../platform/registry.dart' show PlatformHub;
 import '../shell/shell.dart';
 import '../ui/brand.dart';
 import '../ui/cover.dart';
@@ -126,6 +127,7 @@ class PlatAccountsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.app;
     final pal = context.pal;
+    if (app.online) return _onlinePlatAccounts(context, app);
     return SubPage(title: '平台账号', children: [
       noteBox(context, 'link', '登录平台账号后可同步该平台的收藏、歌单与每日推荐。账号凭据只保存在本机。'),
       Group(title: '平台', children: [
@@ -150,6 +152,52 @@ class PlatAccountsPage extends StatelessWidget {
         Item(icon: 'phone', color: 'orange', label: '手机号登录', onTap: () => openPlatLogin(context, app.plat, mode: '手机号')),
         Item(icon: 'code', color: 'gray', label: '导入 Cookie', sub: '高级：从浏览器复制', onTap: () => openPlatLogin(context, app.plat, mode: 'Cookie')),
       ]),
+    ]);
+  }
+
+  /// 联网模式：按平台实际支持的方式显示（网易云扫码 / Cookie，QQ Cookie，酷狗即将支持，酷我 / 咪咕无需登录）。
+  Widget _onlinePlatAccounts(BuildContext context, AppState app) {
+    final pal = context.pal;
+    final creds = app.platCreds;
+    Widget row(Platform p) {
+      final code = PlatformHub.codeOf(p.id);
+      final saved = creds.saved(code);
+      final expired = creds.expiredReason(code);
+      final can = AppState.loginPlatforms.contains(p.id);
+      final String sub;
+      if (p.id == 'kuwo' || p.id == 'migu') {
+        sub = '无需登录 · 公开内容直接可用';
+      } else if (!can) {
+        sub = '手机验证码登录即将支持';
+      } else if (saved == null) {
+        sub = p.id == 'netease' ? '未登录 · 扫码或导入 Cookie' : '未登录 · 导入 Cookie';
+      } else if (expired != null) {
+        sub = '登录已失效，请重新登录（$expired）';
+      } else {
+        sub = '已登录 · ${saved.nickname ?? ''}${saved.vipActive ? ' · ${saved.vipLabel ?? '会员'}' : ''}';
+      }
+      return Item(
+        lead: PlatBadge(p, size: 30),
+        label: p.name,
+        sub: sub,
+        chev: false,
+        trailing: !can
+            ? null
+            : saved != null && expired == null
+                ? Btn.sec('退出', small: true, onTap: () => showLDialog(context, icon: 'logout', iconColor: pal.danger, title: '退出${p.name}？', body: '会删除本机保存的${p.name}登录信息。', actions: [
+                      ('取消', BtnKind.sec, null),
+                      ('退出', BtnKind.danger, () {
+                        app.logout(p.id);
+                        toast('已退出 ${p.name}', 'logout');
+                      }),
+                    ]))
+                : Btn(expired != null ? '重新登录' : '登录', small: true, onTap: () => openPlatLogin(context, p.id)),
+      );
+    }
+
+    return SubPage(title: '平台账号', children: [
+      noteBox(context, 'link', '登录后可以用你的平台会员身份获取播放地址，并看到每日推荐和你在该平台的歌单。登录信息只保存在本机钥匙串，不会上传。'),
+      Group(title: '平台', children: [for (final p in platforms) row(p)]),
     ]);
   }
 }

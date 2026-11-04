@@ -34,7 +34,10 @@ class PlatformHub {
   final DateTime Function() _now;
   final _cache = <String, _Entry>{};
 
-  PlatformHub._(this._p, this.ttl, this._now);
+  /// 各平台共用的 HTTP（并发限制、重试）。平台登录也走它。
+  final PlatformHttp http;
+
+  PlatformHub._(this._p, this.ttl, this._now, this.http);
 
   /// 真实平台。网易不逐首补全音质（列表页每首歌多一个请求太慢）。
   factory PlatformHub({PlatformHttp? http, Duration ttl = const Duration(minutes: 10), DateTime Function()? now}) {
@@ -45,13 +48,14 @@ class PlatformHub {
       Plat.kg: KugouPlatform(h),
       Plat.kw: KuwoPlatform(h),
       Plat.mg: MiguPlatform(h),
-    }, ttl, now ?? DateTime.now);
+    }, ttl, now ?? DateTime.now, h);
   }
 
   /// 测试用：指定每个平台的实现。
-  PlatformHub.of(Map<String, MusicPlatform> platforms, {this.ttl = const Duration(minutes: 10), DateTime Function()? now})
+  PlatformHub.of(Map<String, MusicPlatform> platforms, {this.ttl = const Duration(minutes: 10), DateTime Function()? now, PlatformHttp? http})
       : _p = platforms,
-        _now = now ?? DateTime.now;
+        _now = now ?? DateTime.now,
+        http = http ?? PlatformHttp();
 
   /// App 平台 id（netease / qq / …）或平台代码（wy / tx / …）→ 平台代码。
   static String codeOf(String id) => Plat.fromAppId[id] ?? id;
