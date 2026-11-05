@@ -111,7 +111,6 @@ class _OnlineDailyState extends State<_OnlineDaily> {
     return ListenableBuilder(
       listenable: feed,
       builder: (context, _) {
-        final pal = context.pal;
         final now = DateTime.now();
         final fm = feed.mode == DailyMode.fm;
         final ids = feed.ids.where((i) => i < songs.length && !app.isDisliked(i)).toList();
