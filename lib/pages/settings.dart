@@ -402,6 +402,18 @@ List<Widget> _floatGroups(BuildContext context, AppState app) {
       ),
     ]),
     if (isIOS) const Hint('iOS 不允许 App 在别的应用上层画悬浮窗，这里用画中画代替：打开后会出现一个歌词小窗，可以拖到屏幕边缘收起。', padding: EdgeInsets.fromLTRB(Tk.pad, 0, Tk.pad, 12)),
+    if (isIOS)
+      Group(title: '灵动岛与锁屏', children: [
+        Item(
+          icon: 'lyrics',
+          color: 'orange',
+          label: '灵动岛歌词',
+          sub: '在灵动岛和锁屏上显示当前这句歌词和进度（iOS 16.1 及以上；没有灵动岛的机型只在锁屏显示）',
+          sw: s.islandLyric,
+          onSw: app.island.setEnabled,
+        ),
+      ]),
+    if (isIOS) const Hint('要在 App 里开始播放后才会出现（系统限制）。如果一直不出现，到系统「设置 → Lyra」里打开「实时活动」。', padding: EdgeInsets.fromLTRB(Tk.pad, 0, Tk.pad, 12)),
   ];
 }
 

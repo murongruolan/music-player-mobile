@@ -110,6 +110,7 @@ class FloatLyricCtl {
   }
 
   /// 主题色（ARGB）：style.color 为 0 时用当前主题的强调色。
+  int get playedColor => _color;
   int get _color => style.color != 0 ? style.color : accents[_app.accent.clamp(0, accents.length - 1)].fill.toARGB32();
 
   Future<void> _pushStyle() => _call('float.style', {'size': style.size.toDouble(), 'color': _color, 'bg': style.bg.toDouble(), 'locked': _app.set.floatLock, 'y': style.y});
