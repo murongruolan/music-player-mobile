@@ -21,6 +21,7 @@ import 'shell/shell.dart';
 import 'source/direct/direct.dart';
 import 'source/music_resolver.dart';
 import 'ui/cover_tint.dart';
+import 'ui/custom_font.dart';
 import 'ui/kit.dart';
 import 'widgets/sheets.dart';
 
@@ -71,6 +72,7 @@ Future<void> main() async {
   await app.cloud.init(); // 读本地听歌统计
   await app.taste.load(); // 关注的歌手、不感兴趣的歌
   await app.dav.load(); // 音乐云盘服务器（钥匙串）
+  await loadCustomFont(); // 导入的字体
   await app.initPlatformLogin(); // 平台登录凭证（钥匙串）；网易云游客 Cookie 在后台取
   await app.telemetry.init(); // 读上次没发完的埋点
   await app.downloads.init(); // 下载清单 + 目录

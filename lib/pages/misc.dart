@@ -361,7 +361,7 @@ class _AccountPageState extends State<AccountPage> {
       ]),
       Group(title: '会员', children: [
         Item(icon: 'key', color: 'gold', label: '激活码', sub: activated ? '输入升级码提升会员等级' : '输入激活码解锁全部功能', onTap: () => _activate(context)),
-        Item(icon: 'crown', color: 'pink', label: '会员权益', val: '6 项', onTap: () => toast('Hi-Res 下载 · 粒子皮肤 · 云同步 …', 'crown')),
+        Item(icon: 'crown', color: 'pink', label: '会员权益', onTap: () => _perks(context)),
       ]),
       Group(title: '安全', children: [
         Item(icon: 'phone', color: 'violet', label: '登录设备', val: deviceCount < 0 ? (app.online ? null : '${loginDevices.length} 台') : '$deviceCount 台', onTap: () => push(context, const DevicesPage())),
@@ -431,6 +431,38 @@ class _AccountPageState extends State<AccountPage> {
       final nu = await AccountApi(app.api.client).bindQQ(qq);
       app.update(() => app.account = nu);
     }, okMsg: '已绑定');
+  }
+
+  /// 会员权益：免费 / 赞助各能用什么（只列已经实现的功能）。
+  void _perks(BuildContext context) {
+    final pal = context.pal;
+    const rows = [
+      ('在线播放、收藏、歌单', true, true),
+      ('平台登录、直链播放', true, true),
+      ('音乐云盘（WebDAV）', true, true),
+      ('下载与边听边缓存', true, true),
+      ('多端实时同步（收藏、歌单、设置）', false, true),
+      ('账号云备份', false, true),
+      ('云端听歌统计', false, true),
+    ];
+    showLSheet(context, title: '会员权益', builder: (c) => Padding(
+          padding: const EdgeInsets.symmetric(horizontal: Tk.pad),
+          child: Column(children: [
+            Row(children: [const Spacer(), SizedBox(width: 56, child: Text('免费', textAlign: TextAlign.center, style: ts(12.5, c: pal.t3))), SizedBox(width: 56, child: Text('赞助', textAlign: TextAlign.center, style: ts(12.5, w: FontWeight.w700, c: pal.accText)))]),
+            const SizedBox(height: 6),
+            for (final (n, free, pro) in rows)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 9),
+                child: Row(children: [
+                  Expanded(child: Text(n, style: ts(14, c: pal.t1))),
+                  for (final ok in [free, pro]) SizedBox(width: 56, child: Icon(ok ? Icons.check_rounded : Icons.remove_rounded, size: 18, color: ok ? pal.ok : pal.t4)),
+                ]),
+              ),
+            const SizedBox(height: 8),
+            Hint('激活码通过官方渠道获得；升级码可以把赞助等级提升一级。', padding: EdgeInsets.zero),
+            const SizedBox(height: 12),
+          ]),
+        ));
   }
 
   /// 激活码 / 升级码兑换。激活 / 升级成功后返回带新会员态的用户。
@@ -599,25 +631,9 @@ class _DevicesPageState extends State<DevicesPage> {
         if (list.any((d) => !d.isCurrent))
           IBtn(selecting ? 'close' : 'check', onTap: () => selecting ? _exitSelecting() : setState(() => selecting = true)),
       ],
-      // SubPage.floating 是 body Stack 的直接 child：必须自己包 Positioned 定位到底部
-      // （对齐 remote.dart 的 _multiBar），否则按 topLeft 铺在顶栏上且布局异常。
-      floating: selecting && selected.isNotEmpty
-          ? Positioned(
-              left: Tk.pad,
-              right: Tk.pad,
-              bottom: MediaQuery.of(context).padding.bottom + 84,
-              child: Btn(
-                '移除所选（${selected.length}）',
-                icon: 'logout',
-                kind: BtnKind.danger,
-                block: true,
-                onTap: loading ? null : _removeSelected,
-              ),
-            )
-          : null,
       children: [
         Hint(
-          selecting ? '勾选要移除的设备（本机不可移除），点底部按钮批量移除。' : '最多同时登录 $maxDevices 台设备。移除后该设备需要重新登录。右上角可进入多选模式批量移除。',
+          selecting ? '勾选要移除的设备（本机不可移除），点列表下方的按钮批量移除。' : '最多同时登录 $maxDevices 台设备。移除后该设备需要重新登录。右上角可进入多选模式批量移除。',
           padding: const EdgeInsets.fromLTRB(Tk.pad, 0, Tk.pad, 12),
         ),
         if (list.isEmpty)
@@ -642,6 +658,18 @@ class _DevicesPageState extends State<DevicesPage> {
                       : Btn('移除', small: true, kind: BtnKind.danger, onTap: loading ? null : () => showLDialog(context, icon: 'logout', iconColor: pal.danger, title: '移除「${d.deviceName}」？', body: '该设备需要重新登录', actions: [('取消', BtnKind.sec, null), ('移除', BtnKind.danger, () => _remove(d))])),
             ),
         ]),
+        // 批量移除按钮紧跟在最后一台设备下面（原来悬浮在屏幕底部，会被迷你播放条 / 底栏挡住或要滑很久）
+        if (selecting)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Tk.pad, 4, Tk.pad, 0),
+            child: Btn(
+              selected.isEmpty ? '先勾选要移除的设备' : '移除所选（${selected.length}）',
+              icon: 'logout',
+              kind: BtnKind.danger,
+              block: true,
+              onTap: loading || selected.isEmpty ? null : _removeSelected,
+            ),
+          ),
       ],
     );
   }
@@ -880,6 +908,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
   Future<void> _send() async {
     if (cd > 0) return;
     final app = context.appRead;
+    if (app.net == null) return toast('演示模式，不发起请求', 'info'); // 演示模式没有网络层，直接调接口会崩
     try {
       await PasswordApi(app.api.client).forgot(app.account?.email ?? '');
       if (!mounted) return;
@@ -909,6 +938,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
         ..addAll(e);
       shake++;
     });
+    if (context.appRead.net == null) return toast('演示模式，不发起请求', 'info');
     setState(() => busy = true);
     final app = context.appRead;
     try {

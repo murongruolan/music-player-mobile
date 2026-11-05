@@ -83,11 +83,11 @@ class AppearancePage extends StatelessWidget {
         Item(icon: 'vinyl', color: 'violet', label: '播放器皮肤', sub: sk.desc, val: sk.name, onTap: () => openSkins(context)),
         Item(icon: 'layers', color: 'blue', label: '播放器背景', sub: sk.usesBg ? '律动、声波、唱片、舞台使用' : '当前皮肤「${sk.name}」自带背景，不受此项影响', val: const {'blur': '模糊封面', 'static': '静态流光', 'flow': '动态流光'}[app.bg], onTap: () => openBg(context)),
         Item(icon: 'vinyl', color: 'gray', label: '唱片旋转', sw: app.set.vinylSpin, onSw: (v) => app.update(() => app.set.vinylSpin = v)),
-        Item(icon: 'phone', color: 'gold', label: '横屏充电时进入待机', sub: '手机横放并充电时，自动切到「待机」皮肤', sw: app.set.standbyAuto, onSw: (v) => app.update(() => app.set.standbyAuto = v)),
+        if (!app.online) Item(icon: 'phone', color: 'gold', label: '横屏充电时进入待机', sub: '手机横放并充电时，自动切到「待机」皮肤', sw: app.set.standbyAuto, onSw: (v) => app.update(() => app.set.standbyAuto = v)), // 联网模式还没接：需要读充电状态
         Item(icon: 'sun', color: 'orange', label: '播放页屏幕常亮', sub: '播放页打开期间保持屏幕点亮', sw: app.set.keepAwake, onSw: (v) => app.update(() => app.set.keepAwake = v)), // 打开播放页时才生效（见 openPlayer）
       ]),
       Group(title: '界面', children: [
-        Item(icon: 'font', color: 'teal', label: '界面字体', val: fonts.firstWhere((f) => f[0] == app.font)[1], onTap: () => openFonts(context)),
+        Item(icon: 'font', color: 'teal', label: '界面字体', val: app.font == 'custom' ? '导入的字体' : fonts.firstWhere((f) => f[0] == app.font, orElse: () => fonts.first)[1], onTap: () => openFonts(context)),
         Item(lead: AppIcon(app.appIcon, size: 30), label: 'App 图标', val: appIcons.firstWhere((a) => a[0] == app.appIcon)[1], onTap: () => openAppIcons(context)),
         Item(icon: 'compass', color: 'cyan', label: '首页内容与顺序', val: '${app.homeMods.where((m) => m.value).length} 个模块', onTap: () => openHomeOrder(context)),
         Item(icon: 'zap', color: 'green', label: '触感反馈', sw: app.set.haptics, onSw: (v) => app.update(() => app.set.haptics = v)),
@@ -268,7 +268,7 @@ class LyricsSettingsPage extends StatelessWidget {
         Padding(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6), child: LSlider(label: '整体偏移', value: s.loff, min: -3, max: 3, step: .1, fmt: (v) => '${v > 0 ? '+' : ''}${v.toStringAsFixed(1)}s', onChanged: (v) => u(() => s.loff = v))),
       ]),
       Group(title: '来源', children: [
-        Item(icon: 'layers', color: 'orange', label: '歌词来源优先级', val: '内置 → 平台 → 本地', onTap: () => toast('长按拖动调整顺序', 'drag')),
+        Item(icon: 'layers', color: 'orange', label: '歌词来源', sub: app.online ? '目前只用歌曲所在平台的歌词，其它来源还没接入' : null, val: app.online ? '歌曲所在平台' : '内置 → 平台 → 本地', chev: !app.online, onTap: app.online ? null : () => toast('长按拖动调整顺序', 'drag')),
         Item(icon: 'folder', color: 'green', label: '读取同名 .lrc 文件', sub: '本地音乐优先使用同目录歌词', sw: s.cache, onSw: (v) => u(() => s.cache = v)),
       ]),
     ]);
@@ -312,16 +312,17 @@ class SysLyricsPage extends StatelessWidget {
           ]),
         ),
       ),
-      Group(title: '悬浮歌词（Android）', children: [
+      if (app.online) const Hint('桌面悬浮歌词和状态栏歌词需要系统层能力，暂时还不支持。蓝牙歌词推送已经可以用。', padding: EdgeInsets.fromLTRB(Tk.pad, 0, Tk.pad, 12)),
+      if (!app.online) Group(title: '悬浮歌词（Android）', children: [
         Item(icon: 'layers', color: 'violet', label: '桌面悬浮歌词', sub: '需要「显示在其他应用上层」权限', sw: s.floatLyric, onSw: (v) => u(() => s.floatLyric = v)),
         Item(icon: 'lock', color: 'gray', label: '锁定位置', sub: '锁定后点击穿透，不影响其他应用', sw: s.floatLock, onSw: (v) => u(() => s.floatLock = v)),
         Item(icon: 'palette', color: 'pink', label: '样式', val: '圆角卡片 · 18px', onTap: () => toast('可调整字号、颜色和背景透明度', 'palette')),
       ]),
       Group(title: '车机与蓝牙', children: [
-        Item(icon: 'bluetooth', color: 'blue', label: '蓝牙歌词推送', sub: '把当前行写入蓝牙媒体信息，车机屏幕可见', sw: s.btLyric, onSw: (v) => u(() => s.btLyric = v)),
-        Item(icon: 'car', color: 'teal', label: '推送顺序', val: '歌词 · 歌名', onTap: () => toast('可选：仅歌词 / 歌词·歌名 / 歌名·歌词', 'car')),
+        Item(icon: 'bluetooth', color: 'blue', label: '蓝牙歌词推送', sub: '把当前行写入媒体信息（车机、蓝牙耳机、锁屏都能看到）', sw: s.btLyric, onSw: (v) => u(() => s.btLyric = v)),
+        Item(icon: 'car', color: 'teal', label: '推送顺序', sub: '点一下切换', val: const ['仅歌词', '歌词 · 歌名', '歌名 · 歌词'][s.btOrder.clamp(0, 2)], onTap: () => u(() => s.btOrder = (s.btOrder + 1) % 3)),
       ]),
-      Group(title: '状态栏', children: [Item(icon: 'phone', color: 'orange', label: '状态栏歌词', sub: '仅部分 Android 定制系统支持', sw: s.sbLyric, onSw: (v) => u(() => s.sbLyric = v))]),
+      if (!app.online) Group(title: '状态栏', children: [Item(icon: 'phone', color: 'orange', label: '状态栏歌词', sub: '仅部分 Android 定制系统支持', sw: s.sbLyric, onSw: (v) => u(() => s.sbLyric = v))]),
     ]);
   }
 }

@@ -76,6 +76,19 @@ class LyraMediaHandler extends BaseAudioHandler {
     ));
   }
 
+  /// 通知栏 / 锁屏 / 蓝牙拖动进度条。
+  void Function(Duration position)? onSeekTo;
+
+  @override
+  Future<void> seek(Duration position) async => onSeekTo?.call(position);
+
+  /// 蓝牙歌词推送：只改媒体信息里的标题 / 副标题（车机、蓝牙耳机、锁屏显示的就是这两行）。
+  void setMediaText(String title, String artist) {
+    final m = mediaItem.value;
+    if (m == null || (m.title == title && m.artist == artist)) return;
+    mediaItem.add(m.copyWith(title: title, artist: artist));
+  }
+
   /// 清空通知（卸载音源 / 退出登录）。
   void clearNowPlaying() {
     mediaItem.add(null);
