@@ -352,8 +352,7 @@ List<Widget> _floatGroups(BuildContext context, AppState app) {
         sub: isIOS ? '用画中画小窗显示歌词，回到桌面或打开别的 App 也能看；需要正在播放' : '切到后台播放时显示在其他应用上层；需要「显示在其他应用上层」权限',
         sw: s.floatLyric,
         onSw: (v) async {
-          final ok = await f.setEnabled(v);
-          if (v && !ok && !isIOS) toast('请在系统设置里允许 Lyra「显示在其他应用上层」，回来后自动开启', 'info');
+          await f.setEnabled(v); // 没有悬浮窗权限时先弹说明，用户点「去设置」才跳系统页
         },
       ),
       if (!isIOS)

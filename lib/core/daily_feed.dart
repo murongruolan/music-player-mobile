@@ -1,12 +1,14 @@
 // 每日推荐：网易云直连为主（登录后按账号推荐，每天 6:00 更新），没登录网易云时用私人 FM 兜底。
 // 不经过 Lyra 服务端。结果按「日期 + 账号」在内存里缓存，同一天重复打开不重复请求。
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
 import '../platform/models.dart';
 import '../platform/netease.dart';
 import '../platform/registry.dart' show platformError;
+import '../sync/cloud_models.dart' show CloudTrack;
 import 'app_log.dart';
 import 'state.dart';
 
@@ -43,12 +45,45 @@ class DailyFeed extends ChangeNotifier {
     return '${d.year}-${d.month}-${d.day}';
   }
 
-  /// 打开每日页时调：缓存还有效就什么都不做。
-  Future<void> ensure() {
+  static const _kCache = 'daily.cache.v1';
+
+  /// 打开每日页时调：内存里有今天的就什么都不做；没有就先拿本机缓存（上次打开时的结果）秒开，
+  /// 再在后台拉新的。拉回来的和正在显示的一样就不替换（不闪），不一样才换。
+  /// 私人 FM 每次都不一样：有缓存时直接用缓存，不在后台换掉，点刷新才换一批。
+  Future<void> ensure() async {
     final key = '${dayOf(DateTime.now())}|${_app.platCreds.of(Plat.wy)?.nickname ?? _cookie.hashCode}|${loggedIn ? 'u' : 'g'}';
     if (key == _key && (ids.isNotEmpty || loading)) return _running ?? Future.value();
     _key = key;
+    final cached = await _readCache(key);
+    if (cached != null) {
+      mode = cached.$1;
+      note = cached.$3;
+      ids = cached.$2;
+      error = null;
+      notifyListeners();
+      if (mode == DailyMode.fm) return;
+    }
     return refresh();
+  }
+
+  Future<(DailyMode, List<int>, String?)?> _readCache(String key) async {
+    try {
+      final raw = await _app.net?.prefs.read(_kCache);
+      if (raw == null || raw.isEmpty) return null;
+      final j = jsonDecode(raw) as Map<String, dynamic>;
+      if (j['key'] != key) return null;
+      final tracks = [for (final t in (j['tracks'] as List? ?? const [])) CloudTrack.fromDesktop(Map<String, dynamic>.from(t as Map))];
+      if (tracks.isEmpty) return null;
+      return (j['mode'] == 'fm' ? DailyMode.fm : DailyMode.daily, [for (final t in tracks) _app.library.register(t)], j['note'] as String?);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _writeCache(List<PTrack> tracks) {
+    final key = _key;
+    if (key == null || tracks.isEmpty) return;
+    unawaited(_app.net?.prefs.write(_kCache, jsonEncode({'key': key, 'mode': mode == DailyMode.fm ? 'fm' : 'daily', 'note': note, 'tracks': [for (final t in tracks) t.toCloud().toDesktop()]})));
   }
 
   /// 重新拉。FM 模式下等于「换一批」。
@@ -63,7 +98,7 @@ class DailyFeed extends ChangeNotifier {
     }
     loading = true;
     error = null;
-    notifyListeners();
+    notifyListeners(); // 页面只在还没有内容时显示骨架屏；已有内容（缓存）时后台静默刷新
     try {
       if (loggedIn) {
         try {
@@ -81,7 +116,8 @@ class DailyFeed extends ChangeNotifier {
       }
       _set(DailyMode.fm, await _fm(wy), loggedIn ? '每日推荐暂时拿不到，先听听私人 FM' : '登录网易云后，这里会换成按你口味生成的每日推荐');
     } catch (e) {
-      error = platformError(e);
+      // 已经显示着缓存的内容时，后台刷新失败不打断（下次再试）
+      if (ids.isEmpty) error = platformError(e);
       AppLog.instance.add('每日推荐', '获取失败：$error');
     } finally {
       loading = false;
@@ -89,8 +125,9 @@ class DailyFeed extends ChangeNotifier {
     }
   }
 
-  /// 私人 FM 凑一批：每轮并发 3 个请求，去重，最多 8 轮。
+  /// 私人 FM 凑一批：每轮并发 3 个请求，去重，最多 8 轮。页面上还空着时，第一轮拿到的先显示出来。
   Future<List<PTrack>> _fm(NeteasePlatform wy) async {
+    final showPartial = ids.isEmpty;
     final cookie = loggedIn ? _cookie : (_app.platCreds.anonymousCookie(Plat.wy) ?? '');
     final seen = <String>{};
     final out = <PTrack>[];
@@ -106,6 +143,11 @@ class DailyFeed extends ChangeNotifier {
       for (final t in batch.expand((b) => b)) {
         if (seen.add(t.id) && !_app.isDislikedKey(t.id)) out.add(t);
       }
+      if (showPartial && out.isNotEmpty && out.length < fmTarget) {
+        mode = DailyMode.fm;
+        ids = [for (final t in out) _app.library.register(t.toCloud())];
+        notifyListeners();
+      }
       if (batch.every((b) => b.isEmpty)) break;
     }
     if (out.isEmpty && last != null) throw last!;
@@ -113,9 +155,12 @@ class DailyFeed extends ChangeNotifier {
   }
 
   void _set(DailyMode m, List<PTrack> tracks, String? why) {
+    final next = [for (final t in tracks) _app.library.register(t.toCloud())];
+    final same = m == mode && why == note && next.length == ids.length && Iterable.generate(next.length).every((i) => next[i] == ids[i]);
     mode = m;
     note = why;
-    ids = [for (final t in tracks) _app.library.register(t.toCloud())];
+    if (!same) ids = next; // 和正在显示的一样就不换（列表不重建、不闪）
+    _writeCache(tracks);
     error = tracks.isEmpty ? (m == DailyMode.fm ? '私人 FM 暂时没有返回歌曲，稍后再试' : '今天的推荐还没生成') : null;
   }
 

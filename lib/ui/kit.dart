@@ -560,7 +560,8 @@ class Item extends StatelessWidget {
           if (trailing != null) trailing!,
           if (sw != null) LSwitch(sw!, onSw),
           if (sw == null && trailing == null) ...[
-            if (val != null) ConstrainedBox(constraints: const BoxConstraints(maxWidth: 150), child: Text(val!, maxLines: 1, overflow: TextOverflow.ellipsis, style: ts(14, c: pal.t3))),
+            // 右侧的值：原来固定最多 150dp，邮箱这类长一点的值总被省略；现在按屏宽给到约 58%
+            if (val != null) ConstrainedBox(constraints: BoxConstraints(maxWidth: math.max(150, MediaQuery.sizeOf(context).width * .58)), child: Text(val!, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.right, style: ts(14, c: pal.t3))),
             if (busy)
               Padding(padding: const EdgeInsets.only(left: 6, right: 2), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: pal.t3)))
             else if (chev && (onTap != null))

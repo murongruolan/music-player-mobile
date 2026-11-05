@@ -376,22 +376,13 @@ class _StatsPageState extends State<StatsPage> {
           ]),
         ),
       ),
-      const Sec('90 天足迹', size: 16),
-      CardBox(
-        child: GridView.count(
-          crossAxisCount: 15,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 4,
-          crossAxisSpacing: 4,
-          children: [for (final n in foot) Container(decoration: BoxDecoration(color: pal.acc.withValues(alpha: n == 0 ? .06 : .2 + .8 * n / maxFoot), borderRadius: BorderRadius.circular(3)))],
-        ),
-      ),
+      Sec('90 天足迹', size: 16, more: '${foot.where((n) => n > 0).length} 天有听歌'),
+      CardBox(padding: const EdgeInsets.fromLTRB(14, 14, 14, 12), child: _Heatmap(foot: foot, max: maxFoot)),
       if (top.isNotEmpty) ...[
         const Sec('最常听的歌手', size: 16),
         HScroll(height: 120, gap: 16, children: [
           for (final (i, (a, n)) in top.indexed)
-            SizedBox(width: 76, child: Column(children: [Cover(hue: i * 60.0 + 20, variant: 1, size: 76, radius: 38), const SizedBox(height: 6), Text(a, maxLines: 1, overflow: TextOverflow.ellipsis, style: ts(12.5, w: FontWeight.w600, c: pal.t1)), Text('$n 次', style: ts(11, c: pal.t3))])),
+            SizedBox(width: 76, child: Column(children: [_ArtistAvatar(a, hue: i * 60.0 + 20), const SizedBox(height: 6), Text(a, maxLines: 1, overflow: TextOverflow.ellipsis, style: ts(12.5, w: FontWeight.w600, c: pal.t1)), Text('$n 次', style: ts(11, c: pal.t3))])),
         ]),
       ],
       const SizedBox(height: 18),
@@ -525,4 +516,130 @@ class _StatsPageState extends State<StatsPage> {
 String _platName(String code) {
   const m = {'wy': '网易云音乐', 'tx': 'QQ音乐', 'kg': '酷狗音乐', 'kw': '酷我音乐', 'mg': '咪咕音乐', 'local': '本地'};
   return m[code] ?? code;
+}
+
+/// 90 天足迹：按周排成 7 行的格子（GitHub 贡献图那种），颜色分 5 档，空白天用明显的浅灰，
+/// 底下标月份和图例。原来是 15 列连续亮度渐变，深浅差太小，整体看上去灰蒙蒙的。
+class _Heatmap extends StatelessWidget {
+  final List<int> foot; // 旧 → 新，最后一个是今天
+  final int max;
+  const _Heatmap({required this.foot, required this.max});
+
+  int _level(int n) {
+    if (n <= 0) return 0;
+    final r = n / math.max(1, max);
+    return r > .75 ? 4 : r > .5 ? 3 : r > .25 ? 2 : 1;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pal = context.pal;
+    final today = DateTime.now();
+    final start = DateTime(today.year, today.month, today.day - (foot.length - 1));
+    final lead = start.weekday - 1; // 第一列前面空几格（周一开头）
+    final cols = ((lead + foot.length) / 7).ceil();
+    Color colorOf(int lv) => lv == 0 ? (pal.dark ? const Color(0x14FFFFFF) : const Color(0x12000000)) : pal.acc.withValues(alpha: const [0, .32, .55, .78, 1.0][lv]);
+    return LayoutBuilder(builder: (c, cs) {
+      const gap = 3.0, labelW = 18.0;
+      final cell = ((cs.maxWidth - labelW - gap * (cols - 1)) / cols).clamp(6.0, 22.0);
+      final months = <int, String>{};
+      for (var col = 0; col < cols; col++) {
+        final d = start.add(Duration(days: col * 7 - lead));
+        if (col == 0 || d.day <= 7) months[col] = '${d.month}月';
+      }
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SizedBox(
+          height: 16,
+          child: Stack(children: [for (final e in months.entries) Positioned(left: labelW + e.key * (cell + gap), child: Text(e.value, style: ts(10.5, c: pal.t3)))]),
+        ),
+        const SizedBox(height: 4),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SizedBox(
+            width: labelW,
+            child: Column(children: [for (var r = 0; r < 7; r++) SizedBox(height: cell + (r < 6 ? gap : 0), child: Align(alignment: Alignment.topLeft, child: Text(r % 2 == 0 ? '一三五日'[r ~/ 2] : '', style: ts(9.5, c: pal.t3, h: 1))))]),
+          ),
+          for (var col = 0; col < cols; col++) ...[
+            if (col > 0) const SizedBox(width: gap),
+            Column(children: [
+              for (var r = 0; r < 7; r++) ...[
+                if (r > 0) const SizedBox(height: gap),
+                Builder(builder: (c) {
+                  final i = col * 7 + r - lead;
+                  if (i < 0 || i >= foot.length) return SizedBox(width: cell, height: cell);
+                  final d = start.add(Duration(days: i));
+                  return Tooltip(
+                    message: '${d.month}月${d.day}日 · ${foot[i] == 0 ? '没有听歌' : '${foot[i]} 次播放'}',
+                    triggerMode: TooltipTriggerMode.tap,
+                    child: Container(
+                      width: cell,
+                      height: cell,
+                      decoration: BoxDecoration(color: colorOf(_level(foot[i])), borderRadius: BorderRadius.circular(cell * .22), border: i == foot.length - 1 ? Border.all(color: pal.t2, width: 1.2) : null),
+                    ),
+                  );
+                }),
+              ],
+            ]),
+          ],
+        ]),
+        const SizedBox(height: 10),
+        Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+          Text('少', style: ts(10.5, c: pal.t3)),
+          for (var lv = 0; lv <= 4; lv++) Container(width: 10, height: 10, margin: const EdgeInsets.only(left: 3), decoration: BoxDecoration(color: colorOf(lv), borderRadius: BorderRadius.circular(2.5))),
+          const SizedBox(width: 4),
+          Text('多', style: ts(10.5, c: pal.t3)),
+        ]),
+      ]);
+    });
+  }
+}
+
+/// 「最常听的歌手」头像：关注过的用关注时记的头像；否则在网易云搜一下歌手拿头像（本次运行内缓存）；
+/// 都没有时用这位歌手某首歌的封面；最后才是占位图。
+class _ArtistAvatar extends StatefulWidget {
+  final String name;
+  final double hue;
+  const _ArtistAvatar(this.name, {required this.hue});
+  static final _cache = <String, String?>{};
+  @override
+  State<_ArtistAvatar> createState() => _ArtistAvatarState();
+}
+
+class _ArtistAvatarState extends State<_ArtistAvatar> {
+  String? url;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _resolve();
+    });
+  }
+
+  @override
+  void didUpdateWidget(_ArtistAvatar o) {
+    super.didUpdateWidget(o);
+    if (o.name != widget.name) _resolve();
+  }
+
+  Future<void> _resolve() async {
+    final app = context.appRead;
+    final key = normalizeSinger(widget.name);
+    if (_ArtistAvatar._cache.containsKey(key)) return setState(() => url = _ArtistAvatar._cache[key]);
+    final f = app.taste.followed.where((x) => normalizeSinger(x.name) == key && (x.cover ?? '').isNotEmpty).firstOrNull;
+    // 歌曲封面兜底（先显示，搜到歌手头像再换）
+    final song = songs.where((x) => normalizeSinger(x.artist) == key && (x.cover ?? '').isNotEmpty).firstOrNull;
+    setState(() => url = f?.cover ?? song?.cover);
+    if (f != null || !app.online) return;
+    try {
+      final o = await app.content.search('wy', widget.name, SearchType.artist, limit: 5);
+      final hit = o.result.items.where((a) => normalizeSinger(a.title) == key && (a.cover ?? '').isNotEmpty).firstOrNull;
+      _ArtistAvatar._cache[key] = hit?.cover ?? song?.cover;
+      if (mounted && hit != null) setState(() => url = hit.cover);
+    } catch (_) {
+      _ArtistAvatar._cache[key] = song?.cover;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Cover(hue: widget.hue, variant: 1, size: 76, radius: 38, url: url);
 }

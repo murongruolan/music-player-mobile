@@ -13,6 +13,7 @@ import '../data/mock.dart';
 import 'app_log.dart';
 import 'state.dart';
 import 'tokens.dart';
+import '../ui/kit.dart' show showLDialog, BtnKind, rootNav;
 
 const _ch = MethodChannel('lyra/native');
 
@@ -77,8 +78,14 @@ class FloatLyricCtl {
         _shown = false;
         if (!isIOS || _app.set.floatLyric) _app.update(() => _app.set.floatLyric = false);
       case 'float.toggle':
-        // 画中画小窗里的播放 / 暂停键
-        if ((c.arguments == true) != _app.playing) _app.toggle();
+        // 画中画小窗 / 悬浮歌词上的播放 / 暂停键（Android 不带参数 = 切换）
+        if (c.arguments == null || (c.arguments == true) != _app.playing) _app.toggle();
+      case 'float.prev':
+        _app.prev();
+      case 'float.next':
+        _app.next();
+      case 'float.open':
+        break; // 原生侧已拉起 App
       case 'float.skip':
         final d = (c.arguments as num?)?.toDouble() ?? 0;
         _app.seek(_app.pos.value + d);
@@ -124,6 +131,8 @@ class FloatLyricCtl {
       return false;
     }
     if (!isIOS && !await canDraw()) {
+      // 先说明要什么权限、去哪开，用户点「去设置」才跳（直接跳系统页，不熟悉手机的人会看不懂）
+      if (!await explainOverlayPermission('桌面悬浮歌词')) return false;
       _pendingEnable = true; // 从系统授权页回来时自动打开
       await requestPermission();
       return false;
@@ -144,8 +153,32 @@ class FloatLyricCtl {
 
   bool _pendingEnable = false;
 
+  /// 需要「显示在其他应用上层」权限时的说明弹窗。返回 true = 用户点了「去设置」。
+  static Future<bool> explainOverlayPermission(String feature) async {
+    final ctx = rootNav.currentContext;
+    if (ctx == null) return true;
+    final c = Completer<bool>();
+    await showLDialog<void>(ctx,
+        icon: 'layers',
+        title: '需要悬浮窗权限',
+        body: '「$feature」要显示在其他应用上面，需要你在系统设置里允许 Lyra「显示在其他应用的上层」（有的手机叫「悬浮窗」）。\n\n点「去设置」后，在列表里找到 Lyra 打开开关，再返回 Lyra 就会自动开启。',
+        dismissible: true,
+        actions: [
+          ('暂不开启', BtnKind.sec, () => c.complete(false)),
+          ('去设置', BtnKind.pri, () => c.complete(true)),
+        ]);
+    if (!c.isCompleted) c.complete(false);
+    return c.future;
+  }
+
   void setForeground(bool fg) {
     _foreground = fg;
+    // 回到前台：Android 上悬浮歌词一律收起（不管 Dart 这边记的状态，防止原生窗口残留，
+    // 例如换桌面图标时 Activity 被系统重建）
+    if (fg && !isIOS && nativeSupported) {
+      _shown = false;
+      unawaited(_call('float.hide'));
+    }
     if (fg && _pendingEnable) {
       _pendingEnable = false;
       unawaited(canDraw().then((ok) {
@@ -188,7 +221,12 @@ class FloatLyricCtl {
 
   /// AppState._tick 每 50ms 调一次：句子 / 播放态 / 歌变了才推送；播放中每 5 秒校一次时钟。
   void tick({bool force = false}) {
-    if (!nativeSupported || !_app.set.floatLyric) return;
+    if (!nativeSupported) return;
+    if (!_app.set.floatLyric) {
+      // 开关关着但窗口还在（异常残留）：收起
+      if (_shown && !isIOS) unawaited(_hide());
+      return;
+    }
     if (!isIOS) _sync();
     if (_color != _lastColor || _app.set.floatLock != _lastLock) {
       _lastColor = _color;
@@ -236,5 +274,13 @@ class FloatLyricCtl {
   Future<String?> currentIcon() => _call<String>('icon.current');
 
   /// 换桌面图标。返回是否成功（不支持的平台 / 系统拒绝为 false）。
-  Future<bool> setIcon(String id) async => await _call<bool>('icon.set', {'id': id}) ?? false;
+  /// Android 换图标会让系统重建 Activity：顺手把悬浮歌词收起，回到前台时按开关重新决定。
+  Future<bool> setIcon(String id) async {
+    final ok = await _call<bool>('icon.set', {'id': id}) ?? false;
+    if (!isIOS && !_wantAndroid) {
+      _shown = false;
+      unawaited(_call('float.hide'));
+    }
+    return ok;
+  }
 }

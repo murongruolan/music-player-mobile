@@ -26,9 +26,11 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
-/// 桌面悬浮歌词：系统悬浮窗（TYPE_APPLICATION_OVERLAY）里两行歌词——当前句（逐句卡拉 OK 染色）+ 下一句 / 翻译。
+/// 桌面悬浮歌词：系统悬浮窗（TYPE_APPLICATION_OVERLAY）里固定两行——当前句（逐句卡拉 OK 染色）+ 下一句 / 翻译。
+/// 两行高度固定（没有下一句时第二行留空），不会随歌词内容一会儿高一会儿矮。
 /// Dart 只在换句 / 暂停 / 拖动进度时推一次（句子起止时间 + 当前进度），染色进度在这里按时钟自己算，不用每帧过通道。
-/// 未锁定：上下拖动换位置，点一下出现工具条（锁定 / 字号 / 关闭）；锁定后点击穿透，在 App 设置里解锁。
+/// 未锁定：上下拖动换位置，点一下展开控制栏——上排：锁定 / 打开 App / 关闭；下排：上一首 / 播放暂停 / 下一首。
+/// 控制栏 5 秒没操作自动收起。锁定后点击穿透，在 App 设置里解锁。字号在 App 设置里调。
 object FloatLyric {
     /// 事件回 Dart：moved(y) / locked(bool) / closed / size(sp)
     var onEvent: ((String, Any?) -> Unit)? = null
@@ -38,6 +40,10 @@ object FloatLyric {
     private var line: KaraokeView? = null
     private var sub: TextView? = null
     private var bar: LinearLayout? = null
+    private var playBtn: android.widget.ImageView? = null
+    private var isPlaying = false
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val autoHide = Runnable { bar?.visibility = View.GONE }
     private var params: WindowManager.LayoutParams? = null
 
     private var fontSp = 18f
@@ -84,35 +90,58 @@ object FloatLyric {
             setTextColor(0xCCFFFFFF.toInt())
             gravity = Gravity.CENTER
             maxLines = 1
+            minLines = 1
             ellipsize = TextUtils.TruncateAt.END
             setShadowLayer(4 * dp, 0f, dp, 0x99000000.toInt())
+            text = " "
         }
         val tools = LinearLayout(app).apply {
-            orientation = LinearLayout.HORIZONTAL
+            orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             visibility = View.GONE
             setPadding(0, (8 * dp).toInt(), 0, 0)
         }
-        fun tool(label: String, onTap: () -> Unit) = TextView(app).apply {
-            text = label
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-            setPadding((14 * dp).toInt(), (6 * dp).toInt(), (14 * dp).toInt(), (6 * dp).toInt())
-            background = GradientDrawable().apply { cornerRadius = 14 * dp; setColor(0x33FFFFFF) }
-            setOnClickListener { onTap() }
-            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-            lp.marginStart = (5 * dp).toInt(); lp.marginEnd = (5 * dp).toInt()
+        fun row() = LinearLayout(app).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
+        fun btn(icon: Int, big: Boolean = false, onTap: () -> Unit) = android.widget.ImageView(app).apply {
+            setImageResource(icon)
+            setColorFilter(Color.WHITE)
+            val pad = ((if (big) 10 else 9) * dp).toInt()
+            setPadding(pad, pad, pad, pad)
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(if (big) 0x40FFFFFF else 0x26FFFFFF) }
+            setOnClickListener { onTap(); bump() }
+            val sz = ((if (big) 46 else 38) * dp).toInt()
+            val lp = LinearLayout.LayoutParams(sz, sz)
+            lp.marginStart = (9 * dp).toInt(); lp.marginEnd = (9 * dp).toInt()
             layoutParams = lp
         }
-        tools.addView(tool("锁定") {
-            locked = true
-            tools.visibility = View.GONE
-            applyStyle()
-            onEvent?.invoke("locked", true)
-        })
-        tools.addView(tool("A-") { fontSp = max(12f, fontSp - 2); applyStyle(); onEvent?.invoke("size", fontSp.toDouble()) })
-        tools.addView(tool("A+") { fontSp = min(36f, fontSp + 2); applyStyle(); onEvent?.invoke("size", fontSp.toDouble()) })
-        tools.addView(tool("关闭") { hide(); onEvent?.invoke("closed", null) })
+        val top = row().apply {
+            addView(btn(android.R.drawable.ic_lock_lock) {
+                locked = true
+                tools.visibility = View.GONE
+                applyStyle()
+                onEvent?.invoke("locked", true)
+            })
+            addView(btn(android.R.drawable.ic_menu_view) {
+                // 打开 App
+                val i = app.packageManager.getLaunchIntentForPackage(app.packageName)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                if (i != null) app.startActivity(i)
+                onEvent?.invoke("open", null)
+            })
+            addView(btn(android.R.drawable.ic_menu_close_clear_cancel) { hide(); onEvent?.invoke("closed", null) })
+        }
+        val play = btn(android.R.drawable.ic_media_play, big = true) {
+            isPlaying = !isPlaying // 先切图标，Dart 推回真实状态时再校正
+            playBtn?.setImageResource(if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play)
+            onEvent?.invoke("toggle", null)
+        }
+        playBtn = play
+        val bottom = row().apply {
+            addView(btn(android.R.drawable.ic_media_previous) { onEvent?.invoke("prev", null) })
+            addView(play)
+            addView(btn(android.R.drawable.ic_media_next) { onEvent?.invoke("next", null) })
+        }
+        tools.addView(top)
+        tools.addView(bottom, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = (8 * dp).toInt() })
         box.addView(k, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         box.addView(s, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         box.addView(tools, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
@@ -148,15 +177,24 @@ object FloatLyric {
             wm?.removeView(r)
         } catch (_: Exception) {
         }
-        root = null; line = null; sub = null; bar = null
+        handler.removeCallbacks(autoHide)
+        root = null; line = null; sub = null; bar = null; playBtn = null
+    }
+
+    /// 控制栏有操作：重新计时 5 秒后自动收起。
+    private fun bump() {
+        handler.removeCallbacks(autoHide)
+        if (bar?.visibility == View.VISIBLE) handler.postDelayed(autoHide, 5000)
     }
 
     /// 换句 / 暂停 / 拖进度时调用。时间单位：秒。
     fun update(text: String, next: String, start: Double, end: Double, pos: Double, playing: Boolean, speed: Double) {
         line?.setLine(text, start, end, pos, playing, speed)
-        sub?.apply {
-            this.text = next
-            visibility = if (next.isEmpty()) View.GONE else View.VISIBLE
+        // 第二行始终占位：没有下一句时放一个空格，窗口高度不跳
+        sub?.text = if (next.isEmpty()) " " else next
+        if (playing != isPlaying) {
+            isPlaying = playing
+            playBtn?.setImageResource(if (playing) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play)
         }
     }
 
@@ -186,6 +224,7 @@ object FloatLyric {
                         onEvent?.invoke("moved", p.y)
                     } else {
                         tools.visibility = if (tools.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+                        bump()
                     }
                     true
                 }
