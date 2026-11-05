@@ -356,12 +356,12 @@ class _AccountPageState extends State<AccountPage> {
       Group(title: '资料', children: [
         Item(icon: 'user', color: 'blue', label: '昵称与头像', val: name, onTap: () => _editNickname(context)),
         Item(icon: 'mail', color: 'orange', label: '邮箱', val: acc?.email ?? (app.online ? '' : 'ali@example.com')),
-        Item(icon: 'lock', color: 'gray', label: '修改密码', sub: '验证邮箱后设置新密码，重置会退出所有设备', onTap: () => push(context, const ChangePasswordPage())),
-        Item(icon: 'link', color: 'cyan', label: 'QQ 绑定', sub: '绑定后头像使用 QQ 头像，与桌面端同步', val: (acc?.qq?.isNotEmpty ?? false) ? '已绑定 ${acc!.qq}' : '未绑定', onTap: () => _editQQ(context)),
+        Item(icon: 'lock', color: 'gray', label: '修改密码', onTap: () => push(context, const ChangePasswordPage())),
+        Item(icon: 'link', color: 'cyan', label: 'QQ 绑定', val: (acc?.qq?.isNotEmpty ?? false) ? '已绑定 ${acc!.qq}' : '未绑定', onTap: () => _editQQ(context)),
       ]),
       Group(title: '会员', children: [
         Item(icon: 'key', color: 'gold', label: '激活码', sub: activated ? '输入升级码提升会员等级' : '输入激活码解锁全部功能', onTap: () => _activate(context)),
-        Item(icon: 'crown', color: 'pink', label: '会员权益', val: '6 项', onTap: () => toast('Hi-Res 下载 · 粒子皮肤 · 云同步 …', 'crown')),
+        Item(icon: 'crown', color: 'pink', label: '会员权益', val: '6 项', onTap: () => push(context, const BenefitsPage())),
       ]),
       Group(title: '安全', children: [
         Item(icon: 'phone', color: 'violet', label: '登录设备', val: deviceCount < 0 ? (app.online ? null : '${loginDevices.length} 台') : '$deviceCount 台', onTap: () => push(context, const DevicesPage())),
@@ -968,5 +968,114 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
         ],
       ],
     );
+  }
+}
+
+/// 激活码 / 升级码兑换弹窗（账号中心与会员权益页共用）。成功后回写账号并提示。
+Future<void> showActivateSheet(BuildContext context) async {
+  final app = context.appRead;
+  if (app.net == null) return toast('演示模式，不发起请求', 'info');
+  final tc = TextEditingController();
+  final r = await showLSheet(context, title: '激活码', builder: (c) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: Tk.pad),
+        child: Column(children: [
+          LField(controller: tc, label: '输入激活码', icon: 'key', autofocus: true),
+          const SizedBox(height: 14),
+          Btn('激活', block: true, onTap: () => Navigator.of(c).pop(tc.text)),
+        ]),
+      ));
+  final code = (r as String?)?.trim() ?? '';
+  if (code.isEmpty || !context.mounted) return;
+  try {
+    final nu = await AccountApi(app.api.client).redeemCode(code);
+    if (!context.mounted) return;
+    app.update(() => app.account = nu);
+    toast('激活成功 · ${nu.membershipName.isEmpty ? '会员' : nu.membershipName}', 'crown');
+  } on ApiException catch (e) {
+    if (!e.isCancelled) toast(e.userMessage, 'info');
+  }
+}
+
+/// 会员权益页（原型 perks）：当前等级 + 免费 / 赞助权益对照 + 激活码入口。
+/// 数据来自服务端账号信息（membershipName / membershipRank / membershipExpiresAt）。
+class BenefitsPage extends StatelessWidget {
+  const BenefitsPage({super.key});
+
+  /// 权益对照表：(名称, 免费档, 赞助档)。true=有，false=无，字符串=数量文案。
+  static const _rows = <(String, Object, Object)>[
+    ('在线播放与收藏', true, true),
+    ('平台登录与每日推荐', true, true),
+    ('播放器皮肤', '11 套', '15 套'),
+    ('多端实时同步', false, true),
+    ('账号云备份', false, true),
+    ('云端听歌统计', false, true),
+    ('Hi-Res 下载', false, true),
+    ('优先体验新功能', false, true),
+  ];
+
+  Widget _mark(BuildContext c, Object v, {bool sponsor = false}) {
+    final pal = c.pal;
+    if (v == true) return Icon(ic('check'), size: 15, color: sponsor ? pal.accText : pal.ok);
+    if (v == false) return Text('—', style: ts(13, c: pal.t4));
+    return Text('$v', style: ts(12.5, w: FontWeight.w600, c: sponsor ? pal.accText : pal.t2));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.app;
+    final pal = context.pal;
+    final acc = app.account;
+    final rank = acc?.membershipRank ?? 0;
+    final heroName = (acc?.membershipName.isNotEmpty ?? false) ? acc!.membershipName : (rank > 0 ? '已激活' : '免费版');
+    final activated = rank > 0;
+    final expires = acc?.membershipExpiresAt;
+    return SubPage(title: '会员权益', children: [
+      CardBox(
+        padding: const EdgeInsets.all(16),
+        child: Row(children: [
+          Container(width: 52, height: 52, alignment: Alignment.center, decoration: BoxDecoration(color: activated ? pal.accSoft : pal.s2, shape: BoxShape.circle), child: Icon(ic('crown'), size: 26, color: activated ? pal.accText : pal.t3)),
+          const SizedBox(width: 14),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(heroName, style: ts(17, w: FontWeight.w800, c: pal.t1)),
+            const SizedBox(height: 4),
+            Text(
+              activated
+                  ? '感谢支持。下面的功能你都可以用。${expires == null ? '' : ' ${expires.year}-${expires.month.toString().padLeft(2, '0')}-${expires.day.toString().padLeft(2, '0')} 到期'}'
+                  : '激活后解锁云同步、云备份、Hi-Res 下载等全部能力。',
+              style: ts(12.5, c: pal.t2, h: 1.5),
+            ),
+          ])),
+        ]),
+      ),
+      const SizedBox(height: 14),
+      CardBox(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        child: Column(children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 9),
+            child: Row(children: [
+              const Expanded(child: Text('')),
+              SizedBox(width: 56, child: Text('免费', textAlign: TextAlign.center, style: ts(12.5, w: FontWeight.w700, c: pal.t3))),
+              SizedBox(width: 56, child: Text('赞助', textAlign: TextAlign.center, style: ts(12.5, w: FontWeight.w700, c: pal.accText))),
+            ]),
+          ),
+          for (final (name, free, sponsor) in _rows)
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 9),
+              decoration: BoxDecoration(border: Border(top: BorderSide(color: pal.line.withValues(alpha: .5)))),
+              child: Row(children: [
+                Expanded(child: Text(name, style: ts(13.5, c: pal.t1))),
+                SizedBox(width: 56, child: Center(child: _mark(context, free))),
+                SizedBox(width: 56, child: Center(child: _mark(context, sponsor, sponsor: true))),
+              ]),
+            ),
+        ]),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(Tk.pad, 16, Tk.pad, 0),
+        child: Btn.sec('输入激活码 / 升级码', icon: 'key', block: true, onTap: () => showActivateSheet(context)),
+      ),
+      const Hint('激活码通过官方渠道获得；升级码可以把赞助等级提升一级。激活后云同步会自动开启。', padding: EdgeInsets.fromLTRB(Tk.pad, 10, Tk.pad, 24)),
+    ]);
   }
 }

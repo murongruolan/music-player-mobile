@@ -51,7 +51,10 @@ dependencies:
   # 平台扫码登录的二维码编码（纯 Dart，kevmoo/qr.dart），画法自己做
   qr: ^3.0.2
   # DLNA 投屏的设备描述 / SOAP 响应解析（UPnP 就是 HTTP+XML，无需第三方投屏包）
-  xml: ^7.1.0
+  # 6.x：与 flutter_svg 的 xml 约束对齐（7.x 尚不被支持）
+  xml: ^6.5.0
+  # 平台 logo（矢量 SVG，取自原版解包资源，五平台品牌标）
+  flutter_svg: ^2.3.2
 
 dev_dependencies:
   flutter_test:
@@ -63,3 +66,4 @@ flutter:
   # 预渲染的占位封面（12 色相 × 6 样式，256px JPEG），替代实时渐变绘制
   assets:
     - assets/covers/
+    - assets/platform_logos/
