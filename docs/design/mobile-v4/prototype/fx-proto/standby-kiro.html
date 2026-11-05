@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>待机 · WAVE 波光（官方 shader 原样移植）</title>
+<style>
+  @font-face { font-family: "LyraSerifBlack"; src: url("assets_wave/Cache/font/tce000001/NotoSerifSC-Black-fix") format("truetype"); font-display: swap; }
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0b0c10; color: #e8eaf0; font: 13px/1.5 -apple-system, "PingFang SC", "Noto Sans SC", sans-serif; }
+  header { padding: 14px 18px 2px; }
+  header h1 { margin: 0; font-size: 16px; }
+  header p { margin: 4px 0 0; color: #8a90a0; max-width: 1100px; }
+  .stage { display: flex; flex-wrap: wrap; gap: 16px; padding: 14px 18px; align-items: flex-start; }
+  .card { display: flex; flex-direction: column; gap: 6px; }
+  .card b { font-weight: 600; color: #aeb4c4; font-size: 12px; }
+  /* 官方画布 1624×780（宽高比必须对，装饰环几何按这个算） */
+  .phone { position: relative; width: 812px; max-width: calc(100vw - 36px); aspect-ratio: 1624 / 780; border-radius: 26px; overflow: hidden; background: #000; box-shadow: 0 0 0 6px #1a1c22, 0 20px 60px #0008; user-select: none; container-type: inline-size; }
+  .phone canvas, .phone video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+  /* 歌词层（规格：主歌词居中 #d6e4ff；当前字放大 + 模糊 + 暗蓝垫在下面；字体 NotoSerifSC-Black） */
+  .lyric { position: absolute; left: 8%; right: 8%; top: 0; bottom: 18%; display: grid; place-items: center; pointer-events: none; }
+  .lyric .wrap { position: relative; display: grid; place-items: center; }
+  .lyric .ghost { position: absolute; font-family: "LyraSerifBlack", "Noto Serif SC", serif; font-size: 14cqw; line-height: 1; color: rgba(12, 26, 80, .5); filter: blur(.75cqw); transition: opacity .35s; }
+  .lyric .line { position: relative; font-family: "LyraSerifBlack", "Noto Serif SC", serif; font-size: 3.2cqw; letter-spacing: .08em; color: #d6e4ff; white-space: nowrap; }
+  .lyric .line .sung { color: #ffffff; text-shadow: 0 0 1.2cqw rgba(160, 200, 255, .35); }
+  .lyric.off { opacity: 0; }
+  /* 底部一行：封面贴左边、歌名歌手、右侧控制（照录屏） */
+  .bar { position: absolute; left: 0; right: 3.4%; bottom: 7.6%; display: flex; align-items: center; gap: 1.4cqw; }
+  .cover { width: 5.6cqw; aspect-ratio: 1; border-radius: 0 .7cqw .7cqw 0; background: linear-gradient(135deg, #7765d8, #43b5ea 60%, #eaf5ff); flex: none; }
+  .meta { flex: 1; min-width: 0; }
+  .meta .t { font-size: 1.75cqw; font-weight: 600; color: #ffffffe8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .meta .a { font-size: 1.3cqw; color: #ffffff85; margin-top: .2cqw; }
+  .ctl { display: flex; align-items: center; gap: 3.6cqw; }
+  .ctl button { all: unset; cursor: pointer; display: grid; place-items: center; color: #ffffffd9; }
+  .ctl svg { width: 2.2cqw; height: auto; fill: currentColor; }
+  .ctl .play svg { width: 3.4cqw; }
+  .chrome { position: absolute; left: 5%; top: 5%; display: flex; align-items: baseline; gap: 1cqw; color: #ffffffe0; opacity: 0; transition: opacity .3s; }
+  .chrome .clock { font-size: 2.8cqw; font-weight: 300; font-variant-numeric: tabular-nums; }
+  .chrome .date { font-size: 1.4cqw; color: #ffffff99; }
+  .phone.chrome-on .chrome { opacity: 1; }
+  .panel { width: 330px; background: #14161c; border: 1px solid #23262e; border-radius: 14px; padding: 12px 14px; display: grid; gap: 8px; }
+  .panel h3 { margin: 4px 0 0; font-size: 12px; color: #8a90a0; font-weight: 600; }
+  .panel label { display: grid; grid-template-columns: 116px 1fr 44px; align-items: center; gap: 8px; color: #aeb4c4; }
+  .panel input[type=range] { width: 100%; }
+  .panel .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .panel button { background: #22252d; color: #e8eaf0; border: 1px solid #2e323c; border-radius: 9px; padding: 6px 10px; cursor: pointer; font: inherit; }
+  .panel button.on { background: #2b4f8f; border-color: #4a7fd6; }
+  .note { color: #8a90a0; font-size: 12px; line-height: 1.6; }
+  code { color: #c9d4ff; }
+  .err { color: #ff8a8a; }
+</style>
+</head>
+<body>
+<header>
+  <h1>待机 · WAVE 波光（官方 shader 原样移植）</h1>
+  <p>背景用的是 QQ 音乐解密出来的 <code>WaveFragment</code> 原文（一行没改，只补了 WebGL 外壳）+ 官方 <code>bg.png</code> 位移底图 + 官方的高斯模糊后处理；
+  uniform 初值用素材包里的校准值。右边面板可以调，调好点「复制参数」发我，我按这组值落到 App。点手机画面：显示 / 隐藏顶部时钟。</p>
+</header>
+
+<div class="stage">
+  <div class="card">
+    <b>原型（WebGL 实时渲染）</b>
+    <div class="phone" id="proto">
+      <canvas id="cv"></canvas>
+      <div class="lyric" id="lyric"><div class="wrap"><span class="ghost" id="ghost">她</span><span class="line" id="line"></span></div></div>
+      <div class="chrome"><span class="clock" id="clock">--:--</span><span class="date" id="date"></span></div>
+      <div class="bar">
+        <div class="cover"></div>
+        <div class="meta"><div class="t">她在诗人的梦里赤脚奔跑</div><div class="a">双笙 (陈元汐)</div></div>
+        <div class="ctl">
+          <button title="上一首"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
+          <button class="play" id="playBtn" title="播放 / 暂停"><svg viewBox="0 0 24 24" id="playIcon"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg></button>
+          <button title="下一首"><svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
+          <button title="收藏"><svg viewBox="0 0 24 24"><path d="M12 20.5l-1.3-1.2C5.8 14.9 3 12.3 3 9.1 3 6.5 5 4.5 7.6 4.5c1.5 0 2.9.7 3.8 1.8h1.2c.9-1.1 2.3-1.8 3.8-1.8C19 4.5 21 6.5 21 9.1c0 3.2-2.8 5.8-7.7 10.2zM12 18.4c4.4-4 7-6.5 7-9.3 0-1.5-1.1-2.6-2.6-2.6-1.2 0-2.3.8-2.7 1.9h-3.4C9.9 7.3 8.8 6.5 7.6 6.5 6.1 6.5 5 7.6 5 9.1c0 2.8 2.6 5.3 7 9.3z"/></svg></button>
+        </div>
+      </div>
+    </div>
+    <div class="note err" id="err"></div>
+  </div>
+
+  <div class="card">
+    <b>真机录屏（同尺寸对照）</b>
+    <div class="phone"><video src="wave.mp4" autoplay loop muted playsinline></video></div>
+  </div>
+
+  <div class="panel" id="panel"></div>
+</div>
+
+<!-- 官方 shader 原文（shader_official/WaveFragment.decrypted.glsl），逐字粘贴 -->
+<script type="x-shader/x-fragment" id="waveFrag">
+precision highp float;
+varying vec4 vColor;
+varying vec2 vTexCoord;
+uniform float cTime;
+  uniform vec4 cMagicColor;
+  uniform vec4 cLyricsColor;
+  uniform vec4 cLyricsColorDeep;
+  uniform vec4 cWaveCircle1;
+  uniform vec4 cWaveCircle2;
+  uniform vec4 cWaveCircle3;
+  uniform vec4 cWaveCircle4;
+  uniform vec4 cWaveCircle5;
+  uniform vec2 cCanvasSize;
+  uniform float cCurveIntensity;
+  uniform float cCurveSharpness;
+  uniform float cLeftWaveHeight;
+  uniform float cRightWaveHeight;
+  uniform float cLeftWaveWidth;
+  uniform float cRightWaveWidth;
+  uniform float cLeftWaveSpeed;
+  uniform float cRightWaveSpeed;
+  uniform float cLeftWaveRadius;
+  uniform float cRightWaveRadius;
+  uniform float cLeftCircleR;
+  uniform float cRightCircleR;
+uniform sampler2D sDiffMap;
+vec3 permute(vec3 x) {
+ return mod(((x*34.0)+1.0)*x, 289.0);
+}
+float snoise(vec2 v) {
+ const vec4 C = vec4(0.211324865405187, 0.366025403784439,
+                     -0.577350269189626, 0.024390243902439);
+ vec2 i  = floor(v + dot(v, C.yy));
+ vec2 x0 = v -   i + dot(i, C.xx);
+ vec2 i1;
+ i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+ vec4 x12 = x0.xyxy + C.xxzz;
+ x12.xy -= i1;
+ i = mod(i, 289.0);
+ vec3 p = permute(permute(i.y + vec3(0.0, i1.y, 1.0))
+     + i.x + vec3(0.0, i1.x, 1.0));
+ vec3 m = max(0.5 - vec3(dot(x0, x0), dot(x12.xy, x12.xy),
+     dot(x12.zw, x12.zw)), 0.0);
+ m = m * m;
+ m = m * m;
+ vec3 x = 2.0 * fract(p * C.www) - 1.0;
+ vec3 h = abs(x) - 0.5;
+ vec3 ox = floor(x + 0.5);
+ vec3 a0 = x - ox;
+ m *= 1.79284291400159 - 0.85373472095314 * (a0 * a0 + h * h);
+ vec3 g;
+ g.x = a0.x * x0.x + h.x * x0.y;
+ g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+ return 130.0 * dot(m, g);
+}
+float perlinNoise(vec2 st) {
+ return snoise(st) * 0.5 + 0.5;
+}
+float solidCircle(vec2 pos, float r, float blur, vec2 uv) {
+ float l = length(uv - pos);
+ return smoothstep(r, r - blur, l);
+}
+float borderCircle(vec2 pos, float r1, float r2, float blur, vec2 uv) {
+ float s1 = solidCircle(pos, r1, blur, uv);
+ float s2 = solidCircle(pos, r2, blur, uv);
+ return s1 - s2;
+}
+float ripple(vec2 uv, vec2 center, float radius, float width, float height, float speed) {
+ float dist = length(uv - center);
+ float wave = sin((dist * 3.14159 * 2.0 / width - speed * cTime) * 2.0) * 0.5 + 0.5;
+ float envelope = 1.0 - smoothstep(radius - width, radius + width, dist);
+ return wave * envelope * height;
+}
+float drawCircle(vec2 uv, vec2 center, float radius, float width, float softness, float noise, float noise_strength) {
+ float dist = length(uv - center);
+ float inner = radius - width / 2.0;
+ float outer = radius + width / 2.0;
+ float base_circle = smoothstep(inner - softness, inner, dist) *
+                    (1.0 - smoothstep(outer, outer + softness, dist));
+ return base_circle * (noise) * noise_strength;
+}
+vec3 blendMultiply(vec3 base, vec3 blend) {
+   return base*blend;
+}
+vec3 blendMultiply(vec3 base, vec3 blend, float opacity) {
+   return (blendMultiply(base, blend) * opacity + base * (1.0 - opacity));
+}
+float clampValue(float value, float minValue, float maxValue) {
+   return min(max(value, minValue), maxValue);
+}
+vec4 frag () {
+vec2 uv0 = vTexCoord;
+ vec4 o = texture2D(sDiffMap, uv0);
+ vec2 scalex_vec = vec2(cCanvasSize.x / cCanvasSize.y, 1.0);
+ vec2 st = uv0 * scalex_vec;
+ float left_data = cCurveIntensity * 10.0;
+ float right_data = cCurveSharpness * 10.0;
+ vec2 ripple1_center = vec2(1628.0/1624.0, 384.0/780.0) * scalex_vec;
+ float ripple1_radius = cRightWaveRadius;
+ float wave1_width = cRightWaveWidth;
+ float wave1_height = clampValue(cRightWaveHeight +  pow(right_data * 0.1, 5.0), cRightWaveHeight, 1.2);
+ float wave1_speed = cRightWaveSpeed;
+ vec2 ripple2_center = vec2(-12.0/1624.0, 380.0/780.0) * scalex_vec;
+ float ripple2_radius = cLeftWaveRadius;
+ float wave2_width = cLeftWaveWidth;
+ float wave2_height = clampValue(cLeftWaveHeight  + 0.5 * left_data , cLeftWaveHeight, 0.6);
+ float wave2_speed = cLeftWaveSpeed;
+ float ripple_effect_right = ripple(st, ripple1_center, ripple1_radius, wave1_width, wave1_height, wave1_speed);
+ float ripple_effect_left = ripple(st, ripple2_center, ripple2_radius, wave2_width, wave2_height, wave2_speed);
+ float waveBlur = 0.01;
+ float waveR_width = 0.04;
+ float waveRRight_width = 0.04;
+ float wave_circle_time1 = cWaveCircle1.x;
+ float wave_circle_time2 = cWaveCircle2.x;
+ float wave_circle_time3 = cWaveCircle3.x;
+ float wave_circle_time4 = cWaveCircle4.x;
+ float wave_circle_time5 = cWaveCircle5.x;
+ float r = 0.04 * 0.1 * 0.7;
+ float waveR1 = wave_circle_time1 * r;
+ float waveR2 = wave_circle_time2 * r;
+ float waveR3 = wave_circle_time3 * r;
+ float waveR4 = wave_circle_time4 * r;
+ float waveR5 = wave_circle_time5 * r;
+ float wave_offset1 = ripple(st, ripple2_center, ripple2_radius, wave2_width, cWaveCircle1.z, cWaveCircle1.y);
+ float wave_offset2 = ripple(st, ripple2_center, ripple2_radius, wave2_width, cWaveCircle2.z, cWaveCircle2.y);
+ float wave_offset3 = ripple(st, ripple2_center, ripple2_radius, wave2_width, cWaveCircle3.z, cWaveCircle3.y);
+ float wave_offset4 = ripple(st, ripple2_center, ripple2_radius, wave2_width, cWaveCircle4.z, cWaveCircle4.y);
+ float wave_offset5 = ripple(st, ripple2_center, ripple2_radius, wave2_width, cWaveCircle5.z, cWaveCircle5.y);
+ float waveCircle1 = borderCircle(ripple2_center, waveR1, waveR1 - waveR_width, waveBlur, st);
+ float waveCircle2 = borderCircle(ripple2_center, waveR2, waveR2 - waveR_width, waveBlur, st);
+ float waveCircle3 = borderCircle(ripple2_center, waveR3, waveR3 - waveR_width, waveBlur, st);
+ float waveCircle4 = borderCircle(ripple2_center, waveR4, waveR4 - waveR_width, waveBlur, st);
+ float waveCircle5 = borderCircle(ripple2_center, waveR5, waveR5 - waveR_width, waveBlur, st);
+ float wave_offset_right1 = ripple(st, ripple1_center, ripple1_radius, wave1_width, cWaveCircle1.z, cWaveCircle1.y);
+ float wave_offset_right2 = ripple(st, ripple1_center, ripple1_radius, wave1_width, cWaveCircle2.z, cWaveCircle2.y);
+ float wave_offset_right3 = ripple(st, ripple1_center, ripple1_radius, wave1_width, cWaveCircle3.z, cWaveCircle3.y);
+ float wave_offset_right4 = ripple(st, ripple1_center, ripple1_radius, wave1_width, cWaveCircle4.z, cWaveCircle4.y);
+ float wave_offset_right5 = ripple(st, ripple1_center, ripple1_radius, wave1_width, cWaveCircle5.z, cWaveCircle5.y);
+ float waveCircleRight1 = borderCircle(ripple1_center, waveR1, waveR1 - waveRRight_width, waveBlur, st);
+ float waveCircleRight2 = borderCircle(ripple1_center, waveR2, waveR2 - waveRRight_width, waveBlur, st);
+ float waveCircleRight3 = borderCircle(ripple1_center, waveR3, waveR3 - waveRRight_width, waveBlur, st);
+ float waveCircleRight4 = borderCircle(ripple1_center, waveR4, waveR4 - waveRRight_width, waveBlur, st);
+ float waveCircleRight5 = borderCircle(ripple1_center, waveR5, waveR5 - waveRRight_width, waveBlur, st);
+ float wave_offset_scale = 0.7;
+ float wave_offset_right_scale = 0.3;
+ ripple_effect_left = ripple_effect_left +
+ waveCircle1 * wave_offset_scale * wave_offset1 +
+ waveCircle2 * wave_offset_scale * wave_offset2 +
+ waveCircle3 * wave_offset_scale * wave_offset3 +
+ waveCircle4 * wave_offset_scale * wave_offset4 +
+ waveCircle5 * wave_offset_scale * wave_offset5;
+ ripple_effect_right = ripple_effect_right +
+ waveCircleRight1 * wave_offset_right_scale * wave_offset_right1 +
+ waveCircleRight2 * wave_offset_right_scale * wave_offset_right2 +
+ waveCircleRight3 * wave_offset_right_scale * wave_offset_right3 +
+ waveCircleRight4 * wave_offset_right_scale * wave_offset_right4 +
+ waveCircleRight5 * wave_offset_right_scale * wave_offset_right5;
+ vec2 combined_ripple = ripple_effect_right * (st - ripple1_center) + ripple_effect_left * (st - ripple2_center);
+ float noise_scale = 1.0;
+ float noise_strength = 0.15;
+ vec2 distorted_uv = uv0 + ripple_effect_right  * (st - ripple1_center) ;
+ float noise = perlinNoise(distorted_uv * noise_scale);
+ distorted_uv = uv0 + combined_ripple;
+ vec2 left_uv = st + ripple_effect_left * (st - ripple2_center);
+ vec2 right_uv = st + ripple_effect_right * (st - ripple1_center);
+ vec2 left_clear_uv = st  + ripple_effect_left * (st - ripple2_center);
+ vec2 right_clear_uv = st + ripple_effect_right * (st - ripple1_center);
+ o = texture2D(sDiffMap, distorted_uv);
+ vec2 circle_position = vec2(-0.018, 0.5);
+ float circle_radius = 0.5128;
+ float circle_width = 10./780.;
+ float circle_softness = 0.05;
+ vec4 circle_color = vec4(1.0 * 0.94);
+ vec2 scaled_center = circle_position * scalex_vec;
+ float circle = drawCircle(left_uv, scaled_center, circle_radius, circle_width, circle_softness, noise, noise_strength);
+ o = mix(o, circle_color, circle * circle_color.a);
+ vec2 circle2_position = vec2(-0.069, 0.5);
+ vec2 scaled_center2 = circle2_position * scalex_vec;
+ float circle2 = drawCircle(left_uv, scaled_center2, circle_radius, circle_width, circle_softness, noise, noise_strength);
+ vec4 circle2_color = vec4(1.0 * 1.0);
+ o = mix(o, circle2_color, circle2 * circle2_color.a);
+ vec2 circle3_position = vec2(-0.04, 0.5);
+ float circle3_radius = circle_radius * 1.38;
+ float circle3_width = 6.0/cCanvasSize.x;
+ vec2 scaled_center3 = circle3_position * scalex_vec;
+ float circle3 = drawCircle(left_uv, scaled_center3, circle3_radius, circle3_width, circle_softness, noise, noise_strength);
+ vec4 circle3_color = vec4(1.0 * 0.94);
+ o = mix(o, circle3_color, circle3 * circle3_color.a);
+ vec2 circle4_position = ripple2_center;
+ float circle4_radius = cLeftCircleR;
+ float circle4_width = 16.0/cCanvasSize.y;
+ vec2 scaled_center4 = circle4_position * scalex_vec;
+ float circle4 = drawCircle(left_clear_uv, scaled_center4, circle4_radius, circle4_width, 0.0, 1.0, 0.3);
+ vec4 circle4_color = vec4(1.0 * 0.50);
+ vec2 circle5_position = vec2(0.95, 0.5) * scalex_vec;
+ float circle5_radius = 0.5128;
+ float circle5_width = 0.01;
+ vec2 scaled_center5 = circle5_position;
+ float circle5 = drawCircle(right_uv, scaled_center5, circle5_radius, circle_width, circle_softness, noise, noise_strength);
+ vec4 circle5_color = vec4(1.0 * 0.94);
+ o = mix(o, circle5_color, circle5 * circle5_color.a);
+ vec2 circle6_position = vec2(0.98, 0.5);
+ float circle6_radius = cRightCircleR;
+ float circle6_width = 10.0/cCanvasSize.y;
+ vec2 scaled_center6 = circle6_position * scalex_vec;
+ float circle6 = drawCircle(right_clear_uv, scaled_center6, circle6_radius, circle6_width, 0.0, 1.0, 0.3);
+ vec4 circle6_color = vec4(1.0 * 1.0);
+   o.rgb = blendMultiply(o.rgb, cMagicColor.rgb, o.a);
+   o = mix(o, cLyricsColor, circle6 * circle6_color.a);
+   o = mix(o, cLyricsColor, circle4 * circle4_color.a);
+   o.a = 1.0;
+ return o;
+}
+void main() { gl_FragColor = frag(); }
+</script>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const cv = $('cv');
+  const gl = cv.getContext('webgl', { antialias: false, premultipliedAlpha: false, preserveDrawingBuffer: true });
+  if (!gl) { $('err').textContent = '浏览器不支持 WebGL'; return; }
+
+  // ---------------- 参数（初值 = 素材包 params/calibrated_params.json） ----------------
+  const P = {
+    magic: '#4b73be',
+    cCurveIntensity: .03, cCurveSharpness: .03,
+    cLeftWaveHeight: .06, cLeftWaveWidth: .13, cLeftWaveSpeed: .30, cLeftWaveRadius: .82,
+    cRightWaveHeight: .08, cRightWaveWidth: .26, cRightWaveSpeed: .24, cRightWaveRadius: .78,
+    cLeftCircleR: .30, cRightCircleR: .05,
+    ringPeriod: 6, ringReach: 1.4, ringSpeed: .1, ringHeight: .7,
+    energy: .5, blur: 5,
+  };
+  const RANGES = [
+    ['节拍 / 能量', [['energy', '音乐能量', 0, 1, .01], ['cCurveIntensity', '左·曲线强度', 0, .12, .002], ['cCurveSharpness', '右·曲线锐度', 0, .12, .002]]],
+    ['左侧波', [['cLeftWaveHeight', '波高', 0, .3, .002], ['cLeftWaveWidth', '波宽（密度）', .03, .5, .002], ['cLeftWaveSpeed', '速度', 0, 2, .01], ['cLeftWaveRadius', '影响半径', .1, 1.6, .01], ['cLeftCircleR', '细圆环半径', 0, 1, .005]]],
+    ['右侧波', [['cRightWaveHeight', '波高', 0, .3, .002], ['cRightWaveWidth', '波宽（密度）', .03, .5, .002], ['cRightWaveSpeed', '速度', 0, 2, .01], ['cRightWaveRadius', '影响半径', .1, 1.6, .01], ['cRightCircleR', '细圆环半径', 0, 1, .005]]],
+    ['五圈扩散环（运行时值未拿到，按 6 秒循环推算）', [['ringPeriod', '一轮秒数', 2, 12, .1], ['ringReach', '最远半径', .3, 2.4, .01], ['ringSpeed', '环内波速', 0, 1, .005], ['ringHeight', '环高度', 0, 1.5, .01]]],
+    ['后处理', [['blur', '高斯模糊 px', 0, 14, .5]]],
+  ];
+  const panel = $('panel');
+  const color = document.createElement('label');
+  color.innerHTML = `主题色 <input type="color" id="magic" value="${P.magic}"><span></span>`;
+  panel.appendChild(color);
+  $('magic').oninput = e => P.magic = e.target.value;
+  const presets = document.createElement('div'); presets.className = 'row';
+  for (const [n, c] of [['蓝（录屏）', '#4b73be'], ['红', '#b84a52'], ['紫', '#7a62c9'], ['绿', '#3f9a7a']]) {
+    const b = document.createElement('button'); b.textContent = n; b.onclick = () => { P.magic = c; $('magic').value = c; }; presets.appendChild(b);
+  }
+  panel.appendChild(presets);
+  for (const [title, list] of RANGES) {
+    const h = document.createElement('h3'); h.textContent = title; panel.appendChild(h);
+    for (const [k, name, min, max, step] of list) {
+      const l = document.createElement('label');
+      l.innerHTML = `${name} <input type="range" min="${min}" max="${max}" step="${step}" value="${P[k]}"><span>${P[k]}</span>`;
+      const inp = l.querySelector('input'), out = l.querySelector('span');
+      inp.oninput = () => { P[k] = +inp.value; out.textContent = inp.value; };
+      panel.appendChild(l);
+    }
+  }
+  const btns = document.createElement('div'); btns.className = 'row';
+  btns.innerHTML = '<button id="tPlay" class="on">播放中</button><button id="tLyric" class="on">歌词</button><button id="tCopy">复制参数</button>';
+  panel.appendChild(btns);
+  const note = document.createElement('div'); note.className = 'note';
+  note.innerHTML = '画面里的背景、涟漪、细圆环、主题色相乘全部来自官方 shader；只有两样是推断的：<br>· 五圈扩散环 <code>cWaveCircle1..5</code> 的运行时取值（拿不到）——按官方 6 秒时间线循环推算，可调；<br>· 「音乐能量」驱动左右波高（官方用 <code>cCurveIntensity / cCurveSharpness</code> 接入），这里用节拍模拟。';
+  panel.appendChild(note);
+
+  let playing = true, showLyric = true;
+  const setPlay = on => { playing = on; $('tPlay').classList.toggle('on', on); $('tPlay').textContent = on ? '播放中' : '已暂停'; $('playIcon').innerHTML = on ? '<path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/>' : '<path d="M7 4.5v15L19.5 12z"/>'; };
+  $('tPlay').onclick = () => setPlay(!playing);
+  $('playBtn').onclick = e => { e.stopPropagation(); setPlay(!playing); };
+  $('tLyric').onclick = () => { showLyric = !showLyric; $('tLyric').classList.toggle('on', showLyric); $('lyric').classList.toggle('off', !showLyric); };
+  $('proto').onclick = () => $('proto').classList.toggle('chrome-on');
+  $('tCopy').onclick = () => { navigator.clipboard?.writeText(JSON.stringify(P, null, 1)); $('tCopy').textContent = '已复制'; setTimeout(() => $('tCopy').textContent = '复制参数', 1200); };
+
+  // ---------------- WebGL ----------------
+  const VS = 'attribute vec2 aPos; varying vec2 vTexCoord; varying vec4 vColor; void main(){ vTexCoord = aPos * 0.5 + 0.5; vColor = vec4(1.0); gl_Position = vec4(aPos, 0.0, 1.0); }';
+  // 官方后处理是 15-tap 高斯（AEKit BlurFragment）；这里同样做横 / 竖两遍 15 tap
+  const BLUR = `precision highp float; varying vec2 vTexCoord; uniform sampler2D sTex; uniform vec2 uStep;
+    void main(){ vec4 c = vec4(0.0); float wsum = 0.0;
+      for (int i = -7; i <= 7; i++) { float fi = float(i); float w = exp(-fi * fi / 18.0); c += texture2D(sTex, vTexCoord + uStep * fi) * w; wsum += w; }
+      gl_FragColor = c / wsum; }`;
+  function prog(fs) {
+    const sh = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
+    const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+    return p;
+  }
+  let wave, blur;
+  try { wave = prog($('waveFrag').textContent); blur = prog(BLUR); } catch (e) { $('err').textContent = 'shader 编译失败：' + e.message; return; }
+  const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  const bindQuad = p => { const a = gl.getAttribLocation(p, 'aPos'); gl.enableVertexAttribArray(a); gl.vertexAttribPointer(a, 2, gl.FLOAT, false, 0, 0); };
+
+  function tex(w, h, src) {
+    const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    if (src) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
+    else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    return t;
+  }
+  // 官方底图 bg.png（横向黑白渐变），加载前先用一张同样走向的临时渐变
+  const tmp = document.createElement('canvas'); tmp.width = 256; tmp.height = 4;
+  const tg = tmp.getContext('2d'); const lg = tg.createLinearGradient(0, 0, 256, 0); lg.addColorStop(0, '#555'); lg.addColorStop(1, '#fff'); tg.fillStyle = lg; tg.fillRect(0, 0, 256, 4);
+  let bgTex = tex(0, 0, tmp);
+  const img = new Image(); img.onload = () => { gl.deleteTexture(bgTex); bgTex = tex(0, 0, img); }; img.onerror = () => $('err').textContent = 'bg.png 没加载到（请用本地服务器打开，file:// 下浏览器可能拦截）'; img.src = 'assets_wave/qm_custom_wave/image/bg.png';
+
+  let fbA, fbB, txA, txB, W = 0, H = 0;
+  function resize() {
+    const r = cv.getBoundingClientRect(), dpr = Math.min(2, devicePixelRatio || 1);
+    const w = Math.max(2, Math.round(r.width * dpr)), h = Math.max(2, Math.round(r.height * dpr));
+    if (w === W && h === H) return; W = w; H = h; cv.width = w; cv.height = h;
+    for (const t of [txA, txB]) if (t) gl.deleteTexture(t);
+    for (const f of [fbA, fbB]) if (f) gl.deleteFramebuffer(f);
+    txA = tex(w, h); fbA = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fbA); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, txA, 0);
+    txB = tex(w, h); fbB = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fbB); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, txB, 0);
+  }
+  new ResizeObserver(resize).observe(cv); resize();
+
+  const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255);
+  const U = {}; const u = n => (U[n] ??= gl.getUniformLocation(wave, n));
+
+  let t = 0, last = performance.now(), beat = 0, beatPhase = 0;
+  function frame(now) {
+    const dt = Math.min(.1, (now - last) / 1000); last = now;
+    if (playing) { t += dt; beatPhase += dt * 86 / 60; }
+    // 节拍包络（播放器里接真实频谱 / 节拍）
+    const target = playing ? Math.pow(Math.max(0, Math.cos((beatPhase % 1) * Math.PI * 2)), 8) * P.energy : 0;
+    beat += (target - beat) * Math.min(1, dt * 12);
+
+    // pass 1：官方 shader → fbA
+    gl.bindFramebuffer(gl.FRAMEBUFFER, P.blur > 0 ? fbA : null);
+    gl.viewport(0, 0, W, H);
+    gl.useProgram(wave); bindQuad(wave);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, bgTex); gl.uniform1i(u('sDiffMap'), 0);
+    gl.uniform1f(u('cTime'), t);
+    gl.uniform2f(u('cCanvasSize'), 1624, 780); // 官方画布，几何按它算
+    const m = hex(P.magic); gl.uniform4f(u('cMagicColor'), m[0], m[1], m[2], 1);
+    gl.uniform4f(u('cLyricsColor'), 0xd6 / 255, 0xe4 / 255, 1, 1);
+    gl.uniform4f(u('cLyricsColorDeep'), 12 / 255, 26 / 255, 80 / 255, 1);
+    gl.uniform1f(u('cCurveIntensity'), P.cCurveIntensity + beat * .03);
+    gl.uniform1f(u('cCurveSharpness'), P.cCurveSharpness + beat * .06);
+    for (const k of ['cLeftWaveHeight', 'cLeftWaveWidth', 'cLeftWaveSpeed', 'cLeftWaveRadius', 'cRightWaveHeight', 'cRightWaveWidth', 'cRightWaveSpeed', 'cRightWaveRadius', 'cLeftCircleR', 'cRightCircleR']) gl.uniform1f(u(k), P[k]);
+    // 五圈扩散环：x = 进度（waveR = x × 0.0028），五环相位错开；6 秒一轮（官方时间线 150 帧 @25fps）
+    const maxX = P.ringReach / 0.0028;
+    for (let i = 0; i < 5; i++) {
+      const ph = ((t / P.ringPeriod) + i / 5) % 1;
+      const ease = 1 - Math.pow(1 - ph, 2);                 // 先快后慢
+      const fade = Math.sin(ph * Math.PI);
+      gl.uniform4f(u('cWaveCircle' + (i + 1)), ease * maxX, P.ringSpeed + i * .01, P.ringHeight * fade * (1 - i * .08), 0);
+    }
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    // pass 2/3：15-tap 高斯（横 → 竖）
+    if (P.blur > 0) {
+      gl.useProgram(blur); bindQuad(blur);
+      const ub = gl.getUniformLocation(blur, 'uStep'), ut = gl.getUniformLocation(blur, 'sTex');
+      const s = P.blur / 7 * (W / 812);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbB); gl.bindTexture(gl.TEXTURE_2D, txA); gl.uniform1i(ut, 0); gl.uniform2f(ub, s / W, 0); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.bindTexture(gl.TEXTURE_2D, txB); gl.uniform2f(ub, 0, s / H); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    }
+    lyricTick(dt);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // ---------------- 歌词（逐字点亮 + 当前字大号模糊影子） ----------------
+  const LINES = ['她在诗人的梦里赤脚奔跑', '把月光踩成一地碎银', '风替她数过每一颗星', '醒来时只剩下潮汐的声音'];
+  let li = 0, lp = 0;
+  function lyricTick(dt) {
+    if (!showLyric) return;
+    if (playing) lp += dt / 4.2;
+    if (lp >= 1) { lp = 0; li = (li + 1) % LINES.length; }
+    const s = LINES[li], n = Math.min(s.length, Math.floor(lp * (s.length + 2)));
+    const html = `<span class="sung">${s.slice(0, n)}</span>${s.slice(n)}`;
+    if ($('line').innerHTML !== html) $('line').innerHTML = html;
+    const g = s[Math.max(0, Math.min(s.length - 1, n - 1))];
+    if ($('ghost').textContent !== g) $('ghost').textContent = g;
+  }
+
+  const wk = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+  const tick = () => { const n = new Date(); $('clock').textContent = `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`; $('date').textContent = `${n.getMonth() + 1} 月 ${n.getDate()} 日 ${wk[n.getDay()]}`; };
+  tick(); setInterval(tick, 10000);
+})();
+</script>
+</body>
+</html>
