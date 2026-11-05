@@ -1,0 +1,253 @@
+{
+  "data": {
+    "type": 1,
+    "queryId": "70aaf48d-e7b0-4227-835f-0892de5a4311",
+    "result": [
+      {
+        "startTime": 20020,
+        "song": {
+          "name": "降温",
+          "id": 3453304463,
+          "position": 0,
+          "alias": [
+            "该说是我想你 还是天冷了"
+          ],
+          "status": 0,
+          "fee": 8,
+          "copyrightId": 0,
+          "disc": "01",
+          "no": 1,
+          "artists": [
+            {
+              "name": "Zzh",
+              "id": 33914460,
+              "picId": 0,
+              "img1v1Id": 0,
+              "briefDesc": "",
+              "picUrl": "https://p1.music.126.net/HtNq4LxhdhGmQRfTjN3BdA==/109951173453555600.jpg",
+              "img1v1Url": "https://p1.music.126.net/HtNq4LxhdhGmQRfTjN3BdA==/109951173453555600.jpg",
+              "albumSize": 0,
+              "alias": [],
+              "trans": "",
+              "musicSize": 0,
+              "topicPerson": 0
+            }
+          ],
+          "album": {
+            "name": "降温",
+            "id": 405816956,
+            "type": "Single",
+            "size": 1,
+            "picId": 109951174163337460,
+            "blurPicUrl": "http://p2.music.126.net/pbHcu5WSuWqOYOMdpkKaPg==/109951174163337450.jpg",
+            "companyId": 0,
+            "pic": 109951174163337460,
+            "picUrl": "http://p2.music.126.net/pbHcu5WSuWqOYOMdpkKaPg==/109951174163337450.jpg",
+            "publishTime": 1792857600000,
+            "description": "",
+            "tags": "",
+            "company": "",
+            "briefDesc": "",
+            "artist": {
+              "name": "",
+              "id": 0,
+              "picId": 0,
+              "img1v1Id": 0,
+              "briefDesc": "",
+              "picUrl": "http://p2.music.126.net/6y-UleORITEDbvrOLV0Q8A==/5639395138885805.jpg",
+              "img1v1Url": "http://p2.music.126.net/6y-UleORITEDbvrOLV0Q8A==/5639395138885805.jpg",
+              "albumSize": 0,
+              "alias": [],
+              "trans": "",
+              "musicSize": 0,
+              "topicPerson": 0
+            },
+            "songs": [],
+            "alias": [],
+            "status": 1,
+            "copyrightId": -1,
+            "commentThreadId": "R_AL_3_405816956",
+            "artists": [
+              {
+                "name": "Zzh",
+                "id": 33914460,
+                "picId": 0,
+                "img1v1Id": 0,
+                "briefDesc": "",
+                "picUrl": "http://p2.music.126.net/6y-UleORITEDbvrOLV0Q8A==/5639395138885805.jpg",
+                "img1v1Url": "http://p2.music.126.net/6y-UleORITEDbvrOLV0Q8A==/5639395138885805.jpg",
+                "albumSize": 0,
+                "alias": [],
+                "trans": "",
+                "musicSize": 0,
+                "topicPerson": 0
+              }
+            ],
+            "subType": "录音室版",
+            "transName": null,
+            "onSale": false,
+            "mark": 0,
+            "picId_str": "109951174163337450"
+          },
+          "starred": false,
+          "popularity": 100,
+          "score": 100,
+          "starredNum": 0,
+          "duration": 199229,
+          "playedNum": 0,
+          "dayPlays": 0,
+          "hearTime": 0,
+          "ringtone": "",
+          "crbt": null,
+          "audition": null,
+          "copyFrom": "",
+          "commentThreadId": "R_SO_4_3453304463",
+          "rtUrl": null,
+          "ftype": 0,
+          "rtUrls": [],
+          "copyright": 0,
+          "transName": null,
+          "sign": null,
+          "mark": 0,
+          "originCoverType": 1,
+          "originSongSimpleData": null,
+          "single": 0,
+          "noCopyrightRcmd": null,
+          "addTime": null,
+          "offline": 0,
+          "canSubscribe": 0,
+          "hasSubscribe": 0,
+          "mMusic": {
+            "name": null,
+            "id": 17443539622,
+            "size": 4783149,
+            "extension": "mp3",
+            "sr": 48000,
+            "dfsId": 0,
+            "bitrate": 192000,
+            "playTime": 199229,
+            "volumeDelta": -24598
+          },
+          "lMusic": {
+            "name": null,
+            "id": 17443539619,
+            "size": 3188781,
+            "extension": "mp3",
+            "sr": 48000,
+            "dfsId": 0,
+            "bitrate": 128000,
+            "playTime": 199229,
+            "volumeDelta": -22914
+          },
+          "bMusic": {
+            "name": null,
+            "id": 17443539619,
+            "size": 3188781,
+            "extension": "mp3",
+            "sr": 48000,
+            "dfsId": 0,
+            "bitrate": 128000,
+            "playTime": 199229,
+            "volumeDelta": -22914
+          },
+          "hMusic": {
+            "name": null,
+            "id": 17443539620,
+            "size": 7971885,
+            "extension": "mp3",
+            "sr": 48000,
+            "dfsId": 0,
+            "bitrate": 320000,
+            "playTime": 199229,
+            "volumeDelta": -27224
+          },
+          "mvid": 0,
+          "rtype": 0,
+          "rurl": null,
+          "mp3Url": null,
+          "privilege": {
+            "id": 3453304463,
+            "fee": 8,
+            "payed": 0,
+            "st": 0,
+            "pl": 320000,
+            "dl": 0,
+            "sp": 7,
+            "cp": 1,
+            "subp": 1,
+            "cs": false,
+            "maxbr": 999000,
+            "fl": 320000,
+            "toast": false,
+            "flag": 4,
+            "preSell": false,
+            "playMaxbr": 999000,
+            "downloadMaxbr": 999000,
+            "maxBrLevel": "hires",
+            "playMaxBrLevel": "hires",
+            "downloadMaxBrLevel": "hires",
+            "plLevel": "exhigh",
+            "dlLevel": "none",
+            "flLevel": "exhigh",
+            "rscl": null,
+            "freeTrialPrivilege": {
+              "resConsumable": false,
+              "userConsumable": false,
+              "listenType": null,
+              "cannotListenReason": null,
+              "playReason": null,
+              "freeLimitTagType": null
+            },
+            "rightSource": 0,
+            "chargeInfoList": [
+              {
+                "rate": 128000,
+                "chargeUrl": null,
+                "chargeMessage": null,
+                "chargeType": 0
+              },
+              {
+                "rate": 192000,
+                "chargeUrl": null,
+                "chargeMessage": null,
+                "chargeType": 0
+              },
+              {
+                "rate": 320000,
+                "chargeUrl": null,
+                "chargeMessage": null,
+                "chargeType": 0
+              },
+              {
+                "rate": 999000,
+                "chargeUrl": null,
+                "chargeMessage": null,
+                "chargeType": 1
+              },
+              {
+                "rate": 1999000,
+                "chargeUrl": null,
+                "chargeMessage": null,
+                "chargeType": 1
+              }
+            ],
+            "code": 0,
+            "message": null,
+            "plLevels": null,
+            "dlLevels": null,
+            "ignoreCache": null,
+            "bd": null
+          }
+        }
+      }
+    ],
+    "mv": null,
+    "moduleList": [
+      "relatedSongs",
+      "recommendSongs"
+    ],
+    "noMatchReason": 0
+  },
+  "code": 200,
+  "message": ""
+}

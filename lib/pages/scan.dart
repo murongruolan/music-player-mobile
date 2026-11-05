@@ -11,6 +11,7 @@ import '../widgets/sheets.dart';
 import '../ui/cover.dart';
 import '../ui/icons.dart';
 import '../ui/kit.dart';
+import 'audio_match_page.dart';
 import 'detail.dart';
 import '../shell/shell.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -55,7 +56,7 @@ class _ScanPageState extends State<ScanPage> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    if (context.app.online) return _OnlineScan(match: widget.match);
+    if (context.app.online) return widget.match ? const _OnlineMatchShell() : _OnlineScan(match: false);
     final pal = context.pal.forceDark;
     final mq = MediaQuery.of(context);
     return PalScope(
@@ -335,7 +336,7 @@ class _Rings extends CustomPainter {
 // ============ 联网模式：扫码登录（真实） ============
 // 扫电视 / 车机 / 桌面端上的二维码（内容 {"type":"sollin-login","code":"382914"}），或手动输入 6 位授权码，
 // 确认后调用 POST /auth/device/confirm，对方设备轮询到授权即完成登录。
-// 听歌识曲需要识曲服务，后端暂无接口。
+// 听歌识曲：audio_match_page.dart（录音 → 本机指纹 → 网易识别接口）。
 class _OnlineScan extends StatefulWidget {
   final bool match;
   const _OnlineScan({required this.match});
@@ -350,13 +351,7 @@ class _OnlineScanState extends State<_OnlineScan> {
   @override
   void initState() {
     super.initState();
-    if (widget.match) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        Navigator.of(context).pop();
-        openPendingFeature(context, '听歌识曲', '识别正在播放的歌需要识曲服务，后端暂时没有对应接口。');
-      });
-    }
+
   }
 
   @override
@@ -472,3 +467,25 @@ class _OnlineScanState extends State<_OnlineScan> {
     );
   }
 }
+
+/// 联网模式的听歌识曲外壳：暗色全屏 + 返回按钮。
+class _OnlineMatchShell extends StatelessWidget {
+  const _OnlineMatchShell();
+  @override
+  Widget build(BuildContext context) {
+    final pal = context.pal.forceDark;
+    final mq = MediaQuery.of(context);
+    return PalScope(
+      pal: pal,
+      child: Scaffold(
+        backgroundColor: const Color(0xFF07080C),
+        body: Stack(children: [
+          const Positioned.fill(child: AudioMatchView()),
+          Positioned(top: mq.padding.top + 6, left: 8, child: IBtn('left', color: Colors.white, onTap: () => Navigator.of(context).pop())),
+          Positioned(top: mq.padding.top + 16, left: 0, right: 0, child: IgnorePointer(child: Center(child: Text('听歌识曲', style: ts(16, w: FontWeight.w700, c: Colors.white))))),
+        ]),
+      ),
+    );
+  }
+}
+

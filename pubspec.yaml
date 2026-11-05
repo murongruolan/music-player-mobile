@@ -50,6 +50,8 @@ dependencies:
   connectivity_plus: ^7.3.2
   # 歌词分享卡：把渲染好的图片交给系统分享面板（fluttercommunity，官方推荐的分享插件）
   share_plus: ^13.0.0
+  # 听歌识曲录音：8kHz 单声道 16 位 PCM 流（llfbandit/record，Android AudioRecord / iOS AVAudioEngine）
+  record: ^6.1.1
   # 平台扫码登录的二维码编码（纯 Dart，kevmoo/qr.dart），画法自己做
   qr: ^3.0.2
   # DLNA 投屏的设备描述 / SOAP 响应解析（UPnP 就是 HTTP+XML，无需第三方投屏包）
@@ -69,3 +71,5 @@ flutter:
   assets:
     - assets/covers/
     - assets/platform_logos/
+    # 听歌识曲指纹（网易 shazam_v2 WASM + 胶水层 + WebView 页）
+    - assets/audio_match/
