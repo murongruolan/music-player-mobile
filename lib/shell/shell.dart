@@ -1,5 +1,5 @@
-import 'dart:async';
 // 主界面外壳：内容区（嵌套 Navigator，二级页右侧推入 + 左缘右滑返回）+ 迷你播放条 + 底栏。
+import 'dart:async';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../core/app_log.dart';
