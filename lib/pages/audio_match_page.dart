@@ -41,7 +41,7 @@ class _AudioMatchViewState extends State<AudioMatchView> with TickerProviderStat
   static const _rate = 8000, _window = 3, _tries = 3;
   static const _windowBytes = _rate * 2 * _window; // 16 位单声道
 
-  final fp = FingerprintEngine();
+  late final fp = FingerprintEngine(); // 预览模式不创建（没有 WebView 平台实现）
   final rec = AudioRecorder();
   late final ringC = AnimationController(vsync: this, duration: const Duration(milliseconds: 2400))..repeat();
   late final discC = AnimationController(vsync: this, duration: const Duration(seconds: 18));
