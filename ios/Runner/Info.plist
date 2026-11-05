@@ -46,6 +46,8 @@
 			</dict>
 		</dict>
 	</dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>听歌识曲需要用麦克风听几秒正在播放的歌。录音只在手机上计算指纹，不会上传。</string>
 	<key>NSCameraUsageDescription</key>
 	<string>扫描电视、车机、桌面端上的登录二维码</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>

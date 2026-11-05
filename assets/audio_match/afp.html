@@ -1,0 +1,35 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<!-- 听歌识曲指纹页（在 App 里一个看不见的 WebView 中运行）。
+     afp.wasm.js / afp.js 取自 NeteaseCloudMusicApi@4.32.0（MIT）public/audio_match_demo/，
+     指纹算法来自网易官方 Chrome 扩展（mos9527/ncm-afp 逆向）。上游仓库已 404，这里是随代码入库的副本。
+     Dart 侧调用 lyraFP(base64 的 16 位 PCM, 请求号)，结果经 AfpChannel 回传 {id, fp} 或 {id, error}。 -->
+<script src="afp.wasm.js"></script>
+<script src="afp.js"></script>
+<script>
+  function post(o) { try { AfpChannel.postMessage(JSON.stringify(o)); } catch (e) {} }
+  // 16 位小端 PCM（base64）→ Float32 [-1, 1]
+  function pcm16ToFloat(b64) {
+    const bin = atob(b64);
+    const n = bin.length >> 1;
+    const out = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      let v = bin.charCodeAt(2 * i) | (bin.charCodeAt(2 * i + 1) << 8);
+      if (v >= 0x8000) v -= 0x10000;
+      out[i] = v / 32768;
+    }
+    return out;
+  }
+  function lyraFP(b64, id) {
+    try {
+      const t0 = Date.now();
+      GenerateFP(pcm16ToFloat(b64))
+        .then(function (fp) { post({ id: id, fp: fp, ms: Date.now() - t0 }); })
+        .catch(function (e) { post({ id: id, error: String((e && e.message) || e) }); });
+    } catch (e) {
+      post({ id: id, error: String((e && e.message) || e) });
+    }
+  }
+  window.addEventListener('load', function () { post({ ready: typeof GenerateFP === 'function' }); });
+</script>
+</head><body></body></html>
