@@ -5,6 +5,7 @@ import 'dart:convert' show jsonEncode, jsonDecode;
 import 'dart:io' as io;
 import 'dart:math' as math;
 import 'package:path_provider/path_provider.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import '../audio/audio_engine.dart';
 import '../cast/cast_controller.dart';
