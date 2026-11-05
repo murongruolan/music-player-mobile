@@ -918,7 +918,7 @@ void openLyricCard(BuildContext context) {
               if (png == null) return;
               final file = XFile.fromData(png.buffer.asUint8List(), mimeType: 'image/png', name: 'lyra-lyric.png');
               if (c.mounted) Navigator.of(c).pop();
-              await Share.shareXFiles([file], text: '${s.title} · ${s.artist}');
+              await SharePlus.instance.share(ShareParams(files: [file], text: '${s.title} · ${s.artist}'));
             } catch (e) {
               toast('分享失败：$e', 'info');
             }
