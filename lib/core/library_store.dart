@@ -24,7 +24,31 @@ class LibraryStore implements LibraryBinding {
   /// 本机修改（收藏、建歌单、改歌单）后通知同步引擎。
   void Function()? onLocalChange;
 
-  static const _kLib = 'library.v1', _kHistory = 'search.history.v1';
+  static const _kLib = 'library.v1', _kHistory = 'search.history.v1', _kPlayed = 'played.tracks.v1';
+
+  /// 播放过的歌的完整曲目信息（封面、音源需要的 identity），最近的在后，最多 [_playedMax] 首。
+  /// 听歌统计里只有歌名歌手，「最近」页重启后原来只能用它注册，封面就没了、部分平台也播不了。
+  final _played = <String, CloudTrack>{};
+  static const _playedMax = 500;
+  Timer? _playedT;
+
+  /// 记下一首播过的歌（播放开始时调）。
+  void rememberPlayed(int id) {
+    final t = _tracks[id];
+    if (t == null || t.isLocal) return;
+    _played.remove(t.id);
+    _played[t.id] = t;
+    while (_played.length > _playedMax) {
+      _played.remove(_played.keys.first);
+    }
+    final p = _prefs;
+    if (p == null) return;
+    _playedT?.cancel();
+    _playedT = Timer(const Duration(seconds: 2), () => unawaited(p.write(_kPlayed, jsonEncode([for (final t in _played.values) t.toDesktop()]))));
+  }
+
+  /// 播放过的歌：已在目录里的直接返回 id；只在播放记录里的按完整信息注册；都没有返回 null。
+  int? idOfPlayed(String key) => idOfKey(key) ?? (_played[key] == null ? null : register(_played[key]!));
   static const likedPlaylistId = 100;
 
   LibraryStore(this._app, this._prefs);
@@ -214,6 +238,15 @@ class LibraryStore implements LibraryBinding {
     try {
       final raw = await p.read(_kLib);
       if (raw != null) _apply(CloudLibrary.parse(jsonDecode(raw)));
+      final pl = await p.read(_kPlayed);
+      if (pl != null) {
+        for (final j in (jsonDecode(pl) as List)) {
+          try {
+            final t = CloudTrack.fromDesktop(Map<String, dynamic>.from(j as Map));
+            _played[t.id] = t;
+          } catch (_) {}
+        }
+      }
       final h = await p.read(_kHistory);
       if (h != null) {
         _app.history
@@ -246,6 +279,9 @@ class LibraryStore implements LibraryBinding {
   /// 退出登录：清空本机音乐库（下一个账号从云端重新同步）。
   Future<void> reset() async {
     _saveT?.cancel();
+    _playedT?.cancel();
+    _played.clear();
+    unawaited(_prefs?.delete(_kPlayed));
     _app.liked.clear();
     _app.myPlaylists.clear();
     _app.history.clear();

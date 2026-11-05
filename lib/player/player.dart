@@ -46,6 +46,13 @@ class PlayerRoute extends PageRouteBuilder<void> {
   }
 }
 
+bool get playerOpen => _playerOpen;
+
+/// 收起播放器（从播放器里的抽屉跳到别的页面时用，否则新页面开在播放器下面看不见）。
+void closePlayer() {
+  if (_playerOpen) rootNav.currentState?.popUntil((r) => r.isFirst);
+}
+
 Future<void> openPlayer(BuildContext context) async {
   if (_playerOpen || !context.appRead.hasSong) return;
   _playerOpen = true;
