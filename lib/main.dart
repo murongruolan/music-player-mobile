@@ -47,8 +47,11 @@ Future<void> main() async {
       config: const AudioServiceConfig(
         androidNotificationChannelId: 'app.lyra.mobile.playback',
         androidNotificationChannelName: '正在播放',
-        androidNotificationOngoing: true,
-        androidStopForegroundOnPause: true,
+        // ongoing 只有在暂停时退出前台服务才生效（audio_service 断言两者搭配）；前台服务常驻时通知本来就划不掉
+        androidNotificationOngoing: false,
+        // 暂停时保持前台服务（通知栏切暂停态）：锁屏/后台一段时间不会被系统回收。
+        // true 会在暂停瞬间退出前台态，应用降级成普通后台进程被 Doze/OEM 管控杀掉。
+        androidStopForegroundOnPause: false,
       ),
     );
     // 播放地址由导入的洛雪音源脚本解析（lib/source/）

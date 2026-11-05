@@ -94,6 +94,9 @@ class AudioEngine {
     final session = await AudioSession.instance;
     await session.configure(const AudioSessionConfiguration.music());
 
+    // 音频焦点打断（来电 / 导航播报 / 其它应用）：just_audio 默认就处理（handleInterruptions: true），
+    // 暂时性打断结束后自动恢复，永久失去焦点（别的音乐 App 开始放）不恢复。这里不再重复监听。
+
     _subs.addAll([
       _player.positionStream.listen((p) => onPosition?.call(p.inMicroseconds / 1e6)),
       _player.durationStream.listen((d) {

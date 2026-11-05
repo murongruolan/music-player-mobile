@@ -5,6 +5,8 @@
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
+    <!-- 电池优化豁免：后台播放保活（音乐播放器属官方允许的核心功能场景） -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
     <!-- Android 13+ 通知运行时权限（拒绝时也能播，只是不显示通知栏卡片） -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <!-- 听歌识曲：录 3~10 秒算指纹（只在本机计算，不上传录音） -->

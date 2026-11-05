@@ -1,8 +1,12 @@
 package app.lyra.lyra
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
+import android.provider.Settings
 import com.ryanheise.audioservice.AudioServiceActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -12,6 +16,25 @@ class MainActivity : AudioServiceActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         NativeBridge.attach(applicationContext, flutterEngine)
+        // lyra/power：电池优化豁免（后台播放保活）。锁屏 / 后台被杀的 OEM 管控没有统一 API，
+        // 标准做法是请求 Doze 白名单，剩下的由各 ROM 设置页引导。
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "lyra/power").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "isBatteryIgnored" -> {
+                    val pm = getSystemService(POWER_SERVICE) as PowerManager
+                    result.success(pm.isIgnoringBatteryOptimizations(packageName))
+                }
+                "requestBatteryIgnore" -> {
+                    try {
+                        startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.success(false) // 没有这个设置页的 ROM
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
     }
 }
 

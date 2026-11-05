@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import '../core/script_store.dart';
 import '../core/float_lyric.dart' show nativeSupported, isIOS;
 import '../core/state.dart';
+import '../platform/power.dart';
 import '../core/tokens.dart';
 import '../data/mock.dart';
 import '../data/models.dart';
@@ -397,8 +398,23 @@ List<Widget> _floatGroups(BuildContext context, AppState app) {
 }
 
 // ======================= 播放与音质 =======================
-class PlaybackPage extends StatelessWidget {
+class PlaybackPage extends StatefulWidget {
   const PlaybackPage({super.key});
+  @override
+  State<PlaybackPage> createState() => _PlaybackPageState();
+}
+
+class _PlaybackPageState extends State<PlaybackPage> {
+  bool? _batteryIgnored; // null = 查询中
+
+  @override
+  void initState() {
+    super.initState();
+    PowerKeepAlive.batteryIgnored().then((v) {
+      if (mounted) setState(() => _batteryIgnored = v);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = context.app;
@@ -417,6 +433,21 @@ class PlaybackPage extends StatelessWidget {
         Item(icon: 'wave', color: 'green', label: '淡入淡出', sub: '暂停与恢复时音量平滑过渡', sw: s.fade, onSw: (v) => u(() { s.fade = v; app.applyFadeToEngine(); })),
         Item(icon: 'play', color: 'orange', label: '启动时自动播放', sw: s.autoplay, onSw: (v) => u(() => s.autoplay = v)),
         Item(icon: 'up', color: 'pink', label: '启动时打开播放页', sw: s.autoOpen, onSw: (v) => u(() => s.autoOpen = v)),
+        // 电池优化豁免只有 Android 有（iOS 后台播放靠 UIBackgroundModes audio）
+        if (nativeSupported && !isIOS) Item(
+          icon: 'shield',
+          color: 'green',
+          label: '后台播放保活',
+          sub: '锁屏与后台不被系统回收（电池优化豁免）',
+          val: _batteryIgnored == null ? null : (_batteryIgnored! ? '已豁免' : '未豁免'),
+          onTap: () async {
+            await PowerKeepAlive.requestBatteryIgnore();
+            if (!mounted) return;
+            final v = await PowerKeepAlive.batteryIgnored();
+            if (mounted) setState(() => _batteryIgnored = v);
+            if (mounted && v) toast('已加入电池优化白名单，后台播放更稳定', 'shield');
+          },
+        ),
         Item(icon: 'cloud', color: 'blue', label: '边听边缓存', sub: '播放过的歌缓存到本机，下次秒开', sw: s.cache, onSw: (v) => u(() { s.cache = v; app.applyCacheToEngine(); })),
       ]),
       Group(title: '高级', children: [
