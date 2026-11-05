@@ -1,8 +1,11 @@
 name: CI
 
-# check：每次推送 / PR 都跑（analyze + test），失败即标红。
-# build：推送到 main、PR、手动触发，或提交信息里带 [apk] / [shots] 时，构建 Web 截图和 Android APK。
-#   - 截图默认跑 tool/shots-quick.json；提交信息带 [shots] 时跑完整的 tool/shots.json。
+# 三个 job 并行（原来 build 要等 check 跑完，串行约 14 分钟）：
+#   check：analyze + test，失败即标红（合并门槛）。
+#   apk：Android APK。PR 只出 arm64（真机够用，省一半编译）；main / 手动触发出全部 ABI。Gradle 有缓存。
+#   web：Web 构建 + 截图。默认跑 tool/shots-quick.json；提交信息带 [shots] 时跑完整的 tool/shots.json。
+# 触发：PR、推送到 main、手动触发。功能分支的普通推送不再单独跑（开 PR 后由 PR 触发，避免同一提交跑两遍）；
+# 提交信息带 [ci] / [apk] / [shots] 的分支推送照常跑。
 
 on:
   push:
@@ -23,6 +26,11 @@ concurrency:
 
 jobs:
   check:
+    if: >-
+      github.event_name != 'push' || github.ref == 'refs/heads/main' ||
+      contains(github.event.head_commit.message, '[ci]') ||
+      contains(github.event.head_commit.message, '[apk]') ||
+      contains(github.event.head_commit.message, '[shots]')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -31,7 +39,7 @@ jobs:
         with:
           channel: stable
           cache: true
-      - run: flutter --version
+          pub-cache-key: 'flutter-pub-:os:-:channel:-:version:-:arch:-${{ hashFiles(''pubspec.lock'') }}'
       - run: flutter pub get
       - name: Analyze
         run: |
@@ -40,7 +48,7 @@ jobs:
       - name: Test
         run: |
           set -o pipefail
-          flutter test 2>&1 | tee test.txt
+          flutter test --reporter compact 2>&1 | tee test.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -51,27 +59,63 @@ jobs:
             pubspec.lock
           retention-days: 14
 
-  build:
-    needs: check
+  apk:
     if: >-
-      github.event_name == 'pull_request' ||
-      github.event_name == 'workflow_dispatch' ||
-      github.ref == 'refs/heads/main' ||
+      github.event_name != 'push' || github.ref == 'refs/heads/main' ||
       contains(github.event.head_commit.message, '[apk]') ||
       contains(github.event.head_commit.message, '[shots]')
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          # 只有 main 写缓存，PR 读 main 的缓存（避免每个分支各存一份把缓存配额挤爆）
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
+          pub-cache-key: 'flutter-pub-:os:-:channel:-:version:-:arch:-${{ hashFiles(''pubspec.lock'') }}'
       - run: flutter pub get
+      - name: Build APK
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            flutter build apk --release --split-per-abi --target-platform android-arm64
+          else
+            flutter build apk --release --split-per-abi
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: build/app/outputs/flutter-apk/*.apk
+          retention-days: 30
 
+  web:
+    if: >-
+      github.event_name != 'push' || github.ref == 'refs/heads/main' ||
+      contains(github.event.head_commit.message, '[apk]') ||
+      contains(github.event.head_commit.message, '[shots]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+          pub-cache-key: 'flutter-pub-:os:-:channel:-:version:-:arch:-${{ hashFiles(''pubspec.lock'') }}'
+      - run: flutter pub get
       - name: Build web
         run: flutter build web --release --no-tree-shake-icons
-
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-1.48.2-chromium
       - name: Screenshots
         working-directory: tool
         timeout-minutes: 15
@@ -87,19 +131,9 @@ jobs:
           sleep 2
           if [[ "$MSG" != *"[shots]"* && "$FULL" != "true" ]]; then cp shots-quick.json shots.json; fi
           node shots.mjs
-
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: shots
           path: tool/shots/
           retention-days: 14
-
-      - name: Build APK
-        run: flutter build apk --release --split-per-abi
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: apk
-          path: build/app/outputs/flutter-apk/*.apk
-          retention-days: 30
