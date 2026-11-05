@@ -5,6 +5,7 @@
 // 后台播放、锁屏控制、蓝牙/耳机线控都由 MediaSession 统一承接。
 
 import 'package:audio_service/audio_service.dart';
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 
 import '../data/models.dart';
 
@@ -106,6 +107,8 @@ class LyraMediaHandler extends BaseAudioHandler {
 
   /// [volume] 非空：媒体会话切成远程播放（音量键 / 系统音量条控制渲染端）；null：回到本机音量。
   void setRemoteVolume(int? volume) {
+    // 远程音量（音量键调渲染端）是 Android MediaSession 的能力，iOS 上不发
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
     final info = volume == null
         ? LocalAndroidPlaybackInfo()
         : RemoteAndroidPlaybackInfo(volumeControlType: AndroidVolumeControlType.absolute, maxVolume: 100, volume: volume.clamp(0, 100));
