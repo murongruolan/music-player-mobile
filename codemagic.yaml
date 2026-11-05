@@ -1,0 +1,29 @@
+# Codemagic CI：iOS 未签名 IPA 打包（macos-latest 抢占型 runner 取消率太高，迁到独占 M2 实例）。
+#
+# - 仅手动触发（codemagic.io 页面点 Start build；未写 triggering: 段即不会自动构建，省免费分钟数）；
+# - 产物 lyra-ios-unsigned.ipa 与 GH Actions ios-build.yml 的 ipa job 完全同构（Payload 打包，Sideloadly/AltStore 侧载重签）；
+# - Android APK、PR 编译验证等其余 CI 仍走 GitHub Actions，本文件不承接；
+# - 免费档每月 500 macOS M2 分钟，一个 IPA 实测 10-20 分钟（≈25-40 个包/月）。
+workflows:
+  ios_ipa:
+    name: iOS 未签名 IPA
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      # 与 GH Actions 的 subosito/flutter-action channel: stable 对齐（均取最新 stable）
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: 依赖
+        script: flutter pub get
+      - name: 编译 iOS（release · 不签名）
+        script: flutter build ios --release --no-codesign
+      - name: 打包未签名 IPA（Payload 结构）
+        script: |
+          mkdir Payload
+          cp -R build/ios/iphoneos/Runner.app Payload/
+          zip -qry lyra-ios-unsigned.ipa Payload
+          ls -lh lyra-ios-unsigned.ipa
+    artifacts:
+      - lyra-ios-unsigned.ipa
