@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../auth/auth.dart';
 import '../pages/detail.dart';
 import '../pages/misc.dart';
+import '../pages/audio_match_page.dart';
 import '../pages/scan.dart';
 import '../pages/settings.dart';
 import '../player/player.dart';
@@ -122,6 +123,9 @@ void applyShotUi(BuildContext context, String id) {
       break;
     case 'match':
       pushFull(context, const ScanPage(match: true));
+      break;
+    case 'am': // 联网听歌识曲：am.listen 识别中 / am.hit 结果
+      pushFull(context, Scaffold(body: AudioMatchView(preview: parts.length > 1 ? parts[1] : 'listen')));
       break;
     case 'player':
       openPlayer(context);
