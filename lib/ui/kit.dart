@@ -4,10 +4,12 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter/services.dart';
 import '../core/state.dart';
 import '../core/tokens.dart';
 import '../data/models.dart';
+import '../platform/registry.dart' show PlatformHub;
 import 'cover.dart';
 import 'icons.dart';
 
@@ -236,15 +238,13 @@ class PlatBadge extends StatelessWidget {
   const PlatBadge(this.p, {super.key, this.size = 22, this.dim = false});
   @override
   Widget build(BuildContext context) {
-    Widget w = Container(
+    // 各平台真 logo（矢量，取自原版资源包 assets/platform_logos/）；带品牌色圆底，不再用文字占位
+    Widget w = SvgPicture.asset(
+      'assets/platform_logos/${PlatformHub.codeOf(p.id)}.svg',
       width: size,
       height: size,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(size * .3),
-        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(p.c1), Color(p.c2)]),
-      ),
-      child: Text(p.mark, style: ts(size * .5, w: FontWeight.w800, c: Colors.white, h: 1)),
+      fit: BoxFit.contain,
+      clipBehavior: Clip.none,
     );
     if (dim) w = ColorFiltered(colorFilter: const ColorFilter.matrix([.6, .3, .1, 0, 0, .2, .7, .1, 0, 0, .2, .3, .5, 0, 0, 0, 0, 0, .8, 0]), child: w);
     return w;
@@ -993,15 +993,17 @@ Future<T?> showLSheet<T>(BuildContext context, {required String title, String? s
                     Container(width: 38, height: 5, decoration: BoxDecoration(color: pal.t4, borderRadius: BorderRadius.circular(3))),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(Tk.pad, 12, 10, 8),
-                      child: Row(children: [
-                        Expanded(
-                          child: Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
-                            Flexible(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: ts(18, w: FontWeight.w700, c: pal.t1))),
-                            if (sub != null) ...[const SizedBox(width: 8), Text(sub, style: ts(13, c: pal.t3))],
-                          ]),
-                        ),
-                        if (action != null) action,
-                        IBtn('close', size: 36, iconSize: 18, bg: pal.s2, color: pal.t2, onTap: () => Navigator.of(ctx).pop()),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Row(children: [
+                          Expanded(child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: ts(18, w: FontWeight.w700, c: pal.t1))),
+                          if (action != null) action,
+                          IBtn('close', size: 36, iconSize: 18, bg: pal.s2, color: pal.t2, onTap: () => Navigator.of(ctx).pop()),
+                        ]),
+                        if (sub != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 3),
+                            child: Text(sub, maxLines: 2, overflow: TextOverflow.ellipsis, style: ts(13, c: pal.t3)),
+                          ),
                       ]),
                     ),
                     Flexible(
