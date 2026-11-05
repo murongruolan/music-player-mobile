@@ -1,0 +1,89 @@
+<!doctype html><html><head><meta charset="utf-8"><title>WAVE 波光 · 真仿对照</title>
+<style>body{background:#0b0d16;color:#e8ecf6;font-family:system-ui,sans-serif;margin:0;padding:24px;max-width:1100px}
+h2{font-size:16px;font-weight:500;margin:0 0 10px}
+.duo{display:flex;gap:14px;flex-wrap:wrap}
+.cell{flex:1;min-width:320px}
+.cell h3{font-size:13px;font-weight:500;margin:0 0 6px;color:#8b93a8}
+.stage{border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.08)}
+video,canvas{display:block;width:100%}
+.cap{font-size:12px;color:#8b93a8;margin:10px 2px}
+input[type=range]{width:120px;accent-color:#f4d28a;vertical-align:middle}
+label{font-size:12px;color:#8b93a8;margin-right:14px}</style></head><body>
+<h2>WAVE 动感波光 · 左真机实录 / 右复刻（同帧同步）</h2>
+<div class="duo">
+ <div class="cell"><h3>真机实录</h3><div class="stage"><video id="rv" src="wave.mp4" loop muted playsinline></video></div></div>
+ <div class="cell"><h3>复刻（2D 涟漪弧）</h3><div class="stage"><canvas id="cv" height="290"></canvas></div></div>
+</div>
+<div class="cap">
+ <label>扩散速度 <input id="spd" type="range" min="5" max="120" value="40"></label>
+ <label>右弧强度 <input id="ri" type="range" min="0" max="100" value="55"></label>
+ <label>左弧强度 <input id="li" type="range" min="0" max="100" value="40"></label>
+ <span id="tc" style="color:#566"></span>
+</div>
+<script>
+(function(){
+var cv=document.getElementById('cv'), x=cv.getContext('2d');
+var rv=document.getElementById('rv');
+var spd=document.getElementById('spd'), ri=document.getElementById('ri'), li=document.getElementById('li');
+var tc=document.getElementById('tc');
+function size(){var d=Math.min(devicePixelRatio||1,2);var W=cv.clientWidth,H=W*726/1488;
+  if(W&&(cv.width!==Math.round(W*d)||cv.height!==Math.round(H*d))){cv.width=Math.round(W*d);cv.height=Math.round(H*d);}
+  cv.style.height=H+'px';}
+// 实测色
+var BG=[38,86,155], L=[22,50,94], R=[54,124,224];
+function arcs(cx, cy, t, col, amp, seed){
+  var W=cv.width, H=cv.height, m=H;
+  var spacing=m*0.185, maxR=m*1.5, base=m*0.12;
+  for(var k=0;k<5;k++){
+    var jit=0.16*Math.sin(k*37.7+seed);
+    var ph=((t*spd.value/100)+k/5+jit+1)%1;
+    var r=base+ph*maxR;
+    var fade=Math.pow(1-ph,1.5);
+    var a=amp*fade;
+    if(a<=0.006) continue;
+    x.save();
+    x.filter='blur('+(m*0.045).toFixed(1)+'px)';
+    x.beginPath();
+    x.arc(cx,cy,r,0,6.2832);
+    x.strokeStyle='rgba('+col[0]+','+col[1]+','+col[2]+','+(a*0.55).toFixed(3)+')';
+    x.lineWidth=m*0.16; x.stroke();
+    x.filter='blur('+(m*0.016).toFixed(1)+'px)';
+    x.beginPath();
+    x.arc(cx,cy,r,0,6.2832);
+    x.strokeStyle='rgba('+col[0]+','+col[1]+','+col[2]+','+a.toFixed(3)+')';
+    x.lineWidth=m*0.05; x.stroke();
+    x.restore();
+  }
+}
+var t0=performance.now();
+function frame(now){
+  var vt=rv.currentTime;
+  tc.textContent='t='+vt.toFixed(1)+'s';
+  var d=Math.min(devicePixelRatio||1,2);var W=cv.clientWidth,H=W*726/1488;
+  cv.width=Math.round(W*d);cv.height=Math.round(H*d);
+  x.setTransform(d,0,0,d,0,0);
+  var w=cv.clientWidth,h=H;
+  // 纯色底
+  x.fillStyle='rgb('+BG[0]+','+BG[1]+','+BG[2]+')';
+  x.fillRect(0,0,w,h);
+  var t=vt;
+  var cyL=0.52*h+0.02*h*Math.sin(t*0.12), cyR=0.46*h+0.02*h*Math.cos(t*0.10);
+  // 左：暗弧（往 L 色压）
+  x.globalCompositeOperation='source-over';
+  arcs(-w*0.14, 0.16*h, t, L, +li.value/100*0.5, 1);
+  // 右：亮弧（往 R 色提）
+  arcs(w*1.06, 0.52*h, t+2.9, R, +ri.value/100*0.5, 7);
+  // 右弧心柔光亮斑
+  var gg=x.createRadialGradient(w*1.02,0.52*h,0,w*1.02,0.52*h,w*0.30);
+  gg.addColorStop(0,'rgba(120,175,255,0.34)');
+  gg.addColorStop(1,'rgba(120,175,255,0)');
+  x.globalCompositeOperation='screen';
+  x.fillStyle=gg; x.fillRect(0,0,w,h);
+  // 右弧区高光提亮
+  arcs(w*1.06, 0.52*h, t+2.9, [110,165,255], +ri.value/100*0.20, 7);
+  x.globalCompositeOperation='source-over';
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script></body></html>

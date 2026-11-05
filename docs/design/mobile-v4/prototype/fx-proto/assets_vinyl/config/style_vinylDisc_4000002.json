@@ -1,0 +1,23 @@
+{
+    "version": "1.0.0",
+    "color": {
+        "textHighLightColor": "#d9f2b6",
+        "magicColor": "#0d0d0d",
+        "textColor": "#ffffff"
+    },
+    "bg": {
+        "type": 3
+    },
+    "transparentLoading":true,
+    "lightEffect": {
+        "videoURL": "https://dldir1v6.qq.com/music/release/upload/t_mm_file_publish/6007451.zip",
+        "videoFilePath": "lightEffect.mp4",
+        "frameURL": "https://dldir1v6.qq.com/music/release/upload/t_mm_file_publish/6012542.zip"
+    },
+    "template": [
+        {
+            "id": "vinylDisc",
+              "text": "多彩透明胶片"
+        }
+    ]
+}

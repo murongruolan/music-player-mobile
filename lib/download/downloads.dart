@@ -345,6 +345,15 @@ class DownloadStore extends ChangeNotifier {
       _pump();
       return;
     }
+    // 查网络期间用户点了暂停 / 删除（那时连接还没建，关不掉）：在这里接住
+    final early = _stop.remove(key);
+    if (early != null) {
+      running.remove(key);
+      early == 'cancel' ? _drop(key) : _park(key, song, null);
+      notifyListeners();
+      _pump();
+      return;
+    }
     progress[key] = progressOf(key);
     notifyListeners();
 
@@ -426,6 +435,13 @@ class DownloadStore extends ChangeNotifier {
       final coverFile = _app.set.dlCover ? await _fetchCover(tr0, '$base-cover.jpg') : '';
       final lyricFile = _app.set.dlLyric ? await _fetchLyric(tr0, '$base.lrc') : '';
       final tr = _app.library.trackOf(song.id);
+      // 取封面 / 歌词那几秒里点了「删除」：音频已经下完，一起删掉，不进已下载列表
+      if (_stop[key] == 'cancel') {
+        for (final f in [audioFile, coverFile, lyricFile]) {
+          if (f.isNotEmpty) _cleanup(f);
+        }
+        throw const DownloadException('已取消');
+      }
 
       items.insert(
           0,

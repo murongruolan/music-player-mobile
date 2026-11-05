@@ -27,6 +27,7 @@ class CastController {
   /// 轮询代际：切歌 / 重投 / 断开时 +1，进行中的旧请求回来后发现代际变了就丢掉结果
   /// （只取消定时器不够：已经发出去的 GetPositionInfo 回来照样会把旧位置写回进度条）。
   int _gen = 0;
+  int _fails = 0;
 
   /// 以某个位置为基准重新开始外推（轮询对表、拖动、暂停 / 继续、换歌都要调）。
   void _anchor(double pos, {bool? playing}) {
@@ -175,6 +176,7 @@ class CastController {
       // 暂停：立刻停止外推（原来要等下一轮轮询，最多多走 2 秒再跳回）；继续：从当前位置重新计时
       _anchor(_playingNow ? _lastPos + DateTime.now().difference(_lastPosAt).inMilliseconds / 1000 : _lastPos, playing: play);
       onPlaying?.call(play);
+      if (_poll == null) _startPoll(playing: play); // 之前一次轮询失败停了：设备又能响应了，接着跟进度
     } on CastException catch (e) {
       onError?.call(e.message);
     }
@@ -187,6 +189,7 @@ class CastController {
       await Dlna.seek(ctl, seconds);
       _anchor(seconds); // 拖动后从新位置外推（原来会跳回拖动前的位置直到下一轮轮询）
       onPosition?.call(seconds);
+      if (_poll == null) _startPoll(playing: _playingNow);
     } on CastException catch (e) {
       onError?.call(e.message);
     }
@@ -262,6 +265,7 @@ class CastController {
     try {
       final r = await Dlna.pollInfo(ctl);
       if (g != _gen || ctl != _controlUrl) return; // 请求期间切了歌 / 断开了：旧结果丢掉
+      _fails = 0;
       if (++_pollN % 5 == 0) unawaited(_readVolume()); // 约 10 秒对一次音量（电视遥控器也会改）
       if (r.duration > 0) {
         _lastDur = r.duration;
@@ -290,6 +294,8 @@ class CastController {
       }
     } on CastException catch (e) {
       if (g != _gen) return;
+      // Wi-Fi 抖一下很常见：连续 3 次失败才算失联（原来一次超时就永久停掉进度跟踪和自动切歌）
+      if (++_fails < 3) return;
       // 设备离线 / 网络抖动：停掉轮询和外推并上报（原来外推还在走，进度条自己往前跑），AppState 决定断开
       _stopTimers();
       _playingNow = false;

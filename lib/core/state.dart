@@ -398,6 +398,7 @@ class AppState extends ChangeNotifier {
   Future<void> connectCast(DlnaDevice d) async {
     final c = cast;
     if (c == null) return;
+    if (casting) await disconnectCast(); // 换设备：先让原来那台停下（原来会两台一起放）
     await c.connect(d);
     update(() => castDev = d.name);
     if (c.canVolume) engine?.setRemoteVolume(c.volume ?? 50);
@@ -567,6 +568,7 @@ class AppState extends ChangeNotifier {
         await p.delete(_kQueue);
       } else {
         await p.write(_kQueue, jsonEncode({'v': 1, 'tracks': tracks, 'cur': at < 0 ? 0 : at, 'mode': mode, 'name': queueName}));
+        if (at < 0) await p.delete(_kQueuePos); // 当前曲没存（本机文件）：进度不能套到别的歌上
       }
     }
     _savePos(force: true);
@@ -594,12 +596,17 @@ class AppState extends ChangeNotifier {
       if (raw != null && raw.isNotEmpty) {
         try {
           final j = jsonDecode(raw) as Map<String, dynamic>;
-          for (final t in (j['tracks'] as List? ?? const [])) {
+          // 记下的是「当前曲在已存列表里的下标」：坏掉跳过的曲目不能让它错位到别的歌上
+          final saved = (j['cur'] as num? ?? 0).toInt();
+          final list = j['tracks'] as List? ?? const [];
+          for (var k = 0; k < list.length; k++) {
             try {
-              restoredIds.add(library.register(CloudTrack.fromDesktop(Map<String, dynamic>.from(t as Map))));
+              final id = library.register(CloudTrack.fromDesktop(Map<String, dynamic>.from(list[k] as Map)));
+              if (k == saved) at = restoredIds.length;
+              restoredIds.add(id);
             } catch (_) {}
           }
-          at = (j['cur'] as num? ?? 0).toInt().clamp(0, restoredIds.isEmpty ? 0 : restoredIds.length - 1);
+          at = at.clamp(0, restoredIds.isEmpty ? 0 : restoredIds.length - 1);
           final m = j['mode'] as String? ?? mode;
           if (const ['loop', 'one', 'shuffle', 'order'].contains(m)) mode = m;
           queueName = j['name'] as String? ?? '';
@@ -1200,7 +1207,9 @@ class AppState extends ChangeNotifier {
       } else {
         _shuffleTrail.add(cur);
         if (_shuffleTrail.length > 200) _shuffleTrail.removeAt(0);
-        cur = queue[(i + 3 + math.Random().nextInt(math.max(1, queue.length - 2))) % queue.length];
+        // 随机挑除当前这首以外的任意一首（原来的偏移范围是 [3, 长度]，偏移=长度时又回到当前这首：
+        // 3 首的队列永远重播同一首，长队列也时不时重播；而且紧挨着的下两首永远选不到）
+        cur = queue.length <= 1 || i < 0 ? queue[0] : queue[(i + 1 + math.Random().nextInt(queue.length - 1)) % queue.length];
       }
     } else {
       cur = queue[(i + d + queue.length) % queue.length];

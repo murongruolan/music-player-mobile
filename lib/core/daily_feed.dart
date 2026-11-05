@@ -87,9 +87,19 @@ class DailyFeed extends ChangeNotifier {
   }
 
   /// 重新拉。FM 模式下等于「换一批」。
-  Future<void> refresh() => _running ??= _load().whenComplete(() => _running = null);
+  Future<void> refresh() {
+    final r = _running;
+    if (r != null) return r;
+    late final Future<void> f;
+    f = _load().whenComplete(() {
+      if (identical(_running, f)) _running = null; // reset 后开始的新一轮不被旧的清掉
+    });
+    return _running = f;
+  }
 
   Future<void> _load() async {
+    final gen = _gen;
+    bool stale() => gen != _gen;
     final wy = _wy;
     if (wy == null) {
       error = '当前环境没有接入网易云';
@@ -104,29 +114,32 @@ class DailyFeed extends ChangeNotifier {
         try {
           final t = await wy.dailySongs(_cookie);
           if (t.isNotEmpty) {
-            _set(DailyMode.daily, t, null);
+            _set(DailyMode.daily, t, null, gen: gen);
             return;
           }
         } on NeteaseAuthException {
-          await _app.platCreds.markExpired(Plat.wy, '每日推荐返回 301');
+          // 标记失效会触发 reset()，由它按游客身份重新拉（这一轮作废）
           AppLog.instance.add('每日推荐', '网易云登录已过期，改用私人 FM');
-          _set(DailyMode.fm, await _fm(wy), '网易云登录已过期，重新登录后显示你的每日推荐');
+          await _app.platCreds.markExpired(Plat.wy, '每日推荐返回 301');
           return;
         }
       }
-      _set(DailyMode.fm, await _fm(wy), loggedIn ? '每日推荐暂时拿不到，先听听私人 FM' : '登录网易云后，这里会换成按你口味生成的每日推荐');
+      final fm = await _fm(wy, gen);
+      _set(DailyMode.fm, fm, loggedIn ? '每日推荐暂时拿不到，先听听私人 FM' : '登录网易云后，这里会换成按你口味生成的每日推荐', gen: gen);
     } catch (e) {
       // 已经显示着缓存的内容时，后台刷新失败不打断（下次再试）
-      if (ids.isEmpty) error = platformError(e);
-      AppLog.instance.add('每日推荐', '获取失败：$error');
+      if (!stale() && ids.isEmpty) error = platformError(e);
+      AppLog.instance.add('每日推荐', '获取失败：$e');
     } finally {
-      loading = false;
-      notifyListeners();
+      if (!stale()) {
+        loading = false;
+        notifyListeners();
+      }
     }
   }
 
   /// 私人 FM 凑一批：每轮并发 3 个请求，去重，最多 8 轮。页面上还空着时，第一轮拿到的先显示出来。
-  Future<List<PTrack>> _fm(NeteasePlatform wy) async {
+  Future<List<PTrack>> _fm(NeteasePlatform wy, int gen) async {
     final showPartial = ids.isEmpty;
     final cookie = loggedIn ? _cookie : (_app.platCreds.anonymousCookie(Plat.wy) ?? '');
     final seen = <String>{};
@@ -143,6 +156,7 @@ class DailyFeed extends ChangeNotifier {
       for (final t in batch.expand((b) => b)) {
         if (seen.add(t.id) && !_app.isDislikedKey(t.id)) out.add(t);
       }
+      if (gen != _gen) break; // 已重置：不再接着凑
       if (showPartial && out.isNotEmpty && out.length < fmTarget) {
         mode = DailyMode.fm;
         ids = [for (final t in out) _app.library.register(t.toCloud())];
@@ -154,7 +168,8 @@ class DailyFeed extends ChangeNotifier {
     return out.take(fmTarget).toList();
   }
 
-  void _set(DailyMode m, List<PTrack> tracks, String? why) {
+  void _set(DailyMode m, List<PTrack> tracks, String? why, {int? gen}) {
+    if (gen != null && gen != _gen) return; // 已经 reset 过：旧结果丢掉
     final next = [for (final t in tracks) _app.library.register(t.toCloud())];
     final same = m == mode && why == note && next.length == ids.length && Iterable.generate(next.length).every((i) => next[i] == ids[i]);
     mode = m;
@@ -165,11 +180,19 @@ class DailyFeed extends ChangeNotifier {
   }
 
   /// 退出登录 / 切换网易云账号后清掉缓存。
+  /// 每次 reset +1：重置前开始的加载回来后作废（登录 / 换账号时正在拉的游客 FM 不能写进新账号的缓存）。
+  int _gen = 0;
+
   void reset() {
+    _gen++;
+    _running = null;
     _key = null;
     ids = const [];
     note = null;
     error = null;
+    loading = false;
     notifyListeners();
+    // 每日页正开着（登录后返回）：直接按新账号重新拉，不留空白页
+    if (hasListeners) unawaited(ensure());
   }
 }

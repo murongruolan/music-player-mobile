@@ -1,0 +1,51 @@
+{
+ "_说明": "WAVE 波光 uniform 校准值（对照 64s 真机实录拟合，误差=口味级）",
+ "cMagicColor_蓝主题": "#4b73be",
+ "cMagicColor_红主题": "#b84a52",
+ "cCanvasSize": [
+  1624,
+  780
+ ],
+ "cCurveIntensity": 0.03,
+ "cCurveSharpness": 0.03,
+ "cLeftWaveHeight": 0.06,
+ "cLeftWaveWidth": 0.13,
+ "cLeftWaveSpeed": 0.3,
+ "cLeftWaveRadius": 0.82,
+ "cRightWaveHeight": 0.08,
+ "cRightWaveWidth": 0.26,
+ "cRightWaveSpeed": 0.24,
+ "cRightWaveRadius": 0.78,
+ "cLeftCircleR": 0.3,
+ "cRightCircleR": 0.05,
+ "_cWaveCircle说明": "五圈扩散环 vec4(x=环进度0..1.6循环, y=速度, z=高度0..1)，运行时随节拍驱动，五环相位错开0.32",
+ "cWaveCircle_建议初值": [
+  {
+   "x": 0.0,
+   "y": 0.1,
+   "z": 0.9
+  },
+  {
+   "x": 0.32,
+   "y": 0.11,
+   "z": 0.8
+  },
+  {
+   "x": 0.64,
+   "y": 0.12,
+   "z": 0.7
+  },
+  {
+   "x": 0.96,
+   "y": 0.13,
+   "z": 0.6
+  },
+  {
+   "x": 1.28,
+   "y": 0.14,
+   "z": 0.5
+  }
+ ],
+ "_时间线": "官方 input.json: 1624x780 @25fps, 0-150帧, cycle=1 (6s循环)",
+ "_歌词层": "主歌词居中 #d6e4ff 25sp；首字放大110sp+blur6px+rgba(12,26,80,.5)垫主歌词下；字体 NotoSerifSC-Black"
+}

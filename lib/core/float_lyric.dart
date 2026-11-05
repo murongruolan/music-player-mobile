@@ -4,6 +4,7 @@
 // 只在换句 / 暂停 / 换歌 / 拖进度时推送，句内染色进度由原生按时钟自己算。
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -152,6 +153,8 @@ class FloatLyricCtl {
   }
 
   bool _pendingEnable = false;
+  int _showFails = 0;
+  DateTime _retryAt = DateTime.fromMillisecondsSinceEpoch(0);
 
   /// 需要「显示在其他应用上层」权限时的说明弹窗。返回 true = 用户点了「去设置」。
   static Future<bool> explainOverlayPermission(String feature) async {
@@ -197,15 +200,19 @@ class FloatLyricCtl {
     if (isIOS || !nativeSupported) return;
     final want = _wantAndroid;
     if (want && !_shown) {
+      if (DateTime.now().isBefore(_retryAt)) return; // 上次没显示成功：退避，别每 50ms 重试一次
       _shown = true;
       unawaited(() async {
         final ok = await _call<bool>('float.show') ?? false;
         if (!ok) {
           _shown = false;
+          _showFails++;
+          _retryAt = DateTime.now().add(Duration(seconds: math.min(60, 2 << math.min(5, _showFails))));
           // 权限被收回：关掉开关，免得一直静默失败
           if (!await canDraw()) _app.update(() => _app.set.floatLyric = false);
           return;
         }
+        _showFails = 0;
         _sig = null;
         tick(force: true);
       }());
