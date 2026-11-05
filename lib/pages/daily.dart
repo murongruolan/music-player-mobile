@@ -1,5 +1,8 @@
 // 每日混音：头卡（按日期换色相）· 口味画像 · 30 首（左滑 / ··· 里可「不感兴趣」）。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import '../core/daily_feed.dart';
 import '../core/state.dart';
 import '../core/tokens.dart';
 import '../data/mock.dart';
@@ -8,6 +11,7 @@ import '../ui/cover.dart';
 import '../ui/kit.dart';
 import 'common.dart';
 import 'detail.dart';
+import '../widgets/sheets.dart' show openPlatLogin;
 
 class DailyPage extends StatelessWidget {
   const DailyPage({super.key});
@@ -15,11 +19,7 @@ class DailyPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.app;
     final pal = context.pal;
-    if (app.online) {
-      return TabPage(title: '每日混音', controller: tabScroll[2], children: [
-        EmptyState('sun', '每日推荐接入中', desc: '每日推荐、私人电台由音乐平台按你的账号生成，需要先接入平台登录。\n接入后这里会每天更新。', action: Btn.sec('看看听歌统计', icon: 'chart', onTap: () => push(context, const StatsPage()))),
-      ]);
-    }
+    if (app.online) return const _OnlineDaily();
     final ids = app.listOf('daily');
     final now = DateTime.now();
     const months = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
@@ -87,3 +87,115 @@ class DailyPage extends StatelessWidget {
     );
   }
 }
+
+/// 联网模式：网易云每日推荐（登录后）/ 私人 FM（未登录兜底）。
+class _OnlineDaily extends StatefulWidget {
+  const _OnlineDaily();
+  @override
+  State<_OnlineDaily> createState() => _OnlineDailyState();
+}
+
+class _OnlineDailyState extends State<_OnlineDaily> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(context.appRead.daily.ensure());
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.app;
+    final feed = app.daily;
+    return ListenableBuilder(
+      listenable: feed,
+      builder: (context, _) {
+        final now = DateTime.now();
+        final fm = feed.mode == DailyMode.fm;
+        final ids = feed.ids.where((i) => i < songs.length && !app.isDisliked(i)).toList();
+        final name = fm ? '私人 FM' : '每日推荐';
+        final children = <Widget>[];
+        if (feed.loading && ids.isEmpty) {
+          children.add(const SkeletonPage());
+        } else if (ids.isEmpty) {
+          children.add(EmptyState('sun', feed.error ?? '今天的推荐还没准备好',
+              desc: '每日推荐直接来自网易云音乐：登录网易云后按你的口味生成，没登录时用私人 FM 推荐。',
+              action: Btn.sec('重试', icon: 'refresh', onTap: () => unawaited(feed.refresh()))));
+        } else {
+          children.addAll([
+            Rise(
+              0,
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: Tk.pad),
+                child: Cover(
+                  hue: 268.0 + now.day * 11,
+                  variant: 2,
+                  width: double.infinity,
+                  height: 200,
+                  radius: 26,
+                  url: fm ? null : app.songById(ids.first).cover,
+                  child: Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x1A000000), Color(0xB3000000)])),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                        Text(now.day.toString().padLeft(2, '0'), style: ts(54, w: FontWeight.w800, c: Colors.white, h: .9, num: true)),
+                        const SizedBox(width: 8),
+                        Padding(padding: const EdgeInsets.only(bottom: 4), child: Text('${_months[now.month - 1]}\n${_weeks[now.weekday - 1]}', style: ts(12, w: FontWeight.w600, c: const Color(0xD9FFFFFF), h: 1.3))),
+                      ]),
+                      const Spacer(),
+                      Text(fm ? '私人 FM · ${ids.length} 首' : '今天的 ${ids.length} 首', style: ts(22, w: FontWeight.w800, c: Colors.white)),
+                      const SizedBox(height: 3),
+                      Text(fm ? '来自网易云私人 FM · 换一批随时刷新' : '网易云按你的口味生成 · 每天 06:00 更新', style: ts(12.5, c: const Color(0xCCFFFFFF))),
+                      const SizedBox(height: 12),
+                      Row(children: [
+                        Btn('播放全部', icon: 'play', small: true, onTap: () => app.play(ids.first, name: name, ids: ids)),
+                        const SizedBox(width: 10),
+                        Btn('随机', icon: 'shuffle', small: true, kind: BtnKind.glass, onTap: () {
+                          final q = [...ids]..shuffle();
+                          app.play(q.first, name: name, ids: q);
+                        }),
+                      ]),
+                    ]),
+                  ),
+                ),
+              ),
+            ),
+            if (feed.note != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(Tk.pad, 12, Tk.pad, 0),
+                child: Item(
+                  icon: 'user',
+                  color: 'orange',
+                  label: feed.note!,
+                  sub: '登录后可在「我的 → 平台账号」管理',
+                  onTap: () => openPlatLogin(context, 'netease'),
+                ),
+              ),
+            const SizedBox(height: 12),
+            for (final (i, id) in ids.indexed) Rise(i + 2, SongRow(songs[id], list: 'daily', listName: name, ctx: 'daily', queue: ids, key: ValueKey(id))),
+            Hint(fm ? '私人 FM 每次换一批都不一样；··· 里选「不感兴趣」，以后不再推荐这首' : '··· 里选「不感兴趣」，以后不再推荐这首', align: TextAlign.center, padding: const EdgeInsets.all(14)),
+          ]);
+        }
+        return TabPage(
+          title: fm ? '私人 FM' : '每日推荐',
+          controller: tabScroll[2],
+          onRefresh: feed.refresh,
+          actions: [
+            IBtn('refresh', onTap: feed.loading
+                ? null
+                : () async {
+                    await feed.refresh();
+                    if (feed.error == null) toast(fm ? '已换一批' : '已刷新', 'refresh');
+                  }),
+          ],
+          children: children,
+        );
+      },
+    );
+  }
+}
+
+const _months = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
+const _weeks = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'];

@@ -22,6 +22,8 @@ import '../ui/cover.dart';
 import '../ui/icons.dart';
 import '../ui/kit.dart';
 import '../ui/custom_font.dart';
+import '../core/share_code.dart';
+import '../platform/models.dart' show Plat;
 import 'import_playlist.dart';
 import 'plat_login.dart';
 
@@ -53,6 +55,10 @@ void openSongMore(BuildContext context, int id, String ctx, {bool dark = false})
         close();
         unawaited(app.downloads.enqueue(s));
         toast('已加入下载队列', 'download');
+      }),
+      ('share', '分享口令', () {
+        close();
+        openShareCode(context, songId: id);
       }),
     ];
     final grid = app.online ? onlineGrid : [
@@ -487,8 +493,26 @@ class QrPainter extends CustomPainter {
 }
 
 // ============ 分享口令 ============
-void openShareCode(BuildContext context, {int? songId, String? playlistTitle, bool dark = false}) {
-  if (context.appRead.online) return openPendingFeature(context, '分享口令', '分享口令需要服务端生成可被其它设备识别的歌曲 / 歌单链接，目前后端还没有对应接口。');
+/// [remotePlaylist]：平台歌单（平台代码 + 歌单 id + 名字），联网模式分享歌单用。
+void openShareCode(BuildContext context, {int? songId, String? playlistTitle, ({String platform, String id, String name})? remotePlaylist, bool dark = false}) {
+  final app0 = context.appRead;
+  if (app0.online) {
+    // 纯前端口令：平台 + 平台 id 写在口令里，不经过服务端
+    String code;
+    if (remotePlaylist != null) {
+      code = playlistShareCode(platform: remotePlaylist.platform, id: remotePlaylist.id, name: remotePlaylist.name);
+    } else if (playlistTitle != null) {
+      return toast('自建歌单暂时不能生成口令，可以分享里面的单曲', 'info');
+    } else {
+      final s = app0.songById(songId ?? app0.cur);
+      final key = s.key ?? '';
+      final i = key.indexOf(':');
+      final plat = i > 0 ? key.substring(0, i) : '';
+      if (!Plat.all.contains(plat)) return toast('本地 / 云盘歌曲不能生成分享口令', 'info');
+      code = songShareCode(platform: plat, id: key.substring(i + 1), title: s.title, artist: s.artist);
+    }
+    return _openShareSheet(context, code, dark: dark, lyricCard: remotePlaylist == null && playlistTitle == null && (songId == null || songId == app0.cur));
+  }
   final s = songs[songId ?? context.appRead.cur];
   final code = playlistTitle != null ? '【Lyra歌单·7741029】「$playlistTitle」复制这段话，打开 Lyra 即可收听' : '【Lyra歌曲·${s.id + 1}·${s.title}】${s.artist} · 复制这段话，打开 Lyra 即可收听';
   showLSheet(context, title: '分享口令', dark: dark, builder: (c) {
@@ -517,6 +541,50 @@ void openShareCode(BuildContext context, {int? songId, String? playlistTitle, bo
             })),
           ],
         ]),
+      ]),
+    );
+  });
+}
+
+void _openShareSheet(BuildContext context, String code, {bool dark = false, bool lyricCard = false}) {
+  showLSheet(context, title: '分享口令', dark: dark, builder: (c) {
+    final pal = c.pal;
+    final app = c.appRead;
+    // 自己复制的口令，回到 App 时不要再弹「好友分享」横幅
+    void copied() => app.markClipHandled(code);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: Tk.pad),
+      child: Column(children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(color: pal.accSoft, borderRadius: BorderRadius.circular(16), border: Border.all(color: pal.acc.withValues(alpha: .35))),
+          child: SelectableText(code, style: ts(14, w: FontWeight.w600, c: pal.accText, h: 1.6)),
+        ),
+        const Hint('好友复制这段口令后打开 Lyra，会弹出横幅直接播放', padding: EdgeInsets.symmetric(vertical: 12)),
+        Row(children: [
+          Expanded(child: Btn('复制口令', icon: 'copy', onTap: () {
+            Clipboard.setData(ClipboardData(text: code));
+            copied();
+            Navigator.of(c).pop();
+            toast('口令已复制', 'copy');
+          })),
+          const SizedBox(width: 10),
+          Expanded(child: Btn.sec('发送给好友', icon: 'share', onTap: () {
+            copied();
+            Navigator.of(c).pop();
+            unawaited(SharePlus.instance.share(ShareParams(text: code)));
+          })),
+        ]),
+        if (lyricCard)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Btn.sec('生成歌词卡', icon: 'image', block: true, onTap: () {
+              Navigator.of(c).pop();
+              openLyricCard(context);
+            }),
+          ),
       ]),
     );
   });

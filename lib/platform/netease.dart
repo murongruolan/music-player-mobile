@@ -43,6 +43,42 @@ class NeteasePlatform extends MusicPlatform {
 
   Future<Json> _eapi(String url, String api, Object? payload) async => asJson(await http.postForm(code, url, eapi(api, payload), headers: _origin));
 
+  /// 带用户 Cookie 的个性化接口：weapi 优先；被拦（部分网络对 /weapi 一律回 200 空体）时退回明文 /api。
+  /// [path] 形如 `/v3/discovery/recommend/songs`（weapi 与 api 共用）。
+  Future<Json> _userPost(String path, Map<String, Object?> payload, String cookie) async {
+    final csrf = RegExp(r'(?:^|;\s*)__csrf=([^;]+)').firstMatch(cookie)?.group(1) ?? '';
+    final h = {..._origin, if (cookie.isNotEmpty) 'Cookie': cookie};
+    final body = {...payload, 'csrf_token': csrf};
+    try {
+      final j = asJson(await http.postForm(code, 'https://music.163.com/weapi$path?csrf_token=$csrf', weapi(body, secret: _secret?.call()), headers: h));
+      if (j.isNotEmpty) return j;
+    } on PlatformException catch (e) {
+      if (e.message.contains('HTTP')) rethrow;
+    }
+    final form = {for (final e in body.entries) e.key: e.value is String ? e.value as String : jsonEncode(e.value)};
+    return asJson(await http.postForm(code, 'https://music.163.com/api$path', form, headers: h));
+  }
+
+  Json _okUser(Json j, String message) {
+    final c = j.integer('code');
+    if (c == 301 || c == 302) throw const NeteaseAuthException();
+    return _ok(j, message);
+  }
+
+  /// 每日歌曲推荐（需要登录 Cookie，含 MUSIC_U）。登录失效抛 [NeteaseAuthException]。
+  Future<List<PTrack>> dailySongs(String cookie) async {
+    final j = _okUser(await _userPost('/v3/discovery/recommend/songs', {'offset': 0, 'total': true, 'limit': 30}, cookie), '每日推荐暂时拿不到');
+    final rows = j.obj('data')['dailySongs'];
+    return [for (final r in rows is List ? rows : const []) neteaseSong(asJson(r))].nonNulls.toList();
+  }
+
+  /// 私人 FM 的一批（一次 3 首左右）。没登录时用游客 Cookie（MUSIC_A），推荐按热门走。
+  Future<List<PTrack>> personalFm(String cookie) async {
+    final j = _okUser(await _userPost('/v1/radio/get', const {}, cookie), '私人 FM 暂时拿不到');
+    final rows = j['data'];
+    return [for (final r in rows is List ? rows : const []) neteaseSong(asJson(r))].nonNulls.toList();
+  }
+
   /// 网易接口业务码在 body.code，200 才算成功；没有 code 字段的不检查。
   Json _ok(Json j, String message) {
     if (j.containsKey('code') && j.integer('code') != 200) throw PlatformException(code, message);
@@ -680,3 +716,10 @@ String _clip(String s, int n) {
 int _min(int a, int b) => a < b ? a : b;
 
 String _jsonString(Object v) => jsonEncode(v);
+
+/// 网易云登录已失效（接口回 301）。
+class NeteaseAuthException implements Exception {
+  const NeteaseAuthException();
+  @override
+  String toString() => '网易云登录已过期，请重新登录';
+}
