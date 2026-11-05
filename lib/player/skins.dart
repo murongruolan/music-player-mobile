@@ -20,6 +20,8 @@ import 'lyrics.dart';
 import 'particles.dart';
 import 'player.dart';
 
+part 'landscape.dart';
+
 class SkinHost extends StatelessWidget {
   final String skin;
   const SkinHost({super.key, required this.skin});
@@ -27,6 +29,8 @@ class SkinHost extends StatelessWidget {
   Widget build(BuildContext context) {
     final w = switch (skin) {
       'standby' => const StandbySkin(),
+      'land_vinyl' => const LandVinylSkin(),
+      'land_clock' => const LandClockSkin(),
       'particles' => const ParticlesSkin(),
       'pulse' => const PulseSkin(),
       'vinyl' => const VinylSkin(),
@@ -685,123 +689,6 @@ class MinimalSkin extends StatelessWidget {
 // 全屏沉浸（隐藏状态栏和导航条）。背景是封面色的渐变，左右两侧各有一组同心波光随节拍向外荡开；
 // 中间是衬线大字歌词，身后叠一个放大、模糊的当前字作为「影子」；底部一行细的歌曲信息与控制。
 // 轻点屏幕显示时间与关闭按钮，4 秒后自动隐藏。
-class StandbySkin extends StatefulWidget {
-  const StandbySkin({super.key});
-  @override
-  State<StandbySkin> createState() => _StandbySkinState();
-}
-
-class _StandbySkinState extends State<StandbySkin> {
-  bool chrome = false;
-  Timer? _hide;
-  double _phase = 0, _lastT = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-  }
-
-  @override
-  void dispose() {
-    _hide?.cancel();
-    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    super.dispose();
-  }
-
-  void _toggle() {
-    _hide?.cancel();
-    setState(() => chrome = !chrome);
-    if (chrome) {
-      _hide = Timer(const Duration(seconds: 4), () {
-        if (mounted) setState(() => chrome = false);
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final app = context.app;
-    final s = app.song;
-    final size = MediaQuery.of(context).size;
-    final short = math.min(size.width, size.height);
-    final now = DateTime.now();
-    const wk = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-    final white = Colors.white.withValues(alpha: .88);
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: _toggle,
-      child: Stack(children: [
-        Positioned.fill(
-          child: RepaintBoundary(
-            child: Ticker2(builder: (c, t) {
-              if (app.playing && !app.set.reduceMotion) _phase += (t - _lastT).clamp(0.0, .1);
-              _lastT = t;
-              return CustomPaint(painter: WaveGlowPainter(songHue(s), _phase, app.playing ? app.beat() : 0));
-            }),
-          ),
-        ),
-        Positioned.fill(
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(size.width * .1, 0, size.width * .1, short * .22),
-            child: Center(child: _StandbyLyric(size: short * .1, hue: songHue(s))),
-          ),
-        ),
-        // 底部一行：封面 · 歌名 · 控制 · 收藏
-        Positioned(
-          left: size.width * .08,
-          right: size.width * .08,
-          bottom: short * .07,
-          child: Row(children: [
-            Cover.song(s, size: 46, radius: 6),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                Text(s.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: ts(14, w: FontWeight.w600, c: white)),
-                const SizedBox(height: 2),
-                Text(s.artist, maxLines: 1, style: ts(11.5, c: Colors.white.withValues(alpha: .5))),
-              ]),
-            ),
-            IBtn('prev', color: white, iconSize: 26, onTap: app.prev),
-            const SizedBox(width: 6),
-            Press(
-              onTap: app.toggle,
-              scale: .86,
-              child: SizedBox(width: 56, height: 56, child: Icon(ic(app.playing ? 'pause' : 'play'), size: 42, color: white)),
-            ),
-            const SizedBox(width: 6),
-            IBtn('next', color: white, iconSize: 26, onTap: app.next),
-            const SizedBox(width: 10),
-            HeartBtn(app.cur, size: 24, offColor: Colors.white.withValues(alpha: .7)),
-          ]),
-        ),
-        // 轻点出现：时间 + 关闭
-        Positioned(
-          left: size.width * .08,
-          right: 16,
-          top: 14,
-          child: IgnorePointer(
-            ignoring: !chrome,
-            child: AnimatedOpacity(
-              duration: Tk.base,
-              opacity: chrome ? 1 : 0,
-              child: Row(children: [
-                Text('${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}', style: ts(20, w: FontWeight.w300, c: white, num: true)),
-                const SizedBox(width: 10),
-                Text('${now.month} 月 ${now.day} 日 ${wk[now.weekday - 1]}', style: ts(13, c: Colors.white.withValues(alpha: .6))),
-                const Spacer(),
-                IBtn('close', color: white, onTap: () => Navigator.of(context).pop()),
-              ]),
-            ),
-          ),
-        ),
-      ]),
-    );
-  }
-}
-
 /// 当前句：衬线大字，已唱部分更亮；身后叠一个放大模糊的「当前字」影子。
 class _StandbyLyric extends StatelessWidget {
   final double size, hue;
@@ -1696,6 +1583,28 @@ class SkinThumb extends StatelessWidget {
         return Container(color: const Color(0xFF15161C), alignment: Alignment.center, child: SizedBox(width: 90, height: 90, child: CustomPaint(painter: _DiscPainter(), child: Center(child: ClipOval(child: Cover.song(s, size: 34, radius: 17))))));
       case 'pulse':
         return Container(color: const Color(0xFF0B0C12), child: CustomPaint(painter: _PulsePainter(.6, .7, pal.acc), child: Center(child: ClipOval(child: Cover.song(s, size: 46, radius: 23)))));
+      case 'land_vinyl':
+        return Stack(children: [
+          Positioned.fill(child: BlurCover.song(s, px: 12)),
+          Container(color: const Color(0x99000000)),
+          Row(children: [
+            const SizedBox(width: 10),
+            SizedBox(width: 62, height: 62, child: CustomPaint(painter: const _DiscPainter(), child: Center(child: ClipOval(child: Cover.song(s, size: 38, radius: 19))))),
+            const SizedBox(width: 10),
+            Expanded(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [for (var i = 0; i < 3; i++) Container(margin: const EdgeInsets.only(bottom: 5), width: i == 1 ? 60 : 44, height: 4, color: i == 1 ? Colors.white : Colors.white30)])),
+          ]),
+        ]);
+      case 'land_clock':
+        return Container(
+          decoration: BoxDecoration(gradient: LinearGradient(colors: [hsl(songHue(s), .35, .07), hsl(songHue(s), .45, .14)])),
+          child: Row(children: [
+            const SizedBox(width: 12),
+            Text('22:08', style: ts(26, w: FontWeight.w200, c: Colors.white, num: true)),
+            const Spacer(),
+            Cover.song(s, size: 22, radius: 4),
+            const SizedBox(width: 12),
+          ]),
+        );
       case 'standby':
         return Stack(children: [
           Positioned.fill(child: CustomPaint(painter: WaveGlowPainter(songHue(s), 1.3, 0))),
