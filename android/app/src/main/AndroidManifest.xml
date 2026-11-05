@@ -1,6 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- 访问后端接口（release 包默认没有网络权限） -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- 投放（DLNA）：扫描设备时持有 Wi-Fi 组播锁，SSDP 发现才收得到 -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>
     <!-- 音频播放链路：后台播放 + 通知栏媒体通知 -->
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>

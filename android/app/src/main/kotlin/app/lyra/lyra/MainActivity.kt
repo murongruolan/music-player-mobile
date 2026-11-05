@@ -42,6 +42,7 @@ class MainActivity : AudioServiceActivity() {
 /// 只用 applicationContext：Activity 被回收后（后台播放时常见）引擎还在，悬浮歌词照样能更新。
 object NativeBridge {
     private var channel: MethodChannel? = null
+    private var mcLock: android.net.wifi.WifiManager.MulticastLock? = null
     private val main = Handler(Looper.getMainLooper())
 
     fun attach(ctx: Context, engine: FlutterEngine) {
@@ -81,6 +82,17 @@ object NativeBridge {
                             call.argument<Boolean>("playing") ?: false,
                             call.argument<Double>("speed") ?: 1.0,
                         )
+                        result.success(null)
+                    }
+                    "net.multicast" -> {
+                        // DLNA 发现（SSDP 组播）期间持有组播锁
+                        val wifi = ctx.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+                        if (call.arguments == true) {
+                            if (mcLock == null) mcLock = wifi.createMulticastLock("lyra-dlna").apply { setReferenceCounted(false) }
+                            mcLock?.acquire()
+                        } else {
+                            mcLock?.release()
+                        }
                         result.success(null)
                     }
                     "icon.current" -> result.success(AppIcons.current(ctx))
