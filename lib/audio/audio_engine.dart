@@ -94,6 +94,26 @@ class AudioEngine {
     final session = await AudioSession.instance;
     await session.configure(const AudioSessionConfiguration.music());
 
+    // 焦点打断自动续播（QQ/网易同款行为）：来电 / 其它应用抢焦点 → 暂停；
+    // 打断结束（挂断电话 / 导航播完）→ 之前在播就自动恢复。
+    // （锁屏 CPU 保活不在这里做：audio_service 前台服务播放期间自动持 PARTIAL_WAKE_LOCK）
+    bool interruptedWhilePlaying = false;
+    _subs.add(session.interruptionEventStream.listen((e) {
+      if (e.begin) {
+        if (e.type != AudioInterruptionType.duck && _loaded && _player.playing) {
+          interruptedWhilePlaying = true;
+          unawaited(pause());
+          AppLog.instance.add('播放', '音频焦点被打断，已暂停');
+        }
+      } else if (interruptedWhilePlaying) {
+        interruptedWhilePlaying = false;
+        if (_loaded) {
+          unawaited(resume());
+          AppLog.instance.add('播放', '打断结束，自动恢复播放');
+        }
+      }
+    }));
+
     _subs.addAll([
       _player.positionStream.listen((p) => onPosition?.call(p.inMicroseconds / 1e6)),
       _player.durationStream.listen((d) {
