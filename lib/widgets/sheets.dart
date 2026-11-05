@@ -35,6 +35,8 @@ void openSongMore(BuildContext context, int id, String ctx, {bool dark = false})
     final app = c.app;
     final pal = c.pal;
     void close() => Navigator.of(c).pop();
+    final dlTrack = app.online ? app.library.trackOf(id) : null;
+    final downloaded = dlTrack != null && app.downloads.isDownloaded(dlTrack.id);
     // 联网模式：取流 / 下载 / 歌词 / 投放都依赖音源解析，先只保留真正能用的操作
     final onlineGrid = [
       ('plus', '加入歌单', () {
@@ -154,10 +156,10 @@ void openSongMore(BuildContext context, int id, String ctx, {bool dark = false})
             toast('已移除，以后的推荐和电台不再放这首', 'nodislike');
           }),
         // 联网模式：已下载的歌可以删掉本地文件（真删除，下载记录一起去掉）
-        if (app.online && (app.library.trackOf(id) case final t?) && app.downloads.isDownloaded(t.id))
+        if (downloaded)
           Item(icon: 'trash', color: 'red', label: '删除已下载的文件', danger: true, onTap: () {
             close();
-            final it = app.downloads.items.firstWhere((x) => x.key == t.id);
+            final it = app.downloads.items.firstWhere((x) => x.key == dlTrack.id);
             showLDialog(context, icon: 'trash', iconColor: pal.danger, title: '删除下载的文件？', body: '「${s.title}」的本地文件会被删除，之后在线播放不受影响。', actions: [
               ('取消', BtnKind.sec, null),
               ('删除', BtnKind.danger, () async {
