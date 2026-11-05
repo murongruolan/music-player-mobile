@@ -10,10 +10,13 @@ import 'package:lyra/ui/brand.dart';
 
 const _id = 'gold';
 
-Future<void> _png(String path, int px, {double radius = 0, IconLayer layer = IconLayer.full, double artScale = 1}) async {
+/// 可切换的桌面图标（与 lib/data/mock.dart 的 appIcons 一致）。默认款用原文件名，其余加后缀。
+const _alt = ['night', 'aurora', 'vinyl', 'mono', 'neon', 'glass', 'pixel'];
+
+Future<void> _png(String path, int px, {double radius = 0, IconLayer layer = IconLayer.full, double artScale = 1, String id = _id}) async {
   final rec = ui.PictureRecorder();
   final c = Canvas(rec);
-  paintAppIcon(c, Size(px.toDouble(), px.toDouble()), _id, radius: radius, layer: layer, artScale: artScale);
+  paintAppIcon(c, Size(px.toDouble(), px.toDouble()), id, radius: radius, layer: layer, artScale: artScale);
   final img = await rec.endRecording().toImage(px, px);
   final data = await img.toByteData(format: ui.ImageByteFormat.png);
   final f = File('build/icons/$path');
@@ -33,6 +36,16 @@ void main() {
         // 自适应图标（Android 8+）：108dp 画布，前景缩进 66dp 安全区，底单独一层
         await _png('$d/ic_launcher_foreground.png', (108 * e.value).round(), layer: IconLayer.foreground, artScale: .6);
         await _png('$d/ic_launcher_background.png', (108 * e.value).round(), layer: IconLayer.background);
+      }
+      // 可切换的桌面图标：Android 每款一套 mipmap（activity-alias 引用），iOS 每款一个单尺寸 appiconset
+      for (final id in _alt) {
+        for (final e in dens.entries) {
+          final d = 'android/app/src/main/res/mipmap-${e.key}';
+          await _png('$d/ic_launcher_$id.png', (48 * e.value).round(), radius: 23, id: id);
+          await _png('$d/ic_launcher_${id}_foreground.png', (108 * e.value).round(), layer: IconLayer.foreground, artScale: .6, id: id);
+          await _png('$d/ic_launcher_${id}_background.png', (108 * e.value).round(), layer: IconLayer.background, id: id);
+        }
+        await _png('ios/Runner/Assets.xcassets/AppIcon-$id.appiconset/icon-1024.png', 1024, id: id);
       }
       // iOS：方形、不透明（系统自己切圆角）
       const ios = {'20x20@1x': 20, '20x20@2x': 40, '20x20@3x': 60, '29x29@1x': 29, '29x29@2x': 58, '29x29@3x': 87, '40x40@1x': 40, '40x40@2x': 80, '40x40@3x': 120, '60x60@2x': 120, '60x60@3x': 180, '76x76@1x': 76, '76x76@2x': 152, '83.5x83.5@2x': 167, '1024x1024@1x': 1024};

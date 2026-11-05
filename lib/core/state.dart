@@ -28,6 +28,7 @@ import '../platform/prefetch.dart';
 import '../platform/registry.dart';
 import '../sync/cloud_models.dart' show CloudTrack;
 import 'announcements.dart';
+import 'float_lyric.dart';
 import 'app_log.dart';
 import 'cloud.dart';
 import 'library_store.dart';
@@ -146,6 +147,9 @@ class AppState extends ChangeNotifier {
 
   /// 曲目 key（`wy:186016`）是否被标记过不感兴趣。
   bool isDislikedKey(String key) => taste.disliked.contains(key);
+
+  /// 悬浮歌词（Android 悬浮窗 / iOS 画中画）与桌面图标。
+  late final floatLyric = FloatLyricCtl(this);
 
   /// 导入的音源脚本（联网模式），持久化并可经 lx_sources 云同步。
   late final sources = ScriptStore(this, net?.prefs);
@@ -1031,6 +1035,7 @@ class AppState extends ChangeNotifier {
     final now = DateTime.now();
     final dt = now.difference(_last).inMicroseconds / 1e6;
     _last = now;
+    floatLyric.tick(); // 暂停也要推（收起悬浮窗 / 画中画切暂停态）
     if (!playing || !hasSong) return;
     // 真实播放：只有引擎真的在播才计听歌统计；进度全由引擎回调驱动。
     // 引擎没加载成功（加载中 / 失败）时绝不能走下面的模拟时钟：云盘歌曲时长是 0，

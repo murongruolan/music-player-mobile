@@ -1,11 +1,13 @@
 // 设置页：外观与界面 · 歌词 · 系统歌词 · 播放与音质 · 智能换源 · 平台与解析脚本（含导入音源）。
 // 每项都绑定 AppState.set 的字段，接口对接时把 Settings 持久化即可。
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:http/http.dart' as http;
 import '../core/script_store.dart';
+import '../core/float_lyric.dart' show nativeSupported, isIOS;
 import '../core/state.dart';
 import '../core/tokens.dart';
 import '../data/mock.dart';
@@ -312,7 +314,8 @@ class SysLyricsPage extends StatelessWidget {
           ]),
         ),
       ),
-      if (app.online) const Hint('桌面悬浮歌词和状态栏歌词需要系统层能力，暂时还不支持。蓝牙歌词推送已经可以用。', padding: EdgeInsets.fromLTRB(Tk.pad, 0, Tk.pad, 12)),
+      if (app.online && !nativeSupported) const Hint('当前设备不支持悬浮歌词。蓝牙歌词推送可以用。', padding: EdgeInsets.fromLTRB(Tk.pad, 0, Tk.pad, 12)),
+      if (app.online && nativeSupported) ..._floatGroups(context, app),
       if (!app.online) Group(title: '悬浮歌词（Android）', children: [
         Item(icon: 'layers', color: 'violet', label: '桌面悬浮歌词', sub: '需要「显示在其他应用上层」权限', sw: s.floatLyric, onSw: (v) => u(() => s.floatLyric = v)),
         Item(icon: 'lock', color: 'gray', label: '锁定位置', sub: '锁定后点击穿透，不影响其他应用', sw: s.floatLock, onSw: (v) => u(() => s.floatLock = v)),
@@ -325,6 +328,72 @@ class SysLyricsPage extends StatelessWidget {
       if (!app.online) Group(title: '状态栏', children: [Item(icon: 'phone', color: 'orange', label: '状态栏歌词', sub: '仅部分 Android 定制系统支持', sw: s.sbLyric, onSw: (v) => u(() => s.sbLyric = v))]),
     ]);
   }
+}
+
+/// 联网模式的悬浮歌词设置：Android 悬浮窗 / iOS 画中画。
+List<Widget> _floatGroups(BuildContext context, AppState app) {
+  final s = app.set;
+  final f = app.floatLyric;
+  final st = f.style;
+  final pal = context.pal;
+  void restyle(VoidCallback change) {
+    app.update(change);
+    unawaited(f.applyStyle());
+  }
+
+  const colors = [(0, '主题色'), (0xFFFFFFFF, '白'), (0xFF6EE7C8, '青'), (0xFF8AB4FF, '蓝'), (0xFFFF9CC2, '粉')];
+  return [
+    Group(title: isIOS ? '画中画歌词' : '桌面悬浮歌词', children: [
+      Item(
+        icon: 'layers',
+        color: 'violet',
+        label: isIOS ? '画中画歌词' : '桌面悬浮歌词',
+        sub: isIOS ? '用画中画小窗显示歌词，回到桌面或打开别的 App 也能看；需要正在播放' : '切到后台播放时显示在其他应用上层；需要「显示在其他应用上层」权限',
+        sw: s.floatLyric,
+        onSw: (v) async {
+          final ok = await f.setEnabled(v);
+          if (v && !ok && !isIOS) toast('请在系统设置里允许 Lyra「显示在其他应用上层」，回来后自动开启', 'info');
+        },
+      ),
+      if (!isIOS)
+        Item(icon: 'lock', color: 'gray', label: '锁定位置', sub: '锁定后点击穿透，不影响其他应用；悬浮窗上点一下可以锁定', sw: s.floatLock, onSw: (v) => restyle(() => s.floatLock = v)),
+      Item(icon: 'lyrics', color: 'teal', label: '第二行显示翻译', sub: '没有翻译时显示下一句', sw: st.trans, onSw: (v) => restyle(() => st.trans = v)),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        child: LSlider(label: '字号', value: st.size, min: 12, max: 32, step: 1, fmt: (v) => '${v.round()}', onChanged: (v) => restyle(() => st.size = v)),
+      ),
+      if (!isIOS)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          child: LSlider(label: '背景', value: st.bg, min: 0, max: 1, step: .05, fmt: (v) => '${(v * 100).round()}%', onChanged: (v) => restyle(() => st.bg = v)),
+        ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(14, 6, 14, 12),
+        child: Row(children: [
+          Text('已唱颜色', style: ts(14, c: pal.t1)),
+          const Spacer(),
+          for (final (c, name) in colors)
+            Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: Press(
+                onTap: () => restyle(() => st.color = c),
+                child: Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: c == 0 ? accents[app.accent.clamp(0, accents.length - 1)].fill : Color(c),
+                    border: Border.all(color: st.color == c ? pal.t1 : pal.s3, width: st.color == c ? 2.5 : 1),
+                  ),
+                  child: c == 0 ? Center(child: Text('主', style: ts(10, w: FontWeight.w700, c: Colors.black54))) : null,
+                ),
+              ),
+            ),
+        ]),
+      ),
+    ]),
+    if (isIOS) const Hint('iOS 不允许 App 在别的应用上层画悬浮窗，这里用画中画代替：打开后会出现一个歌词小窗，可以拖到屏幕边缘收起。', padding: EdgeInsets.fromLTRB(Tk.pad, 0, Tk.pad, 12)),
+  ];
 }
 
 // ======================= 播放与音质 =======================

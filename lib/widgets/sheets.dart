@@ -24,6 +24,7 @@ import '../ui/kit.dart';
 import '../ui/custom_font.dart';
 import '../core/share_code.dart';
 import '../platform/models.dart' show Plat;
+import '../core/float_lyric.dart' show nativeSupported, isIOS;
 import 'import_playlist.dart';
 import 'plat_login.dart';
 
@@ -1220,9 +1221,11 @@ void openAppIcons(BuildContext context) {
           children: [
             for (final a in appIcons)
               Press(
-                onTap: () {
+                onTap: () async {
                   app.update(() => app.appIcon = a[0]);
-                  toast('App 内图标已换成「${a[1]}」', 'grid');
+                  if (!nativeSupported) return toast('App 内图标已换成「${a[1]}」', 'grid');
+                  final ok = await app.floatLyric.setIcon(a[0]);
+                  toast(ok ? '已换成「${a[1]}」，桌面图标可能要几秒才刷新' : 'App 内图标已换成「${a[1]}」，桌面图标没能更换', 'grid');
                 },
                 child: Column(children: [
                   AnimatedContainer(duration: Tk.base, padding: const EdgeInsets.all(3), decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), border: Border.all(color: app.appIcon == a[0] ? pal.acc : Colors.transparent, width: 2)), child: AppIcon(a[0], size: 60)),
@@ -1234,7 +1237,9 @@ void openAppIcons(BuildContext context) {
           ],
         ),
       ),
-      const Hint('图标为「Lyra」暂名设计：天琴座（Lyra）的竖琴 + 织女星。这里只更换 App 里显示的图标（迷你播放器、分享卡等），桌面上的应用图标暂时不能更换。'),
+      Hint(nativeSupported
+          ? '图标为「Lyra」暂名设计：天琴座（Lyra）的竖琴 + 织女星。桌面图标和 App 内图标一起更换${isIOS ? '（系统会弹窗确认）' : '；少数桌面要几秒后才刷新'}。'
+          : '图标为「Lyra」暂名设计：天琴座（Lyra）的竖琴 + 织女星。当前设备只能更换 App 里显示的图标。'),
     ]);
   });
 }
