@@ -85,8 +85,8 @@ final class LyricPiP: NSObject, AVPictureInPictureControllerDelegate, AVPictureI
 
   private var text = "Lyra"
   private var next = ""
-  private var start = 0.0
-  private var end = 0.0
+  private var lineStart = 0.0
+  private var lineEnd = 0.0
   private var basePos = 0.0
   private var baseAt = CACurrentMediaTime()
   private var playing = false
@@ -170,8 +170,8 @@ final class LyricPiP: NSObject, AVPictureInPictureControllerDelegate, AVPictureI
     let changed = playing != self.playing
     self.text = text
     self.next = next
-    self.start = start
-    self.end = end
+    self.lineStart = start
+    self.lineEnd = end
     self.basePos = pos
     self.baseAt = CACurrentMediaTime()
     self.playing = playing
@@ -190,9 +190,9 @@ final class LyricPiP: NSObject, AVPictureInPictureControllerDelegate, AVPictureI
   }
 
   private func progress() -> CGFloat {
-    if end <= start { return 1 }
+    if lineEnd <= lineStart { return 1 }
     let now = basePos + (playing ? (CACurrentMediaTime() - baseAt) * speed : 0)
-    return CGFloat(max(0, min(1, (now - start) / (end - start))))
+    return CGFloat(max(0, min(1, (now - lineStart) / (lineEnd - lineStart))))
   }
 
   private func render() {
