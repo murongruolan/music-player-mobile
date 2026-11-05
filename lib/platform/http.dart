@@ -71,6 +71,29 @@ class PlatformHttp {
     });
   }
 
+  /// 只取一跳跳转目标（短链展开）：不自动跟随，返回 Location 解析后的地址；不是 3xx 时，
+  /// 再从页面里找 `location.href` / `<meta refresh>` 一类的前端跳转。都没有返回 null。
+  Future<Uri?> redirectOf(String platform, Uri url, {Map<String, String>? headers}) {
+    return _limit(() async {
+      final req = http.Request('GET', url)
+        ..followRedirects = false
+        ..headers.addAll({
+          'User-Agent': 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Mobile Safari/537.36',
+          ...?headers,
+        });
+      try {
+        final res = await _client.send(req).then(http.Response.fromStream).timeout(timeout);
+        log?.call('[$platform] 跳转 ${url.host}${url.path} → ${res.statusCode}');
+        final loc = res.headers['location'];
+        if (res.statusCode >= 300 && res.statusCode < 400 && loc != null && loc.isNotEmpty) return url.resolve(loc);
+        final m = RegExp(r'''(?:location\.(?:href|replace)\s*[=(]\s*|http-equiv=["']?refresh["']?[^>]*url=)["']?(https?://[^"'\s;)>]+)''', caseSensitive: false).firstMatch(res.body);
+        return m == null ? null : Uri.tryParse(m[1]!);
+      } catch (e) {
+        throw PlatformException(platform, '链接打不开，请检查网络后重试', e);
+      }
+    });
+  }
+
   Future<Uint8List> bytes(String platform, String method, Uri url, {Map<String, String>? headers, Object? body, Duration? timeout}) async =>
       (await send(platform, method, url, headers: headers, body: body, timeout: timeout)).bodyBytes;
 
