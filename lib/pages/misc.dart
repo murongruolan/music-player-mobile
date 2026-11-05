@@ -400,7 +400,7 @@ class _AccountPageState extends State<AccountPage> {
         Avatar(name.isEmpty ? 'L' : name.characters.first, size: 84, url: avatarUrl(app, size: 84)),
         const SizedBox(height: 12),
         Text(name, style: ts(20, w: FontWeight.w700, c: pal.t1)),
-        Text(acc == null ? (app.online ? '' : 'UID 10086427 · ali@example.com') : 'UID ${acc.uid} · ${acc.email}', style: ts(12.5, c: pal.t2, num: true)),
+        Text(acc == null ? (app.online ? '' : 'UID 10086427') : 'UID ${acc.uid}', style: ts(12.5, c: pal.t2, num: true)),
         const SizedBox(height: 10),
         Badge2(memberName, acc: activated, icon: 'crown', color: activated ? null : pal.warn),
         const SizedBox(height: 18),
@@ -988,7 +988,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
       children: [
         const Hint('向账号邮箱发送验证码，验证通过后设置新密码。\n重置成功后所有设备（含本机）都会退出登录。', padding: EdgeInsets.fromLTRB(Tk.pad, 8, Tk.pad, 10)),
         Group(children: [
-          Item(icon: 'mail', color: 'orange', label: '邮箱', val: app.account?.email ?? ''),
+          Item(icon: 'mail', color: 'orange', label: '验证码发送到', val: app.account?.email ?? ''),
         ]),
         if (_done) ...[
           const SizedBox(height: 14),
@@ -1000,8 +1000,12 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
             if (navigator.canPop()) navigator.popUntil((r) => r.isFirst);
           }),
         ] else ...[
-          const SizedBox(height: 14),
-          Group(children: [
+          // 输入框直接放在页面上（原来套在 Group 卡片里，卡片底色和输入框底色叠在一起像多了一层框）
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Tk.pad, 22, Tk.pad, 0),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('验证邮箱', style: ts(13, w: FontWeight.w600, c: context.pal.t2)),
+            const SizedBox(height: 8),
             LField(
               controller: code,
               label: '邮箱验证码',
@@ -1014,12 +1018,17 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
               suffixBusy: sending,
               onChanged: (_) => setState(() => err.remove('code')),
             ),
+            const SizedBox(height: 22),
+            Text('设置新密码', style: ts(13, w: FontWeight.w600, c: context.pal.t2)),
+            const SizedBox(height: 8),
             LField(controller: p1, label: '新密码', icon: 'lock', password: true, error: err['p1'], shake: err.containsKey('p1') ? shake : 0, onChanged: (_) => setState(() => err.remove('p1'))),
+            if (!err.containsKey('p1')) Padding(padding: const EdgeInsets.only(top: 6, left: 4), child: Text('至少 8 位，包含数字或字母大小写', style: ts(12, c: context.pal.t3))),
+            const SizedBox(height: 12),
             LField(controller: p2, label: '确认新密码', icon: 'lock', password: true, error: err['p2'], shake: err.containsKey('p2') ? shake : 0, onChanged: (_) => setState(() => err.remove('p2'))),
-          ]),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(Tk.pad, 16, Tk.pad, 24),
-            child: Btn('重置密码', block: true, busy: busy, onTap: _submit),
+            const SizedBox(height: 28),
+            Btn('重置密码', block: true, busy: busy, onTap: _submit),
+            const SizedBox(height: 24),
+            ]),
           ),
         ],
       ],
@@ -1071,12 +1080,12 @@ class BenefitsPage extends StatelessWidget {
   ];
   static int get sponsorOnly => _rows.where((r) => r.$2 == false).length;
 
-  Widget _mark(BuildContext c, Object v, {bool sponsor = false}) {
-    final pal = c.pal;
-    if (v == true) return Icon(ic('check'), size: 15, color: sponsor ? pal.accText : pal.ok);
-    if (v == false) return Text('—', style: ts(13, c: pal.t4));
-    return Text('$v', style: ts(12.5, w: FontWeight.w600, c: sponsor ? pal.accText : pal.t2));
-  }
+  /// 赞助专属功能的说明（图标, 名称, 一句话）。和 [_rows] 里赞助专属的几项一一对应。
+  static const _perks = <(String, String, String)>[
+    ('refresh', '多端实时同步', '收藏、歌单、设置在手机和桌面端之间实时同步'),
+    ('cloud', '账号云备份', '音乐库和设置备份到账号，换机一键恢复'),
+    ('chart', '云端听歌统计', '各设备的听歌记录合并统计，不会重复累加'),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -1084,56 +1093,90 @@ class BenefitsPage extends StatelessWidget {
     final pal = context.pal;
     final acc = app.account;
     final rank = acc?.membershipRank ?? 0;
-    final heroName = (acc?.membershipName.isNotEmpty ?? false) ? acc!.membershipName : (rank > 0 ? '已激活' : '免费版');
     final activated = rank > 0;
+    final heroName = (acc?.membershipName.isNotEmpty ?? false) ? acc!.membershipName : (activated ? '赞助会员' : '免费版');
     final expires = acc?.membershipExpiresAt;
+    final until = expires == null ? '永久有效' : '${expires.year}-${expires.month.toString().padLeft(2, '0')}-${expires.day.toString().padLeft(2, '0')} 到期';
+    final gold = pal.acc;
+    final free = [for (final r in _rows) if (r.$2 == true) r.$1];
     return SubPage(title: '会员权益', children: [
-      CardBox(
-        padding: const EdgeInsets.all(16),
-        child: Row(children: [
-          Container(width: 52, height: 52, alignment: Alignment.center, decoration: BoxDecoration(color: activated ? pal.accSoft : pal.s2, shape: BoxShape.circle), child: Icon(ic('crown'), size: 26, color: activated ? pal.accText : pal.t3)),
-          const SizedBox(width: 14),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(heroName, style: ts(17, w: FontWeight.w800, c: pal.t1)),
-            const SizedBox(height: 4),
-            Text(
-              activated
-                  ? '感谢支持。下面的功能你都可以用。${expires == null ? '' : ' ${expires.year}-${expires.month.toString().padLeft(2, '0')}-${expires.day.toString().padLeft(2, '0')} 到期'}'
-                  : '激活后解锁多端实时同步、账号云备份和云端听歌统计。',
-              style: ts(12.5, c: pal.t2, h: 1.5),
-            ),
-          ])),
-        ]),
+      // 会员卡
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: Tk.pad),
+        child: Container(
+          height: 176,
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            gradient: activated
+                ? LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color.lerp(gold, Colors.white, .18)!, gold, Color.lerp(gold, Colors.black, .38)!])
+                : LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [pal.s2, pal.s1]),
+            boxShadow: activated ? [BoxShadow(color: pal.accGlow, blurRadius: 30, offset: const Offset(0, 14))] : null,
+            border: activated ? null : Border.all(color: pal.line),
+          ),
+          child: Stack(children: [
+            Positioned(right: -18, bottom: -26, child: Icon(ic('crown'), size: 128, color: (activated ? pal.ink : pal.t1).withValues(alpha: .07))),
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Icon(ic('crown'), size: 18, color: activated ? pal.ink : pal.t2),
+                const SizedBox(width: 6),
+                Text('LYRA', style: ts(12, w: FontWeight.w800, c: activated ? pal.ink.withValues(alpha: .7) : pal.t3, ls: 2)),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                  decoration: BoxDecoration(color: (activated ? pal.ink : pal.t1).withValues(alpha: .1), borderRadius: BorderRadius.circular(10)),
+                  child: Text(activated ? '已激活' : '未激活', style: ts(11.5, w: FontWeight.w700, c: activated ? pal.ink : pal.t2)),
+                ),
+              ]),
+              const Spacer(),
+              Text(heroName, style: ts(26, w: FontWeight.w800, c: activated ? pal.ink : pal.t1)),
+              const SizedBox(height: 4),
+              Text(activated ? '$until · 感谢支持' : '激活后解锁下面 ${_perks.length} 项赞助专属功能', style: ts(12.5, c: activated ? pal.ink.withValues(alpha: .75) : pal.t2)),
+            ]),
+          ]),
+        ),
       ),
-      const SizedBox(height: 14),
-      CardBox(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-        child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 9),
+      Padding(padding: const EdgeInsets.fromLTRB(Tk.pad, 24, Tk.pad, 10), child: Text('赞助专属', style: ts(15, w: FontWeight.w700, c: pal.t1))),
+      for (final (icon, title, desc) in _perks)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(Tk.pad, 0, Tk.pad, 10),
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(color: pal.s1, borderRadius: BorderRadius.circular(18), border: Border.all(color: activated ? pal.acc.withValues(alpha: .35) : pal.line)),
             child: Row(children: [
-              const Expanded(child: Text('')),
-              SizedBox(width: 56, child: Text('免费', textAlign: TextAlign.center, style: ts(12.5, w: FontWeight.w700, c: pal.t3))),
-              SizedBox(width: 56, child: Text('赞助', textAlign: TextAlign.center, style: ts(12.5, w: FontWeight.w700, c: pal.accText))),
+              Container(width: 42, height: 42, decoration: BoxDecoration(color: pal.accSoft, borderRadius: BorderRadius.circular(12)), child: Icon(ic(icon), size: 22, color: pal.accText)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(title, style: ts(15, w: FontWeight.w700, c: pal.t1)),
+                  const SizedBox(height: 3),
+                  Text(desc, style: ts(12.5, c: pal.t2, h: 1.4)),
+                ]),
+              ),
+              const SizedBox(width: 8),
+              Icon(ic(activated ? 'check' : 'lock'), size: 18, color: activated ? pal.accText : pal.t3),
             ]),
           ),
-          for (final (name, free, sponsor) in _rows)
+        ),
+      Padding(padding: const EdgeInsets.fromLTRB(Tk.pad, 16, Tk.pad, 10), child: Text('免费也能用', style: ts(15, w: FontWeight.w700, c: pal.t1))),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: Tk.pad),
+        child: Wrap(spacing: 8, runSpacing: 8, children: [
+          for (final f in free)
             Container(
-              padding: const EdgeInsets.symmetric(vertical: 9),
-              decoration: BoxDecoration(border: Border(top: BorderSide(color: pal.line.withValues(alpha: .5)))),
-              child: Row(children: [
-                Expanded(child: Text(name, style: ts(13.5, c: pal.t1))),
-                SizedBox(width: 56, child: Center(child: _mark(context, free))),
-                SizedBox(width: 56, child: Center(child: _mark(context, sponsor, sponsor: true))),
-              ]),
+              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+              decoration: BoxDecoration(color: pal.s2, borderRadius: BorderRadius.circular(12)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(ic('check'), size: 14, color: pal.ok), const SizedBox(width: 5), Text(f, style: ts(13, c: pal.t1))]),
             ),
         ]),
       ),
       Padding(
-        padding: const EdgeInsets.fromLTRB(Tk.pad, 16, Tk.pad, 0),
-        child: Btn.sec('输入激活码 / 升级码', icon: 'key', block: true, onTap: () => showActivateSheet(context)),
+        padding: const EdgeInsets.fromLTRB(Tk.pad, 26, Tk.pad, 0),
+        child: activated
+            ? Btn.sec('输入升级码', icon: 'key', block: true, onTap: () => showActivateSheet(context))
+            : Btn('输入激活码', icon: 'key', block: true, onTap: () => showActivateSheet(context)),
       ),
-      const Hint('激活码通过官方渠道获得；升级码可以把赞助等级提升一级。激活后云同步会自动开启。', padding: EdgeInsets.fromLTRB(Tk.pad, 10, Tk.pad, 24)),
+      const Hint('激活码通过官方渠道获得；升级码可以把赞助等级提升一级。激活后云同步会自动开启。', align: TextAlign.center, padding: EdgeInsets.fromLTRB(Tk.pad, 10, Tk.pad, 24)),
     ]);
   }
 }

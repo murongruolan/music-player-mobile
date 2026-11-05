@@ -43,7 +43,9 @@ class MePage extends StatelessWidget {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(name, style: ts(19, w: FontWeight.w700, c: pal.t1)),
                   const SizedBox(height: 3),
-                  Text(acc == null ? (app.online ? '' : 'UID 10086427 · ali@example.com') : 'UID ${acc.uid} · ${acc.email}', style: ts(12.5, c: pal.t2)),
+                  // UID 和邮箱分两行：挤在一行时长一点的邮箱就换行 / 被截断
+                  Text(acc == null ? (app.online ? '' : 'UID 10086427') : 'UID ${acc.uid}', style: ts(12.5, c: pal.t2, num: true)),
+                  if (acc?.email.isNotEmpty ?? !app.online) Text(acc?.email ?? 'ali@example.com', maxLines: 1, overflow: TextOverflow.ellipsis, style: ts(12.5, c: pal.t2)),
                   const SizedBox(height: 8),
                   Row(children: [
                     if (acc != null && !acc.isActivated)
