@@ -112,6 +112,13 @@ class AudioEngine {
       // 否则 AppState 以为暂停了，加载完又把刚开始播的歌暂停掉（「下一曲不自动播放 / 播几秒自己停」）
       _player.playingStream.listen((p) {
         if (!_loaded) return;
+        // 用户刚按了暂停（2 秒窗口内）却又收到续播：是迟到的「打断结束，自动恢复」事件
+        // （锁屏 / 亮屏瞬间常见，实测表现为「按了暂停像没按，要再按一次才停下」）。
+        // 用户暂停优先：回滚这次续播；真正的手动播放走 resume() / playSong()，会先清掉标记。
+        if (p && _userPausePending) {
+          unawaited(_player.pause());
+          return;
+        }
         onPlaying?.call(p);
       }),
       _player.processingStateStream.listen((s) {
@@ -141,6 +148,8 @@ class AudioEngine {
     _tried.clear();
     _interruptRetried = false;
     _loopOne = loopOne;
+    _userPausePending = false; // 新歌开播即解除暂停守卫（自动续播放行恢复常态）
+    _userPauseTimer?.cancel();
     if (_loaded) {
       _loaded = false;
       // 必须等 stop() 完成：它是异步停用平台播放器，没停完就开始下一首的 setAudioSource，
@@ -355,6 +364,9 @@ class AudioEngine {
 
   Future<void> pause() async {
     _wantPlaying = false;
+    _userPausePending = true; // 开启 2 秒守卫：迟到的「打断结束自动恢复」在此窗口内被回滚
+    _userPauseTimer?.cancel();
+    _userPauseTimer = Timer(const Duration(seconds: 2), () => _userPausePending = false);
     if (_fade) {
       await _rampVolume(_vol, 0);
       if (_wantPlaying) return; // 淡出途中用户又点了播放：不暂停（被拖音量 / 睡眠淡出打断时照样暂停）
@@ -368,8 +380,14 @@ class AudioEngine {
   /// 最近一次是要播放还是暂停（淡出途中按了播放，淡出结束后就不再暂停）。
   bool _wantPlaying = true;
 
+  /// 用户主动暂停后的短窗标记：窗口内 just_audio 的自动续播（迟到的打断恢复）被回滚。
+  bool _userPausePending = false;
+  Timer? _userPauseTimer;
+
   Future<void> resume() async {
     _wantPlaying = true;
+    _userPausePending = false; // 手动播放立即解除守卫
+    _userPauseTimer?.cancel();
     // just_audio 的 play() 要到播放结束 / 被暂停才返回：不能 await，
     // 否则淡入永远不执行，音量停在 0（「手动开始后没声音，拖一下音量条才有」）
     if (_fade) {
@@ -482,6 +500,7 @@ class AudioEngine {
       await s.cancel();
     }
     _subs.clear();
+    _userPauseTimer?.cancel();
     await _player.dispose();
   }
 
