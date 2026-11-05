@@ -1,0 +1,19 @@
+{
+    "version": "1.0.0",
+    "color": {
+        "textHighLightColor": "#d9f2b6",
+        "magicColor": "#0d0d0d",
+        "textColor": "#ffffff"
+    },
+    "bg": {
+        "type": 3
+    },
+    "transparentLoading":false,
+    "preloadResourceDir": "qm_ai_template",
+    "template": [
+        {
+            "id": "AITemplate",
+            "text": "AI编排"
+        }
+    ]
+}

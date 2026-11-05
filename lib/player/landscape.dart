@@ -23,6 +23,9 @@ class LandscapeShell extends StatefulWidget {
 }
 
 class _LandscapeShellState extends State<LandscapeShell> with SingleTickerProviderStateMixin {
+  /// 挂着的横屏壳数量：横屏皮肤之间切换时，新的先 initState、旧的后 dispose，
+  /// 旧的不能把屏幕转回竖屏（原来切到另一个横屏皮肤会被转成竖屏、状态栏也冒出来）。
+  static int _mounted = 0;
   late final c = AnimationController(vsync: this, duration: _landSwitch);
   late final fade = CurvedAnimation(parent: c, curve: _landCurve, reverseCurve: _landCurve.flipped);
   bool fullMode = false;
@@ -31,6 +34,7 @@ class _LandscapeShellState extends State<LandscapeShell> with SingleTickerProvid
   @override
   void initState() {
     super.initState();
+    _mounted++;
     SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _arm();
@@ -40,8 +44,11 @@ class _LandscapeShellState extends State<LandscapeShell> with SingleTickerProvid
   void dispose() {
     _idle?.cancel();
     c.dispose();
-    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    _mounted--;
+    if (_mounted == 0) {
+      SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    }
     super.dispose();
   }
 

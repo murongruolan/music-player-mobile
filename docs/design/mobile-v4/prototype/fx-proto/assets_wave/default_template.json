@@ -1,0 +1,961 @@
+{
+    "type": "basic_template",
+    "project": {
+        "title": "template_segmentation",
+        "save_path": "WorkSpace/",
+        "width": 1920,
+        "height": 1080,
+        "resolution": null,
+        "bitrate": "推荐",
+        "codec": "H.264",
+        "format": "MP4",
+        "frame_rate": 30,
+        "export_audio": false,
+        "audio_type": "MP3",
+        "export_subtitle": false,
+        "export_gif": false,
+        "subtitle_type": "SRT"
+    },
+    "music_meta_info": {
+        "mediaid": null,
+        "media_name": null,
+        "media_duration": null,
+        "signature": null,
+        "media_path": null,
+        "media_map_path": null,
+        "media_emb_path": null,
+        "start": null,
+        "end": null,
+        "ext": null,
+        "duration": null,
+        "singer": null,
+        "album": null,
+        "genre": null,
+        "language": null,
+        "lyric_path": null,
+        "chorus_start": null,
+        "chorus_end": null
+    },
+    "effects": [
+        {
+            "name": "TextChannel",
+            "channel_id": "bf592e21-c3b8-4831-bcf6-c4f93f1a4434",
+            "layer": 1,
+            "materials": [
+                {
+                    "placeholder_id": "text_line:1_1",
+                    "text": null,
+                    "name": "Text",
+                    "material_type": "Text",
+                    "material_id": "3e14e96a-1210-4db5-b47c-d658780dc3c3",
+                    "animation": {
+                        "name": "TextAnimation",
+                        "animation_in": {
+                            "name": "AnimIn_NormalGatherIn",
+                            "duration": 1.0,
+                            "material_id": "1677fbeb-5d7c-4d4c-82e4-590b0588aaf3",
+                            "description": null,
+                            "resource_id": "sin000001"
+                        },
+                        "animation_out": {
+                            "name": "AnimOut_NormalFadeOut",
+                            "duration": 1.0,
+                            "material_id": "6bcb8dee-f671-4af6-a404-fc9a22d768ab",
+                            "description": null,
+                            "resource_id": "sout000001"
+                        },
+                        "animation_loop": {
+                            "name": "AnimMiddle_NormalStatic",
+                            "duration": 1.0,
+                            "material_id": "5beef18f-8fe4-4fd8-815c-8c78f8c507f7",
+                            "description": null,
+                            "resource_id": "sloop000001"
+                        },
+                        "description": null
+                    },
+                    "description": null,
+                    "time_start": 0.0,
+                    "duration": 2.0,
+                    "block_idx": 0,
+                    "layer": 1,
+                    "basic": {
+                        "position": [
+                            0,
+                            0
+                        ],
+                        "rotation": 0,
+                        "scale": 100,
+                        "global_horizontal_alignment": "center",
+                        "global_vertical_alignment": "center",
+                        "height": null,
+                        "width": null,
+                        "is_absolute_coordinates": true,
+                        "coordinate_type": "center",
+                        "font": [
+                            "NotoSerifSC-Black-fix"
+                        ],
+                        "font_size": [
+                            109
+                        ],
+                        "bold": [
+                            false
+                        ],
+                        "underline": [
+                            false
+                        ],
+                        "italic": [
+                            false
+                        ],
+                        "color": [
+                            "C1A2F9"
+                        ],
+                        "color_placeholder": [
+                            "&magiclyric1"
+                        ],
+                        "letter_space": 0,
+                        "row_space": 0,
+                        "inner_alignment": "center",
+                        "opacity": 100,
+                        "enable_outline": false,
+                        "outline_color": "000000",
+                        "outline_thickness": 40,
+                        "enable_background": false,
+                        "bg_color": "000000",
+                        "bg_opacity": 100,
+                        "bg_rounded_rectangle": 0.0,
+                        "bg_height": 14,
+                        "bg_width": 14,
+                        "bg_offset": [
+                            50,
+                            50
+                        ],
+                        "enable_glow": false,
+                        "glow_color": "000000",
+                        "glow_intensity": 30,
+                        "glow_range": 20,
+                        "glow_vertical_angle": 0,
+                        "glow_horizontal_angle": 0,
+                        "enable_shadow": false,
+                        "shadow_color": "000000",
+                        "shadow_color_placeholder": "&magiclyric2",
+                        "shadow_opacity": 90,
+                        "shadow_blurness": 15,
+                        "shadow_distance": 5,
+                        "shadow_angle": -45,
+                        "enable_curve": false,
+                        "curve_strength": 72,
+                        "description": null,
+                        "text_num": 4,
+                        "range": [
+                            [
+                                0,
+                                4
+                            ]
+                        ]
+                    },
+                    "resource_id": [
+                        "b9110e56cca523c3e428de64628d3574"
+                    ]
+                }
+            ],
+            "type": "Text",
+            "description": null
+        },
+        {
+            "name": "TextChannel",
+            "channel_id": "dc58bb30-cb39-40ac-9280-1c66efdafce8",
+            "layer": 2,
+            "materials": [
+                {
+                    "placeholder_id": "text_line:2_1",
+                    "text": null,
+                    "name": "Text",
+                    "material_type": "Text",
+                    "material_id": "cabb5b1d-a77e-4f22-a649-9e1ba20c0cf0",
+                    "animation": {
+                        "name": "TextAnimation",
+                        "animation_in": {
+                            "name": "AnimIn_NormalGatherIn",
+                            "duration": 1.0,
+                            "material_id": "1677fbeb-5d7c-4d4c-82e4-590b0588aaf3",
+                            "description": null,
+                            "resource_id": "sin000001"
+                        },
+                        "animation_out": {
+                            "name": "AnimOut_NormalFadeOut",
+                            "duration": 1.0,
+                            "material_id": "6bcb8dee-f671-4af6-a404-fc9a22d768ab",
+                            "description": null,
+                            "resource_id": "sout000001"
+                        },
+                        "animation_loop": {
+                            "name": "AnimMiddle_NormalStatic",
+                            "duration": 1.0,
+                            "material_id": "5beef18f-8fe4-4fd8-815c-8c78f8c507f7",
+                            "description": null,
+                            "resource_id": "sloop000001"
+                        },
+                        "description": null
+                    },
+                    "description": null,
+                    "time_start": 0.0,
+                    "duration": 2.0,
+                    "block_idx": 0,
+                    "layer": 0,
+                    "basic": {
+                        "position": [
+                            0,
+                            0.14
+                        ],
+                        "rotation": 0,
+                        "scale": 100,
+                        "global_horizontal_alignment": "center",
+                        "global_vertical_alignment": "center",
+                        "height": null,
+                        "width": null,
+                        "is_absolute_coordinates": true,
+                        "coordinate_type": "center",
+                        "font": [
+                            "NotoSerifSC-Black-fix"
+                        ],
+                        "font_size": [
+                            109
+                        ],
+                        "bold": [
+                            false
+                        ],
+                        "underline": [
+                            false
+                        ],
+                        "italic": [
+                            false
+                        ],
+                        "color": [
+                            "C1A2F9"
+                        ],
+                        "color_placeholder": [
+                            "&magiclyric1"
+                        ],
+                        "letter_space": 0,
+                        "row_space": 0,
+                        "inner_alignment": "center",
+                        "opacity": 100,
+                        "enable_outline": false,
+                        "outline_color": "000000",
+                        "outline_thickness": 40,
+                        "enable_background": false,
+                        "bg_color": "000000",
+                        "bg_opacity": 100,
+                        "bg_rounded_rectangle": 0.0,
+                        "bg_height": 14,
+                        "bg_width": 14,
+                        "bg_offset": [
+                            50,
+                            50
+                        ],
+                        "enable_glow": false,
+                        "glow_color": "000000",
+                        "glow_intensity": 30,
+                        "glow_range": 20,
+                        "glow_vertical_angle": 0,
+                        "glow_horizontal_angle": 0,
+                        "enable_shadow": false,
+                        "shadow_color": "000000",
+                        "shadow_color_placeholder": "&magiclyric2",
+                        "shadow_opacity": 90,
+                        "shadow_blurness": 15,
+                        "shadow_distance": 5,
+                        "shadow_angle": -45,
+                        "enable_curve": false,
+                        "curve_strength": 72,
+                        "description": null,
+                        "text_num": 4,
+                        "range": [
+                            [
+                                0,
+                                4
+                            ]
+                        ]
+                    },
+                    "resource_id": [
+                        "b9110e56cca523c3e428de64628d3574"
+                    ]
+                }
+            ],
+            "type": "Text",
+            "description": null
+        },
+        {
+            "name": "TextChannel",
+            "channel_id": "2bc9e492-5864-4db0-9769-a7ec49d5310f",
+            "layer": 1,
+            "materials": [
+                {
+                    "placeholder_id": "text_line:2_2",
+                    "text": null,
+                    "name": "Text",
+                    "material_type": "Text",
+                    "material_id": "9003756e-1454-4638-a39e-086a4c9f7154",
+                    "animation": {
+                        "name": "TextAnimation",
+                        "animation_in": {
+                            "name": "AnimIn_NormalGatherIn",
+                            "duration": 1.0,
+                            "material_id": "1677fbeb-5d7c-4d4c-82e4-590b0588aaf3",
+                            "description": null,
+                            "resource_id": "sin000001"
+                        },
+                        "animation_out": {
+                            "name": "AnimOut_NormalFadeOut",
+                            "duration": 1.0,
+                            "material_id": "6bcb8dee-f671-4af6-a404-fc9a22d768ab",
+                            "description": null,
+                            "resource_id": "sout000001"
+                        },
+                        "animation_loop": {
+                            "name": "AnimMiddle_NormalStatic",
+                            "duration": 1.0,
+                            "material_id": "5beef18f-8fe4-4fd8-815c-8c78f8c507f7",
+                            "description": null,
+                            "resource_id": "sloop000001"
+                        },
+                        "description": null
+                    },
+                    "description": null,
+                    "time_start": 0.0,
+                    "duration": 2.0,
+                    "block_idx": 0,
+                    "layer": 2,
+                    "basic": {
+                        "position": [
+                            0,
+                            -0.14
+                        ],
+                        "rotation": 0,
+                        "scale": 100,
+                        "global_horizontal_alignment": "center",
+                        "global_vertical_alignment": "center",
+                        "height": null,
+                        "width": null,
+                        "is_absolute_coordinates": true,
+                        "coordinate_type": "center",
+                        "font": [
+                            "NotoSerifSC-Black-fix"
+                        ],
+                        "font_size": [
+                            109
+                        ],
+                        "bold": [
+                            false
+                        ],
+                        "underline": [
+                            false
+                        ],
+                        "italic": [
+                            false
+                        ],
+                        "color": [
+                            "C1A2F9"
+                        ],
+                        "color_placeholder": [
+                            "&magiclyric1"
+                        ],
+                        "letter_space": 0,
+                        "row_space": 0,
+                        "inner_alignment": "center",
+                        "opacity": 100,
+                        "enable_outline": false,
+                        "outline_color": "000000",
+                        "outline_thickness": 40,
+                        "enable_background": false,
+                        "bg_color": "000000",
+                        "bg_opacity": 100,
+                        "bg_rounded_rectangle": 0.0,
+                        "bg_height": 14,
+                        "bg_width": 14,
+                        "bg_offset": [
+                            50,
+                            50
+                        ],
+                        "enable_glow": false,
+                        "glow_color": "000000",
+                        "glow_intensity": 30,
+                        "glow_range": 20,
+                        "glow_vertical_angle": 0,
+                        "glow_horizontal_angle": 0,
+                        "enable_shadow": false,
+                        "shadow_color": "000000",
+                        "shadow_color_placeholder": "&magiclyric2",
+                        "shadow_opacity": 90,
+                        "shadow_blurness": 15,
+                        "shadow_distance": 5,
+                        "shadow_angle": -45,
+                        "enable_curve": false,
+                        "curve_strength": 72,
+                        "description": null,
+                        "text_num": 4,
+                        "range": [
+                            [
+                                0,
+                                4
+                            ]
+                        ]
+                    },
+                    "resource_id": [
+                        "b9110e56cca523c3e428de64628d3574"
+                    ]
+                }
+            ],
+            "type": "Text",
+            "description": null
+        },
+        {
+            "name": "TextChannel",
+            "channel_id": "dc58bb30-cb39-40ac-9280-1c66efdafce8",
+            "layer": 3,
+            "materials": [
+                {
+                    "placeholder_id": "text_line:3_1",
+                    "text": null,
+                    "name": "Text",
+                    "material_type": "Text",
+                    "material_id": "cabb5b1d-a77e-4f22-a649-9e1ba20c0cf0",
+                    "animation": {
+                        "name": "TextAnimation",
+                        "animation_in": {
+                            "name": "AnimIn_NormalGatherIn",
+                            "duration": 1.0,
+                            "material_id": "1677fbeb-5d7c-4d4c-82e4-590b0588aaf3",
+                            "description": null,
+                            "resource_id": "sin000001"
+                        },
+                        "animation_out": {
+                            "name": "AnimOut_NormalFadeOut",
+                            "duration": 1.0,
+                            "material_id": "6bcb8dee-f671-4af6-a404-fc9a22d768ab",
+                            "description": null,
+                            "resource_id": "sout000001"
+                        },
+                        "animation_loop": {
+                            "name": "AnimMiddle_NormalStatic",
+                            "duration": 1.0,
+                            "material_id": "5beef18f-8fe4-4fd8-815c-8c78f8c507f7",
+                            "description": null,
+                            "resource_id": "sloop000001"
+                        },
+                        "description": null
+                    },
+                    "description": null,
+                    "time_start": 0.0,
+                    "duration": 2.0,
+                    "block_idx": 0,
+                    "layer": 0,
+                    "basic": {
+                        "position": [
+                            0,
+                            0.28
+                        ],
+                        "rotation": 0,
+                        "scale": 100,
+                        "global_horizontal_alignment": "center",
+                        "global_vertical_alignment": "center",
+                        "height": null,
+                        "width": null,
+                        "is_absolute_coordinates": true,
+                        "coordinate_type": "center",
+                        "font": [
+                            "NotoSerifSC-Black-fix"
+                        ],
+                        "font_size": [
+                            109
+                        ],
+                        "bold": [
+                            false
+                        ],
+                        "underline": [
+                            false
+                        ],
+                        "italic": [
+                            false
+                        ],
+                        "color": [
+                            "C1A2F9"
+                        ],
+                        "color_placeholder": [
+                            "&magiclyric1"
+                        ],
+                        "letter_space": 0,
+                        "row_space": 0,
+                        "inner_alignment": "center",
+                        "opacity": 100,
+                        "enable_outline": false,
+                        "outline_color": "000000",
+                        "outline_thickness": 40,
+                        "enable_background": false,
+                        "bg_color": "000000",
+                        "bg_opacity": 100,
+                        "bg_rounded_rectangle": 0.0,
+                        "bg_height": 14,
+                        "bg_width": 14,
+                        "bg_offset": [
+                            50,
+                            50
+                        ],
+                        "enable_glow": false,
+                        "glow_color": "000000",
+                        "glow_intensity": 30,
+                        "glow_range": 20,
+                        "glow_vertical_angle": 0,
+                        "glow_horizontal_angle": 0,
+                        "enable_shadow": false,
+                        "shadow_color": "000000",
+                        "shadow_color_placeholder": "&magiclyric2",
+                        "shadow_opacity": 90,
+                        "shadow_blurness": 15,
+                        "shadow_distance": 5,
+                        "shadow_angle": -45,
+                        "enable_curve": false,
+                        "curve_strength": 72,
+                        "description": null,
+                        "text_num": 4,
+                        "range": [
+                            [
+                                0,
+                                4
+                            ]
+                        ]
+                    },
+                    "resource_id": [
+                        "b9110e56cca523c3e428de64628d3574"
+                    ]
+                }
+            ],
+            "type": "Text",
+            "description": null
+        },
+        {
+            "name": "TextChannel",
+            "channel_id": "bf592e21-c3b8-4831-bcf6-c4f93f1a4434",
+            "layer": 2,
+            "materials": [
+                {
+                    "placeholder_id": "text_line:3_2",
+                    "text": null,
+                    "name": "Text",
+                    "material_type": "Text",
+                    "material_id": "3e14e96a-1210-4db5-b47c-d658780dc3c3",
+                    "animation": {
+                        "name": "TextAnimation",
+                        "animation_in": {
+                            "name": "AnimIn_NormalGatherIn",
+                            "duration": 1.0,
+                            "material_id": "1677fbeb-5d7c-4d4c-82e4-590b0588aaf3",
+                            "description": null,
+                            "resource_id": "sin000001"
+                        },
+                        "animation_out": {
+                            "name": "AnimOut_NormalFadeOut",
+                            "duration": 1.0,
+                            "material_id": "6bcb8dee-f671-4af6-a404-fc9a22d768ab",
+                            "description": null,
+                            "resource_id": "sout000001"
+                        },
+                        "animation_loop": {
+                            "name": "AnimMiddle_NormalStatic",
+                            "duration": 1.0,
+                            "material_id": "5beef18f-8fe4-4fd8-815c-8c78f8c507f7",
+                            "description": null,
+                            "resource_id": "sloop000001"
+                        },
+                        "description": null
+                    },
+                    "description": null,
+                    "time_start": 0.0,
+                    "duration": 2.0,
+                    "block_idx": 0,
+                    "layer": 1,
+                    "basic": {
+                        "position": [
+                            0,
+                            0
+                        ],
+                        "rotation": 0,
+                        "scale": 100,
+                        "global_horizontal_alignment": "center",
+                        "global_vertical_alignment": "center",
+                        "height": null,
+                        "width": null,
+                        "is_absolute_coordinates": true,
+                        "coordinate_type": "center",
+                        "font": [
+                            "NotoSerifSC-Black-fix"
+                        ],
+                        "font_size": [
+                            109
+                        ],
+                        "bold": [
+                            false
+                        ],
+                        "underline": [
+                            false
+                        ],
+                        "italic": [
+                            false
+                        ],
+                        "color": [
+                            "C1A2F9"
+                        ],
+                        "color_placeholder": [
+                            "&magiclyric1"
+                        ],
+                        "letter_space": 0,
+                        "row_space": 0,
+                        "inner_alignment": "center",
+                        "opacity": 100,
+                        "enable_outline": false,
+                        "outline_color": "000000",
+                        "outline_thickness": 40,
+                        "enable_background": false,
+                        "bg_color": "000000",
+                        "bg_opacity": 100,
+                        "bg_rounded_rectangle": 0.0,
+                        "bg_height": 14,
+                        "bg_width": 14,
+                        "bg_offset": [
+                            50,
+                            50
+                        ],
+                        "enable_glow": false,
+                        "glow_color": "000000",
+                        "glow_intensity": 30,
+                        "glow_range": 20,
+                        "glow_vertical_angle": 0,
+                        "glow_horizontal_angle": 0,
+                        "enable_shadow": false,
+                        "shadow_color": "000000",
+                        "shadow_color_placeholder": "&magiclyric2",
+                        "shadow_opacity": 90,
+                        "shadow_blurness": 15,
+                        "shadow_distance": 5,
+                        "shadow_angle": -45,
+                        "enable_curve": false,
+                        "curve_strength": 72,
+                        "description": null,
+                        "text_num": 4,
+                        "range": [
+                            [
+                                0,
+                                4
+                            ]
+                        ]
+                    },
+                    "resource_id": [
+                        "b9110e56cca523c3e428de64628d3574"
+                    ]
+                }
+            ],
+            "type": "Text",
+            "description": null
+        },
+        {
+            "name": "TextChannel",
+            "channel_id": "2bc9e492-5864-4db0-9769-a7ec49d5310f",
+            "layer": 1,
+            "materials": [
+                {
+                    "placeholder_id": "text_line:3_3",
+                    "text": null,
+                    "name": "Text",
+                    "material_type": "Text",
+                    "material_id": "9003756e-1454-4638-a39e-086a4c9f7154",
+                    "animation": {
+                        "name": "TextAnimation",
+                        "animation_in": {
+                            "name": "AnimIn_NormalGatherIn",
+                            "duration": 1.0,
+                            "material_id": "1677fbeb-5d7c-4d4c-82e4-590b0588aaf3",
+                            "description": null,
+                            "resource_id": "sin000001"
+                        },
+                        "animation_out": {
+                            "name": "AnimOut_NormalFadeOut",
+                            "duration": 1.0,
+                            "material_id": "6bcb8dee-f671-4af6-a404-fc9a22d768ab",
+                            "description": null,
+                            "resource_id": "sout000001"
+                        },
+                        "animation_loop": {
+                            "name": "AnimMiddle_NormalStatic",
+                            "duration": 1.0,
+                            "material_id": "5beef18f-8fe4-4fd8-815c-8c78f8c507f7",
+                            "description": null,
+                            "resource_id": "sloop000001"
+                        },
+                        "description": null
+                    },
+                    "description": null,
+                    "time_start": 0.0,
+                    "duration": 2.0,
+                    "block_idx": 0,
+                    "layer": 2,
+                    "basic": {
+                        "position": [
+                            0,
+                            -0.28
+                        ],
+                        "rotation": 0,
+                        "scale": 100,
+                        "global_horizontal_alignment": "center",
+                        "global_vertical_alignment": "center",
+                        "height": null,
+                        "width": null,
+                        "is_absolute_coordinates": true,
+                        "coordinate_type": "center",
+                        "font": [
+                            "NotoSerifSC-Black-fix"
+                        ],
+                        "font_size": [
+                            109
+                        ],
+                        "bold": [
+                            false
+                        ],
+                        "underline": [
+                            false
+                        ],
+                        "italic": [
+                            false
+                        ],
+                        "color": [
+                            "C1A2F9"
+                        ],
+                        "color_placeholder": [
+                            "&magiclyric1"
+                        ],
+                        "letter_space": 0,
+                        "row_space": 0,
+                        "inner_alignment": "center",
+                        "opacity": 100,
+                        "enable_outline": false,
+                        "outline_color": "000000",
+                        "outline_thickness": 40,
+                        "enable_background": false,
+                        "bg_color": "000000",
+                        "bg_opacity": 100,
+                        "bg_rounded_rectangle": 0.0,
+                        "bg_height": 14,
+                        "bg_width": 14,
+                        "bg_offset": [
+                            50,
+                            50
+                        ],
+                        "enable_glow": false,
+                        "glow_color": "000000",
+                        "glow_intensity": 30,
+                        "glow_range": 20,
+                        "glow_vertical_angle": 0,
+                        "glow_horizontal_angle": 0,
+                        "enable_shadow": false,
+                        "shadow_color": "000000",
+                        "shadow_color_placeholder": "&magiclyric2",
+                        "shadow_opacity": 90,
+                        "shadow_blurness": 15,
+                        "shadow_distance": 5,
+                        "shadow_angle": -45,
+                        "enable_curve": false,
+                        "curve_strength": 72,
+                        "description": null,
+                        "text_num": 4,
+                        "range": [
+                            [
+                                0,
+                                4
+                            ]
+                        ]
+                    },
+                    "resource_id": [
+                        "b9110e56cca523c3e428de64628d3574"
+                    ]
+                }
+            ],
+            "type": "Text",
+            "description": null
+        },
+        {
+            "name": "TextChannel",
+            "channel_id": "189e84eb-b852-4b4b-951d-6cb539359cf8",
+            "layer": 0,
+            "materials": [
+                {
+                    "placeholder_id": "bg_line:1_1",
+                    "text": null,
+                    "name": "Text",
+                    "material_type": "Text",
+                    "material_id": "a3189baf-fbe5-4a94-bee8-797892dd2d9a",
+                    "animation": {
+                        "name": "TextAnimation",
+                        "animation_in": {
+                            "name": "AnimIn_KeyGatherIn",
+                            "duration": 1.0,
+                            "material_id": "2898fbc0-0749-47e1-8ec7-ec4af40a3ba7",
+                            "description": null,
+                            "resource_id": "sin000002"
+                        },
+                        "animation_out": {
+                            "name": "AnimOut_KeyFadeOut",
+                            "duration": 1.0,
+                            "material_id": "049ce2a3-f523-4894-87cb-0df56c0d6de7",
+                            "description": null,
+                            "resource_id": "sout000002"
+                        },
+                        "animation_loop": {
+                            "name": "AnimMiddle_KeyStatic",
+                            "duration": 1.0,
+                            "material_id": "638d8a49-59df-4bbe-bf86-570f629dab4e",
+                            "description": null,
+                            "resource_id": "sloop000002"
+                        },
+                        "description": null
+                    },
+                    "description": null,
+                    "time_start": 0.0,
+                    "duration": 2.0,
+                    "block_idx": 0,
+                    "layer": 3,
+                    "basic": {
+                        "position": [
+                            0,
+                            0
+                        ],
+                        "rotation": 0,
+                        "scale": 100,
+                        "global_horizontal_alignment": "center",
+                        "global_vertical_alignment": "center",
+                        "height": null,
+                        "width": null,
+                        "is_absolute_coordinates": true,
+                        "coordinate_type": "center",
+                        "font": [
+                            "NotoSerifSC-Black-fix"
+                        ],
+                        "font_size": [
+                            262
+                        ],
+                        "bold": [
+                            false
+                        ],
+                        "underline": [
+                            false
+                        ],
+                        "italic": [
+                            false
+                        ],
+                        "color": [
+                            "0A0A35"
+                        ],
+                        "color_placeholder": [
+                            "&magiclyric3"
+                        ],
+                        "letter_space": 2,
+                        "row_space": 0,
+                        "inner_alignment": "center",
+                        "opacity": 25,
+                        "enable_outline": false,
+                        "outline_color": "000000",
+                        "outline_thickness": 40,
+                        "enable_background": false,
+                        "bg_color": "000000",
+                        "bg_opacity": 100,
+                        "bg_rounded_rectangle": 0.0,
+                        "bg_height": 14,
+                        "bg_width": 14,
+                        "bg_offset": [
+                            50,
+                            50
+                        ],
+                        "enable_glow": false,
+                        "glow_color": "000000",
+                        "glow_intensity": 30,
+                        "glow_range": 20,
+                        "glow_vertical_angle": 0,
+                        "glow_horizontal_angle": 0,
+                        "enable_shadow": true,
+                        "shadow_color": "301a5a",
+                        "shadow_color_placeholder": "&magiclyric4",
+                        "shadow_opacity": 90,
+                        "shadow_blurness": 15,
+                        "shadow_distance": 5,
+                        "shadow_angle": -45,
+                        "enable_curve": false,
+                        "curve_strength": 72,
+                        "description": null,
+                        "text_num": 4,
+                        "range": [
+                            [
+                                0,
+                                4
+                            ]
+                        ]
+                    },
+                    "resource_id": [
+                        "b9110e56cca523c3e428de64628d3574"
+                    ]
+                }
+            ],
+            "type": "Text",
+            "description": null
+        }
+    ],
+    "resource_list": {
+        "Text": [
+            {
+                "name": "NotoSerifSC-Black-fix",
+                "material_type": "Text",
+                "resource_id": "tce000001",
+                "ext": "ttf"
+            }
+        ],
+        "Animation": [
+            {
+                "name": "AnimIn_NormalGatherIn",
+                "material_type": "Animation",
+                "resource_id": "sin000001",
+                "ext": "glsl"
+            },
+            {
+                "name": "AnimMiddle_NormalStatic",
+                "material_type": "Animation",
+                "resource_id": "sloop000001",
+                "ext": "glsl"
+            },
+            {
+                "name": "AnimOut_NormalFadeOut",
+                "material_type": "Animation",
+                "resource_id": "sout000001",
+                "ext": "glsl"
+            },
+            {
+                "name": "AnimIn_KeyGatherIn",
+                "material_type": "Animation",
+                "resource_id": "sin000002",
+                "ext": "glsl"
+            },
+            {
+                "name": "AnimMiddle_KeyStatic",
+                "material_type": "Animation",
+                "resource_id": "sloop000002",
+                "ext": "glsl"
+            },
+            {
+                "name": "AnimOut_KeyFadeOut",
+                "material_type": "Animation",
+                "resource_id": "sout000002",
+                "ext": "glsl"
+            }
+        ]
+    },
+    "design":{
+        "text_max_width":0.7,
+        "text_max_height":1.0
+    }
+}
