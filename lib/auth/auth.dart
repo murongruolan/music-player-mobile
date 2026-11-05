@@ -314,7 +314,11 @@ class _LoginPageState extends State<LoginPage> {
     _sendCode(net);
   }
 
+  bool sending = false;
+
   Future<void> _sendCode(Net net) async {
+    if (sending) return;
+    setState(() => sending = true);
     try {
       // passToken：服务端开启人机验证时必传（单次有效）；未启用时传空
       await RegistrationApi(net.client).sendCode(email.text.trim(), _capToken);
@@ -324,6 +328,8 @@ class _LoginPageState extends State<LoginPage> {
       toast('验证码已发送至 $_maskedEmail', 'mail');
     } on ApiException catch (e) {
       if (mounted && !e.isCancelled) toast(e.userMessage, 'info');
+    } finally {
+      if (mounted) setState(() => sending = false);
     }
   }
 
@@ -496,7 +502,7 @@ class _LoginPageState extends State<LoginPage> {
         ],
         if (needCode) ...[
           const SizedBox(height: 12),
-          LField(controller: code, label: '邮箱验证码', icon: 'key', keyboard: TextInputType.number, error: err['code'], shake: err.containsKey('code') ? shake : 0, suffix: cd > 0 ? '${cd}s' : '获取验证码', onSuffix: _send, onChanged: (_) => setState(() => err.remove('code'))),
+          LField(controller: code, label: '邮箱验证码', icon: 'key', keyboard: TextInputType.number, error: err['code'], shake: err.containsKey('code') ? shake : 0, suffix: cd > 0 ? '${cd}s' : '获取验证码', onSuffix: _send, suffixBusy: sending, onChanged: (_) => setState(() => err.remove('code'))),
         ],
         const SizedBox(height: 12),
         Press(onTap: () => app.update(() => app.agreed = !app.agreed), child: Row(children: [_Check(app.agreed), const SizedBox(width: 8), Expanded(child: Text('我已阅读并同意《用户协议》与《隐私政策》', style: ts(12.5, c: const Color(0xB3FFFFFF))))])),
@@ -956,6 +962,8 @@ class _ForgotPageState extends State<ForgotPage> {
     });
   }
 
+  bool sending = false;
+
   Future<void> _send() async {
     if (cd > 0) return;
     if (!_isEmail.hasMatch(email.text.trim())) return _err({'email': '先填写正确的邮箱'});
@@ -969,13 +977,17 @@ class _ForgotPageState extends State<ForgotPage> {
       toast('验证码已发送', 'mail');
       return;
     }
+    if (sending) return;
+    setState(() => sending = true);
     try {
       await PasswordApi(app.api.client).forgot(email.text);
       if (!mounted) return;
       _startCd();
       toast('如果该邮箱已注册，验证码已发送（10 分钟内有效）', 'mail');
     } on ApiException catch (e) {
-      toast(e.userMessage, 'info');
+      if (mounted && !e.isCancelled) toast(e.userMessage, 'info');
+    } finally {
+      if (mounted) setState(() => sending = false);
     }
   }
 
@@ -1022,7 +1034,7 @@ class _ForgotPageState extends State<ForgotPage> {
           Captcha(key: capKey, onPass: (v) => setState(() => capOk = v)),
         ],
         const SizedBox(height: 12),
-        LField(controller: code, label: '邮箱验证码', icon: 'key', keyboard: TextInputType.number, error: err['code'], shake: shake, suffix: cd > 0 ? '${cd}s' : '获取验证码', onSuffix: _send),
+        LField(controller: code, label: '邮箱验证码', icon: 'key', keyboard: TextInputType.number, error: err['code'], shake: shake, suffix: cd > 0 ? '${cd}s' : '获取验证码', onSuffix: _send, suffixBusy: sending),
         const SizedBox(height: 18),
         Btn('下一步', block: true, busy: busy, onTap: () {
           final e = <String, String>{};

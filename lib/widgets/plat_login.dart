@@ -312,7 +312,7 @@ class _KugouPhoneLoginState extends State<_KugouPhoneLogin> {
   }
 
   Future<void> _send() async {
-    if (cd > 0) return;
+    if (cd > 0 || busy) return;
     final app = context.appRead;
     final dev = device ??= KugouDevice.random(Random());
     setState(() {
@@ -369,7 +369,7 @@ class _KugouPhoneLoginState extends State<_KugouPhoneLogin> {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       LField(controller: phone, label: '手机号', icon: 'phone', keyboard: TextInputType.phone, onChanged: (_) => setState(() => error = null)),
       const SizedBox(height: 10),
-      LField(controller: code, label: '短信验证码', icon: 'key', keyboard: TextInputType.number, suffix: cd > 0 ? '${cd}s' : '获取验证码', onSuffix: busy ? null : _send, error: error, onChanged: (_) => setState(() => error = null)),
+      LField(controller: code, label: '短信验证码', icon: 'key', keyboard: TextInputType.number, suffix: cd > 0 ? '${cd}s' : '获取验证码', onSuffix: _send, suffixBusy: busy, error: error, onChanged: (_) => setState(() => error = null)),
       const SizedBox(height: 14),
       Btn('登录', block: true, busy: busy, onTap: busy ? null : _login),
       const SizedBox(height: 10),

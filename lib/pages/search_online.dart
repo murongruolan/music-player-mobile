@@ -159,8 +159,31 @@ class _OnlineResults extends StatefulWidget {
   State<_OnlineResults> createState() => _OnlineResultsState();
 }
 
+/// 一个结果类型的内容：头部（少量、可带入场动画）+ 固定行高的长列表 + 尾部（按行懒构建）。
+class _Body {
+  final List<Widget> head, tail;
+  final ListRows? rows;
+  const _Body(this.head, {this.rows, this.tail = const []});
+}
+
 class _OnlineResultsState extends State<_OnlineResults> {
   final _b = <String, _Bucket>{};
+  final sc = ScrollController();
+  final y = ValueNotifier<double>(0);
+  final rowsKey = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    sc.addListener(() => y.value = sc.hasClients ? sc.offset : 0);
+  }
+
+  @override
+  void dispose() {
+    sc.dispose();
+    y.dispose();
+    super.dispose();
+  }
 
   /// 各平台歌曲结果总数（平台筛选上的数字）。
   final totals = <String, int>{};
@@ -285,10 +308,13 @@ class _OnlineResultsState extends State<_OnlineResults> {
     // 平台筛选上的数字来自歌曲搜索的总数
     _ensure(SearchType.song);
 
-    final body = type == '综合' ? _overview(context, hl, supported) : _typed(context, _typeOf[type]!, hl);
+    final body = type == '综合' ? _Body(_overview(context, hl, supported)) : _typed(context, _typeOf[type]!, hl);
     final allCount = totals.values.fold<int>(0, (a, b) => a + b);
+    final rows = body.rows;
 
-    return ListView(padding: EdgeInsets.only(top: top, bottom: 170), children: [
+    // 原来整个结果放在一个 Column 里：几百行一次全部构建 / 布局，切到「歌曲」「歌单」翻几页后明显卡。
+    // 现在头部 / 歌曲行 / 尾部分成三个 sliver，只构建看得到的（加上下各一屏缓冲）。
+    final header = <Widget>[
       Padding(
         padding: const EdgeInsets.fromLTRB(Tk.pad, 10, 8, 4),
         child: Row(children: [Expanded(child: Text('「$q」', maxLines: 1, overflow: TextOverflow.ellipsis, style: ts(24, w: FontWeight.w800, c: pal.t1))), IBtn('close', onTap: widget.onClear)]),
@@ -376,11 +402,46 @@ class _OnlineResultsState extends State<_OnlineResults> {
           );
         },
       ),
-      AnimatedSwitcher(
-        duration: const Duration(milliseconds: 300),
-        child: Column(key: ValueKey('$type${widget.plat}'), crossAxisAlignment: CrossAxisAlignment.stretch, children: [for (final (i, w) in body.indexed) Rise(math.min(i, 8), w)]),
+    ];
+    final k = '$type${widget.plat}';
+    return Stack(children: [
+      Positioned.fill(
+        child: CustomScrollView(controller: sc, slivers: [
+          SliverToBoxAdapter(child: SizedBox(height: top)),
+          SliverList(delegate: SliverChildListDelegate([
+            ...header,
+            for (final (i, w) in body.head.indexed) i < 8 ? Rise(i, w, key: ValueKey('$k-h$i')) : KeyedSubtree(key: ValueKey('$k-h$i'), child: w),
+          ])),
+          if (rows != null && rows.count > 0) SliverFixedExtentList(key: rowsKey, itemExtent: rows.extent, delegate: SliverChildBuilderDelegate(rows.builder, childCount: rows.count)),
+          if (body.tail.isNotEmpty) SliverList(delegate: SliverChildListDelegate(body.tail)),
+          const SliverToBoxAdapter(child: SizedBox(height: 170)),
+        ]),
+      ),
+      Positioned(
+        right: 16,
+        bottom: 176 + MediaQuery.of(context).padding.bottom - 34,
+        child: LocateButton(sc: sc, rowsKey: rowsKey, rows: rows, y: y, topInset: top, bottomInset: 150),
       ),
     ]);
+  }
+
+  /// 卡片网格按行切开（每行一个列表项），长网格也只构建看得到的几行。
+  List<Widget> _gridRows(BuildContext context, int n, double minCard, double gap, double runGap, Widget Function(int i, double w) card) {
+    final width = MediaQuery.sizeOf(context).width - Tk.pad * 2;
+    final cols = math.max(2, ((width + gap) / (minCard + gap)).floor());
+    final w = (width - gap * (cols - 1)) / cols;
+    return [
+      for (var r = 0; r * cols < n; r++)
+        Padding(
+          padding: EdgeInsets.fromLTRB(Tk.pad, r == 0 ? 12 : runGap, Tk.pad, 0),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            for (var c = 0; c < cols; c++) ...[
+              if (c > 0) SizedBox(width: gap),
+              r * cols + c < n ? card(r * cols + c, w) : SizedBox(width: w),
+            ],
+          ]),
+        ),
+    ];
   }
 
   static String _count(int n) => n >= 10000 ? '${(n / 10000).toStringAsFixed(n >= 100000 ? 0 : 1)}万' : '$n';
@@ -425,7 +486,8 @@ class _OnlineResultsState extends State<_OnlineResults> {
                 Text([if (best.subtitle.isNotEmpty) best.subtitle, if (best.trackCount != null && best.trackCount! > 0) '${best.trackCount} 首单曲', appPlatform(best.platform).name].join(' · '), maxLines: 1, overflow: TextOverflow.ellipsis, style: ts(12.5, c: pal.t2)),
               ]),
             ),
-            IBtn('play', bg: pal.acc, color: pal.ink, onTap: () => openCatalog(context, best)),
+            // 直接播放这位歌手的热门歌曲（不用先进主页）；整张卡片点击仍然进主页
+            _ArtistPlayBtn(best),
           ]),
         ),
       Sec('单曲', more: '全部', onMore: () => widget.onType('歌曲')),
@@ -465,13 +527,15 @@ class _OnlineResultsState extends State<_OnlineResults> {
   }
 
   // ---------- 单一类型（分页） ----------
-  List<Widget> _typed(BuildContext context, SearchType t, TextSpan Function(String, TextStyle) hl) {
+  _Body _typed(BuildContext context, SearchType t, TextSpan Function(String, TextStyle) hl) {
     final app = context.app;
     _ensure(t);
     final b = _bucket(widget.plat, t);
     final q = widget.q;
     final more = b.page > 0 && b.hasMore ? AutoLoad(key: ValueKey('more${widget.plat}${t.name}${b.page}${b.error}'), onLoad: () => _load(t), busy: b.busy, error: b.error) : null;
     final out = <Widget>[if (b.note != null) Hint(b.note!, padding: const EdgeInsets.fromLTRB(Tk.pad, 4, Tk.pad, 0))];
+    final tail = <Widget>[];
+    ListRows? rows;
     switch (t) {
       case SearchType.song:
         var ids = lossless ? b.songs.where((id) => !songs[id].plainQ).toList() : b.songs;
@@ -500,26 +564,23 @@ class _OnlineResultsState extends State<_OnlineResults> {
           ],
           if (b.songs.isEmpty) _status(b, t, '歌曲'),
           if (b.songs.isNotEmpty && ids.isEmpty) Hint('已加载的结果里没有无损音质的歌', padding: const EdgeInsets.fromLTRB(Tk.pad, 12, Tk.pad, 0)),
-          for (final id in ids) SongRow(songs[id], key: ValueKey('s$id'), list: 'all', listName: '搜索「$q」', hl: hl, queue: ids),
         ]);
+        rows = ListRows(count: ids.length, current: () => ids.indexOf(app.cur), builder: (c, i) => SongRow(songs[ids[i]], key: ValueKey('s${ids[i]}'), list: 'all', listName: '搜索「$q」', hl: hl, queue: ids));
       case SearchType.playlist:
-        out.addAll([if (b.items.isEmpty) _status(b, t, '歌单'), for (final c in b.items) CatalogRow(c, key: ValueKey('c${c.platform}${c.id}'), hl: hl)]);
+        if (b.items.isEmpty) out.add(_status(b, t, '歌单'));
+        final items = b.items;
+        rows = ListRows(count: items.length, builder: (c, i) => CatalogRow(items[i], key: ValueKey('c${items[i].platform}${items[i].id}'), hl: hl));
       case SearchType.album:
-        out.add(b.items.isEmpty
-            ? _status(b, t, '专辑')
-            : Padding(
-                padding: const EdgeInsets.fromLTRB(Tk.pad, 12, Tk.pad, 0),
-                // 按可用宽度均分列（两列起，宽屏 / 平板自动三列以上），卡片撑满整行，不再左挤右空
-                child: LayoutBuilder(builder: (c, cs) {
-                  const gap = 12.0, minCard = 150.0;
-                  final cols = math.max(2, ((cs.maxWidth + gap) / (minCard + gap)).floor());
-                  final w = (cs.maxWidth - gap * (cols - 1)) / cols;
-                  return Wrap(spacing: gap, runSpacing: 16, children: [for (final a in b.items) _AlbumCard(a, hl, width: w)]);
-                }),
-              ));
+        // 按可用宽度均分列（两列起，宽屏 / 平板自动三列以上），卡片撑满整行，不再左挤右空
+        if (b.items.isEmpty) {
+          out.add(_status(b, t, '专辑'));
+        } else {
+          final items = b.items;
+          tail.addAll(_gridRows(context, items.length, 150, 12, 16, (i, w) => _AlbumCard(items[i], hl, width: w)));
+        }
       case SearchType.artist:
-        out.addAll([
-          if (b.items.isEmpty) _status(b, t, '艺术家'),
+        if (b.items.isEmpty) out.add(_status(b, t, '艺术家'));
+        tail.addAll([
           for (final a in b.items)
             Item(
               key: ValueKey('a${a.platform}${a.id}'),
@@ -535,18 +596,17 @@ class _OnlineResultsState extends State<_OnlineResults> {
             ),
         ]);
       case SearchType.mv:
-        out.add(b.mvs.isEmpty
-            ? _status(b, t, 'MV')
-            : Padding(
-                padding: const EdgeInsets.fromLTRB(Tk.pad, 12, Tk.pad, 0),
-                child: LayoutBuilder(builder: (c, cs) {
-                  final w = (cs.maxWidth - 12) / 2;
-                  return Wrap(spacing: 12, runSpacing: 14, children: [for (final m in b.mvs) _MvCard(m, w: w)]);
-                }),
-              ));
+        if (b.mvs.isEmpty) {
+          out.add(_status(b, t, 'MV'));
+        } else {
+          final mvs = b.mvs;
+          // 两列
+          tail.addAll(_gridRows(context, mvs.length, 1e9, 12, 14, (i, w) => _MvCard(mvs[i], w: w)));
+        }
     }
-    if (more != null) out.add(more);
-    return out;
+    // 翻页占位放在最后：滚到它附近才被构建，才去加载下一页（原来放在 Column 里，一构建就连着翻页）
+    if (more != null) tail.add(more);
+    return _Body(out, rows: rows, tail: tail);
   }
 }
 
@@ -571,7 +631,7 @@ class _AlbumCard extends StatelessWidget {
             height: size,
             child: Stack(clipBehavior: Clip.none, children: [
               Positioned(left: peek, top: 4, child: Container(width: size - 8, height: size - 8, decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFF0D0E12), border: Border.all(color: const Color(0xFF26282F), width: 6)))),
-              Cover(hue: catalogHue(a), variant: a.id.hashCode.abs() % 6, size: size, radius: 12, shadow: true, url: a.cover),
+              Cover(hue: catalogHue(a), variant: a.id.hashCode.abs() % 6, size: size, radius: 12, shadow: true, url: a.cover, frame: true), // 专辑卡保留占位描边（卡片样式）
             ]),
           ),
           const SizedBox(height: 8),
@@ -614,5 +674,50 @@ class _MvCard extends StatelessWidget {
         ]),
       ),
     );
+  }
+}
+
+/// 最佳匹配歌手卡上的播放键：拉歌手的第一页（热门，最多 100 首）直接播放。
+/// 和歌手主页用同一个请求（同参数命中缓存），之后点进主页不会再请求一次。
+class _ArtistPlayBtn extends StatefulWidget {
+  final CatalogItem a;
+  const _ArtistPlayBtn(this.a);
+  @override
+  State<_ArtistPlayBtn> createState() => _ArtistPlayBtnState();
+}
+
+class _ArtistPlayBtnState extends State<_ArtistPlayBtn> {
+  bool busy = false;
+
+  Future<void> _play() async {
+    if (busy) return;
+    final app = context.appRead;
+    setState(() => busy = true);
+    try {
+      final c = await app.content.collection(widget.a.platform, CatalogType.artist, widget.a.id, limit: 100);
+      final ids = <int>[];
+      for (final t in c.tracks) {
+        final id = registerTrack(app, t);
+        if (!ids.contains(id)) ids.add(id);
+      }
+      if (ids.isEmpty) {
+        toast('没有找到 ${widget.a.title} 的可播放歌曲', 'info');
+      } else {
+        app.play(ids.first, name: c.title.isNotEmpty ? c.title : widget.a.title, ids: ids);
+      }
+    } catch (e) {
+      toast(platformError(e), 'info');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pal = context.pal;
+    if (busy) {
+      return Container(width: 44, height: 44, alignment: Alignment.center, decoration: BoxDecoration(color: pal.acc, shape: BoxShape.circle), child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: pal.ink)));
+    }
+    return IBtn('play', bg: pal.acc, color: pal.ink, onTap: () => unawaited(_play()));
   }
 }

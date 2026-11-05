@@ -145,8 +145,13 @@ class _PlaylistPageState extends State<PlaylistPage> {
         ),
         if (ids.isEmpty && online)
           EmptyState(collected ? 'link' : 'music', collected ? '这是收藏的平台歌单' : '歌单还是空的', desc: collected ? '它只同步了平台和歌单 ID（${pl.count} 首），歌曲列表要等平台接口接入后再拉取。' : (widget.id == 100 ? '收藏的歌会出现在这里。' : '在歌曲的「···」里选「加入歌单」。')),
-        for (final id in ids)
-          multi
+      ],
+      rows: ListRows(
+        count: ids.length,
+        current: () => ids.indexOf(app.cur),
+        builder: (context, i) {
+          final id = ids[i];
+          return multi
               ? Press(
                   onTap: () => setState(() => sel.contains(id) ? sel.remove(id) : sel.add(id)),
                   child: SizedBox(
@@ -161,8 +166,9 @@ class _PlaylistPageState extends State<PlaylistPage> {
                     ]),
                   ),
                 )
-              : SongRow(songs[id], key: ValueKey(id), list: widget.id == 100 ? 'like' : 'all', listName: listName, heart: widget.id == 100, queue: online ? ids : null),
-      ],
+              : SongRow(songs[id], key: ValueKey(id), list: widget.id == 100 ? 'like' : 'all', listName: listName, heart: widget.id == 100, queue: online ? ids : null);
+        },
+      ),
     );
   }
 

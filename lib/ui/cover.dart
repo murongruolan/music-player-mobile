@@ -26,7 +26,10 @@ class Cover extends StatelessWidget {
 
   /// 封面图片地址（http / https）。
   final String? url;
-  const Cover({super.key, required this.hue, this.variant = 0, this.size = 48, this.width, this.height, this.radius = 10, this.child, this.shadow = false, this.url});
+
+  /// 保留占位底 + 描边（加载后也露一圈边框）。默认 false：加载出封面后占位变透明，封面铺满。
+  final bool frame;
+  const Cover({super.key, required this.hue, this.variant = 0, this.size = 48, this.width, this.height, this.radius = 10, this.child, this.shadow = false, this.url, this.frame = false});
   factory Cover.song(Song s, {double size = 48, double radius = 10, bool shadow = false, Widget? child}) =>
       Cover(hue: s.hue, variant: s.variant, size: size, radius: radius, shadow: shadow, url: s.cover, child: child);
   factory Cover.pl(Playlist p, {double size = 140, double radius = 16, Widget? child}) =>
@@ -66,35 +69,50 @@ class Cover extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final r = BorderRadius.circular(radius);
+    final u = coverUrl(url);
+    // 原来：占位底图一直垫在封面下面，内层再套一圈 1px 半透明描边（Container 的边框会把图片往里缩 1px），
+    // 加载完的封面四周总露出一圈占位底色。现在占位图只在没加载出来时显示（加载完淡出变透明），封面铺满。
+    // [frame] = true 保留原来的「占位底 + 描边」画法（搜索结果的专辑卡片：卡片 + 描边的样子更好看）。
+    final Widget inner;
+    if (frame) {
+      inner = DecoratedBox(
+        decoration: _placeholderDeco,
+        child: Container(decoration: BoxDecoration(borderRadius: r, border: Border.all(color: const Color(0x14FFFFFF))), child: _image(context, u, framed: true)),
+      );
+    } else if (u == null) {
+      inner = DecoratedBox(
+        decoration: _placeholderDeco,
+        position: DecorationPosition.background,
+        child: DecoratedBox(decoration: BoxDecoration(borderRadius: r, border: Border.all(color: const Color(0x14FFFFFF))), position: DecorationPosition.foreground, child: child ?? const SizedBox.expand()),
+      );
+    } else {
+      inner = _image(context, u, framed: false)!;
+    }
     return Container(
       width: width ?? (size > 0 ? size : double.infinity),
       height: height ?? (size > 0 ? size : double.infinity),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(radius),
+        borderRadius: r,
         boxShadow: shadow ? [const BoxShadow(color: Color(0x73000000), blurRadius: 40, offset: Offset(0, 18))] : null,
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(radius),
-        child: DecoratedBox(
-          // 预渲染图片作为底图：老机型上实时绘制多层渐变每帧都要重画，图片只解码一次、全局共享缓存。
-          decoration: BoxDecoration(
-            color: hsl(hue + 40, .62, .34),
-            image: DecorationImage(image: AssetImage(placeholderAsset(hue, variant)), fit: BoxFit.cover),
-          ),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(radius),
-              border: Border.all(color: const Color(0x14FFFFFF)),
-            ),
-            child: _image(context),
-          ),
-        ),
-      ),
+      child: ClipRRect(borderRadius: r, child: inner),
     );
   }
 
-  Widget? _image(BuildContext context) {
-    final u = coverUrl(url);
+  /// 预渲染图片作为占位底图：老机型上实时绘制多层渐变每帧都要重画，图片只解码一次、全局共享缓存。
+  BoxDecoration get _placeholderDeco => BoxDecoration(
+        color: hsl(hue + 40, .62, .34),
+        image: DecorationImage(image: AssetImage(placeholderAsset(hue, variant)), fit: BoxFit.cover),
+      );
+
+  Widget _placeholder() => DecoratedBox(
+        decoration: _placeholderDeco,
+        position: DecorationPosition.background,
+        child: DecoratedBox(decoration: BoxDecoration(borderRadius: BorderRadius.circular(radius), border: Border.all(color: const Color(0x14FFFFFF))), position: DecorationPosition.foreground, child: const SizedBox.expand()),
+      );
+
+  Widget? _image(BuildContext context, String? u, {required bool framed}) {
     if (u == null) return child;
     // UA 拦截见文件头说明；cacheWidth 拿不到（撑满容器的 Cover）时不缩放解码。
     final cacheW = _cacheW(context);
@@ -104,8 +122,19 @@ class Cover extends StatelessWidget {
       width: double.infinity,
       height: double.infinity,
       gaplessPlayback: true,
-      frameBuilder: (_, ch, frame, sync) => sync ? ch : AnimatedOpacity(opacity: frame == null ? 0 : 1, duration: const Duration(milliseconds: 260), child: ch),
-      errorBuilder: (_, __, ___) => const SizedBox.expand(),
+      frameBuilder: framed
+          ? (_, ch, frame, sync) => sync ? ch : AnimatedOpacity(opacity: frame == null ? 0 : 1, duration: const Duration(milliseconds: 260), child: ch)
+          : (_, ch, frame, sync) {
+              // 已在缓存里（同步拿到）：直接显示，不画占位；否则占位图与封面交叉淡入淡出，完成后占位不再绘制
+              if (sync) return ch;
+              final loaded = frame != null;
+              return Stack(fit: StackFit.expand, children: [
+                AnimatedOpacity(opacity: loaded ? 0 : 1, duration: const Duration(milliseconds: 260), child: _placeholder()),
+                AnimatedOpacity(opacity: loaded ? 1 : 0, duration: const Duration(milliseconds: 260), child: ch),
+              ]);
+            },
+      // 加载失败：退回占位图
+      errorBuilder: (_, __, ___) => framed ? const SizedBox.expand() : _placeholder(),
     );
     if (child == null) return img;
     return Stack(fit: StackFit.expand, children: [img, child!]);

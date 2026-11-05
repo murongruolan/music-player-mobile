@@ -174,10 +174,18 @@ class _OnlineDailyState extends State<_OnlineDaily> {
                 ),
               ),
             const SizedBox(height: 12),
-            for (final (i, id) in ids.indexed) Rise(i + 2, SongRow(songs[id], list: 'daily', listName: name, ctx: 'daily', queue: ids, key: ValueKey(id))),
-            Hint(fm ? '私人 FM 每次换一批都不一样；··· 里选「不感兴趣」，以后不再推荐这首' : '··· 里选「不感兴趣」，以后不再推荐这首', align: TextAlign.center, padding: const EdgeInsets.all(14)),
           ]);
         }
+        final rows = ids.isEmpty
+            ? null
+            : ListRows(
+                count: ids.length,
+                current: () => ids.indexOf(app.cur),
+                builder: (c, i) => i < 8 ? Rise(i + 2, SongRow(songs[ids[i]], list: 'daily', listName: name, ctx: 'daily', queue: ids, key: ValueKey(ids[i]))) : SongRow(songs[ids[i]], list: 'daily', listName: name, ctx: 'daily', queue: ids, key: ValueKey(ids[i])),
+              );
+        final footer = <Widget>[
+          if (rows != null) Hint(fm ? '私人 FM 每次换一批都不一样；··· 里选「不感兴趣」，以后不再推荐这首' : '··· 里选「不感兴趣」，以后不再推荐这首', align: TextAlign.center, padding: const EdgeInsets.all(14)),
+        ];
         return TabPage(
           title: fm ? '私人 FM' : '每日推荐',
           controller: tabScroll[2],
@@ -191,6 +199,8 @@ class _OnlineDailyState extends State<_OnlineDaily> {
                   }),
           ],
           children: children,
+          rows: rows,
+          footer: footer,
         );
       },
     );

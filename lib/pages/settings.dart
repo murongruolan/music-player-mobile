@@ -373,7 +373,7 @@ List<Widget> _floatGroups(BuildContext context, AppState app) {
         child: Row(children: [
           Text('已唱颜色', style: ts(14, c: pal.t1)),
           const Spacer(),
-          for (final (c, name) in colors)
+          for (final (c, _) in colors)
             Padding(
               padding: const EdgeInsets.only(left: 8),
               child: Press(

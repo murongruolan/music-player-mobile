@@ -1304,7 +1304,10 @@ class LField extends StatefulWidget {
   final TextInputType? keyboard;
   final int lines;
   final int shake;
-  const LField({super.key, required this.label, this.icon, this.controller, this.password = false, this.autofocus = false, this.onChanged, this.error, this.ok = false, this.suffix, this.onSuffix, this.keyboard, this.lines = 1, this.shake = 0});
+
+  /// 后缀按钮（获取验证码）请求中：显示转圈，不能再点。
+  final bool suffixBusy;
+  const LField({super.key, required this.label, this.icon, this.controller, this.password = false, this.autofocus = false, this.onChanged, this.error, this.ok = false, this.suffix, this.onSuffix, this.keyboard, this.lines = 1, this.shake = 0, this.suffixBusy = false});
   @override
   State<LField> createState() => _LFieldState();
 }
@@ -1387,7 +1390,7 @@ class _LFieldState extends State<LField> with SingleTickerProviderStateMixin {
         ),
         if (widget.ok) Padding(padding: const EdgeInsets.only(right: 10), child: TweenAnimationBuilder<double>(tween: Tween(begin: 0, end: 1), duration: const Duration(milliseconds: 420), curve: Tk.spring, builder: (_, v, __) => Transform.scale(scale: v, child: Icon(Icons.check_circle_rounded, color: pal.ok, size: 20)))),
         if (widget.password) IBtn(hide ? 'eye' : 'eyeoff', size: 40, iconSize: 19, color: pal.t3, onTap: () => setState(() => hide = !hide)),
-        if (widget.suffix != null) Press(onTap: widget.onSuffix ?? () => toast('验证码已发送', 'mail'), child: Padding(padding: const EdgeInsets.symmetric(horizontal: 14), child: Text(widget.suffix!, style: ts(14, w: FontWeight.w600, c: widget.onSuffix == null && widget.suffix!.endsWith('s') ? pal.t3 : pal.accText)))),
+        if (widget.suffix != null) _suffix(pal, h),
       ]),
     );
     // 点框内任意位置（浮动标签、图标、空白处）都让输入框获得焦点；输入区、眼睛、后缀按钮自己处理点击
@@ -1402,6 +1405,32 @@ class _LFieldState extends State<LField> with SingleTickerProviderStateMixin {
       AnimatedBuilder(animation: sh, child: tappable, builder: (_, ch) => Transform.translate(offset: Offset(math.sin(sh.value * math.pi * 6) * 8 * (1 - sh.value), 0), child: ch)),
       AnimatedSize(duration: Tk.base, child: err ? Padding(padding: const EdgeInsets.only(top: 6, left: 4), child: Text(widget.error!, style: ts(12, c: pal.danger))) : const SizedBox(width: double.infinity)),
     ]);
+  }
+
+  /// 后缀按钮（获取验证码）：原来只有文字那么高（约 19dp），点偏一点就落到输入框上。
+  /// 现在占满输入框高度、带底色，倒计时（「59s」）和请求中显示为不可点。
+  Widget _suffix(Pal pal, double h) {
+    final text = widget.suffix!;
+    final counting = RegExp(r'^\d+\s*s$').hasMatch(text.trim());
+    final enabled = !widget.suffixBusy && !counting;
+    final onTap = widget.onSuffix ?? () => toast('验证码已发送', 'mail');
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 6, 6, 6),
+      child: Press(
+        onTap: enabled ? onTap : null,
+        child: AnimatedContainer(
+          duration: Tk.fast,
+          height: h - 12,
+          constraints: const BoxConstraints(minWidth: 88),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(color: enabled ? pal.accSoft : pal.s3.withValues(alpha: .5), borderRadius: BorderRadius.circular(10)),
+          child: widget.suffixBusy
+              ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: pal.accText))
+              : Text(text, style: ts(13.5, w: FontWeight.w700, c: enabled ? pal.accText : pal.t3, num: counting)),
+        ),
+      ),
+    );
   }
 }
 

@@ -1,12 +1,86 @@
 // 页面骨架：Tab 页（大标题折叠 + 回到顶部 + 下拉刷新）与二级页（52 顶栏 + 返回）。
 import 'dart:ui' as ui;
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderSliver;
 import '../core/state.dart';
 import '../core/tokens.dart';
 import '../ui/icons.dart';
 import '../ui/kit.dart';
 
 const bottomSpace = 200.0;
+
+/// 页面里的长列表（歌曲行）：固定行高、按需构建（只建看得到的和上下各一点），
+/// 放在 [TabPage] / [SubPage] 的 children（头部）和 footer 之间。
+/// [current] 返回正在播放的那首在列表里的下标（不在列表里返回 -1），用于「定位到正在播放」按钮。
+class ListRows {
+  final int count;
+  final double extent;
+  final Widget Function(BuildContext context, int index) builder;
+  final int Function()? current;
+  const ListRows({required this.count, required this.builder, this.extent = Tk.rowH, this.current});
+}
+
+/// 头部（[children]）+ 固定行高的长列表（[rows]）+ 尾部（[footer]）。rows 为空时退化成普通列表。
+List<Widget> _slivers(List<Widget> children, ListRows? rows, List<Widget> footer, GlobalKey rowsKey) => [
+      SliverList(delegate: SliverChildListDelegate(children)),
+      if (rows != null && rows.count > 0)
+        SliverFixedExtentList(key: rowsKey, itemExtent: rows.extent, delegate: SliverChildBuilderDelegate((c, i) => rows.builder(c, i), childCount: rows.count)),
+      if (footer.isNotEmpty) SliverList(delegate: SliverChildListDelegate(footer)),
+    ];
+
+/// 「定位到正在播放」：正在播放的歌在列表里、但不在屏幕上时出现，点一下滚到它（居中）。
+class LocateButton extends StatelessWidget {
+  final ScrollController sc;
+  final GlobalKey rowsKey;
+  final ListRows? rows;
+  final ValueListenable<double> y;
+  final double topInset, bottomInset;
+  const LocateButton({super.key, required this.sc, required this.rowsKey, required this.rows, required this.y, this.topInset = 0, this.bottomInset = 0});
+
+  /// 目标行的滚动偏移（行顶）；拿不到返回 null。
+  double? _rowTop(int i) {
+    final ro = rowsKey.currentContext?.findRenderObject();
+    // 还没布局过（第一帧 / 刚换了列表）时读 constraints 会抛异常
+    if (ro is! RenderSliver || !ro.attached || ro.geometry == null) return null;
+    return ro.constraints.precedingScrollExtent + i * rows!.extent;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final r = rows;
+    if (r == null || r.current == null || r.count == 0) return const SizedBox();
+    final pal = context.pal;
+    return ValueListenableBuilder<double>(
+      valueListenable: y,
+      builder: (context, v, _) {
+        final i = r.current!();
+        var show = false;
+        if (i >= 0 && i < r.count && sc.hasClients && sc.positions.length == 1) {
+          final top = _rowTop(i);
+          final p = sc.position;
+          if (top != null) show = top + r.extent < p.pixels + topInset || top > p.pixels + p.viewportDimension - bottomInset;
+        }
+        return AnimatedScale(
+          duration: Tk.base,
+          scale: show ? 1 : 0,
+          curve: Tk.spring,
+          child: Glass(
+            radius: 21,
+            color: pal.glassStrong,
+            child: IBtn('locate', size: 42, color: pal.accText, onTap: () {
+              final top = _rowTop(i);
+              if (top == null || !sc.hasClients) return;
+              final p = sc.position;
+              final to = (top - (p.viewportDimension - r.extent) / 2).clamp(p.minScrollExtent, p.maxScrollExtent);
+              sc.animateTo(to, duration: const Duration(milliseconds: 520), curve: Tk.out);
+            }),
+          ),
+        );
+      },
+    );
+  }
+}
 
 class TabPage extends StatefulWidget {
   final String title;
@@ -16,7 +90,9 @@ class TabPage extends StatefulWidget {
   final Future<void> Function()? onRefresh;
   final Widget? overlay;
   final double bottom;
-  const TabPage({super.key, required this.title, this.actions = const [], required this.children, this.controller, this.onRefresh, this.overlay, this.bottom = bottomSpace});
+  final ListRows? rows;
+  final List<Widget> footer;
+  const TabPage({super.key, required this.title, this.actions = const [], required this.children, this.controller, this.onRefresh, this.overlay, this.bottom = bottomSpace, this.rows, this.footer = const []});
   @override
   State<TabPage> createState() => _TabPageState();
 }
@@ -24,6 +100,7 @@ class TabPage extends StatefulWidget {
 class _TabPageState extends State<TabPage> {
   late final ScrollController sc = widget.controller ?? ScrollController();
   final y = ValueNotifier<double>(0);
+  final rowsKey = GlobalKey();
 
   void _l() {
     if (sc.positions.isNotEmpty) y.value = sc.positions.last.pixels;
@@ -46,11 +123,12 @@ class _TabPageState extends State<TabPage> {
   Widget build(BuildContext context) {
     final pal = context.pal;
     final top = MediaQuery.of(context).padding.top;
-    Widget list = ListView(
+    Widget list = CustomScrollView(
       controller: sc,
-      padding: EdgeInsets.only(top: top, bottom: widget.bottom),
       physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-      children: [
+      slivers: [
+        SliverToBoxAdapter(child: SizedBox(height: top)),
+        ..._slivers([
         Padding(
           padding: const EdgeInsets.fromLTRB(Tk.pad, 10, 12, 8),
           child: ValueListenableBuilder<double>(
@@ -66,6 +144,8 @@ class _TabPageState extends State<TabPage> {
           ),
         ),
         ...widget.children,
+      ], widget.rows, widget.footer, rowsKey),
+        SliverToBoxAdapter(child: SizedBox(height: widget.bottom)),
       ],
     );
     if (widget.onRefresh != null) {
@@ -105,6 +185,12 @@ class _TabPageState extends State<TabPage> {
           },
         ),
       ),
+      // 定位到正在播放（在「回到顶部」上方）
+      Positioned(
+        right: 16,
+        bottom: 176 + MediaQuery.of(context).padding.bottom - 34 + 52,
+        child: LocateButton(sc: sc, rowsKey: rowsKey, rows: widget.rows, y: y, topInset: top + 44, bottomInset: 150),
+      ),
       // 回到顶部
       Positioned(
         right: 16,
@@ -139,7 +225,9 @@ class SubPage extends StatefulWidget {
   final bool fadeTitle, dark;
   final double bottom;
   final Widget? floating;
-  const SubPage({super.key, required this.title, this.actions = const [], required this.children, this.hero, this.fadeTitle = false, this.bottom = bottomSpace, this.dark = false, this.floating});
+  final ListRows? rows;
+  final List<Widget> footer;
+  const SubPage({super.key, required this.title, this.actions = const [], required this.children, this.hero, this.fadeTitle = false, this.bottom = bottomSpace, this.dark = false, this.floating, this.rows, this.footer = const []});
   @override
   State<SubPage> createState() => _SubPageState();
 }
@@ -147,6 +235,7 @@ class SubPage extends StatefulWidget {
 class _SubPageState extends State<SubPage> {
   final sc = ScrollController();
   final y = ValueNotifier<double>(0);
+  final rowsKey = GlobalKey();
   @override
   void initState() {
     super.initState();
@@ -168,11 +257,14 @@ class _SubPageState extends State<SubPage> {
       body: Stack(children: [
         if (widget.hero != null) ValueListenableBuilder<double>(valueListenable: y, builder: (_, v, __) => widget.hero!(v)),
         Positioned.fill(
-          child: ListView(
+          child: CustomScrollView(
             controller: sc,
             physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
-            padding: EdgeInsets.only(top: top + 52, bottom: widget.bottom),
-            children: widget.children,
+            slivers: [
+              SliverToBoxAdapter(child: SizedBox(height: top + 52)),
+              ..._slivers(widget.children, widget.rows, widget.footer, rowsKey),
+              SliverToBoxAdapter(child: SizedBox(height: widget.bottom)),
+            ],
           ),
         ),
         Positioned(
@@ -200,6 +292,11 @@ class _SubPageState extends State<SubPage> {
               );
             },
           ),
+        ),
+        Positioned(
+          right: 16,
+          bottom: 176 + MediaQuery.of(context).padding.bottom - 34,
+          child: LocateButton(sc: sc, rowsKey: rowsKey, rows: widget.rows, y: y, topInset: top + 52, bottomInset: 150),
         ),
         if (widget.floating != null) widget.floating!,
       ]),

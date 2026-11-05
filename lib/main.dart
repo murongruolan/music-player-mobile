@@ -16,6 +16,7 @@ import 'core/state.dart';
 import 'core/tokens.dart';
 import 'net/api_config.dart';
 import 'net/net.dart';
+import 'pages/settings.dart' show SourcesPage;
 import 'player/player.dart';
 import 'shell/shell.dart';
 import 'source/direct/direct.dart';
@@ -63,6 +64,19 @@ Future<void> main() async {
       AppLog.instance.add('提示', msg); // 提示气泡（含播放失败原因）都记进应用日志
       toast(msg, icon);
     };
+  // 点播放时还没导入音源：提示框（不会自己消失，也不离开当前页面），可以直接去导入
+  var noSourceOpen = false;
+  app.onNoSource = () {
+    final ctx = rootNav.currentContext;
+    AppLog.instance.add('提示', '还没有导入音源脚本');
+    if (ctx == null) return toast('还没有导入音源脚本：在「设置 → 平台与解析脚本」导入后就能播放', 'info');
+    if (noSourceOpen) return;
+    noSourceOpen = true;
+    unawaited(showLDialog<void>(ctx, icon: 'globe', title: '还没有导入音源', body: '播放需要先导入音源脚本。在「设置 → 平台与解析脚本」里导入后就能播放；脚本只保存在本机。', dismissible: true, actions: [
+      ('稍后', BtnKind.sec, null),
+      ('去导入', BtnKind.pri, () => pushFull(rootNav.currentContext!, const SourcesPage())),
+    ]).whenComplete(() => noSourceOpen = false));
+  };
   // 「自动上报崩溃」开着才上报；本机记录不受开关影响
   AppLog.instance.onCrash = (c) {
     if (app.set.crash) app.telemetry.track('app_crash', {'message': c.message.length > 500 ? c.message.substring(0, 500) : c.message, 'stack': c.stack.length > 3000 ? c.stack.substring(0, 3000) : c.stack, 'version': ApiConfig.appVersion});
