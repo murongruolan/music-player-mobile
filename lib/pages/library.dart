@@ -119,6 +119,16 @@ class _LibraryPageState extends State<LibraryPage> {
         }
       }
     } else if (seg == '歌单') {
+      if (online) {
+        body.add(Padding(
+          padding: const EdgeInsets.fromLTRB(Tk.pad, 14, Tk.pad, 0),
+          child: Row(children: [
+            Expanded(child: Btn.sec('新建歌单', icon: 'plus', onTap: () => openNewPlaylist(context))),
+            const SizedBox(width: 10),
+            Expanded(child: Btn.sec('导入平台歌单', icon: 'link', onTap: () => openImportPlaylist(context))),
+          ]),
+        ));
+      }
       body.add(Padding(
         padding: const EdgeInsets.fromLTRB(Tk.pad, 16, Tk.pad, 0),
         child: LayoutBuilder(builder: (c, cs) {
@@ -128,7 +138,7 @@ class _LibraryPageState extends State<LibraryPage> {
           ]);
         }),
       ));
-      if (online && app.myPlaylists.isEmpty) body.add(EmptyState('queue', '还没有歌单', desc: '点右上角 ＋ 新建歌单；赞助用户开启云同步后，桌面端的歌单也会出现在这里。', action: Btn.sec('新建歌单', icon: 'plus', onTap: () => openNewPlaylist(context))));
+      if (online && app.myPlaylists.isEmpty) body.add(EmptyState('queue', '还没有歌单', desc: '新建歌单，或粘贴网易云 / QQ / 酷狗 / 酷我 / 咪咕的歌单链接导入；赞助用户开启云同步后，桌面端的歌单也会出现在这里。'));
     } else if (online) {
       body.add(const EmptyState('folder', '本地音乐扫描接入中', desc: '读取手机里的音乐文件需要接入媒体库扫描和本地播放，正在开发。'));
     } else {

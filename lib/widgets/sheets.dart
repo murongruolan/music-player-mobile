@@ -22,6 +22,7 @@ import '../ui/cover.dart';
 import '../ui/icons.dart';
 import '../ui/kit.dart';
 import '../ui/custom_font.dart';
+import 'import_playlist.dart';
 import 'plat_login.dart';
 
 void registerSheets() {
@@ -242,7 +243,7 @@ void openNewPlaylist(BuildContext context) {
 
 // ============ 导入歌单：识别平台 → 解析 → 确认 ============
 void openImportPlaylist(BuildContext context) {
-  if (context.appRead.online) return openPendingFeature(context, '导入平台歌单', '解析网易云 / QQ / 酷狗等平台的歌单链接需要接入平台接口，正在开发。');
+  if (context.appRead.online) return openImportOnline(context);
   final tc = TextEditingController();
   var pid = 'netease';
   var stage = 0; // 0 输入 1 解析中 2 确认
