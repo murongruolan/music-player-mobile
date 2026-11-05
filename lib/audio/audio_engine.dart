@@ -21,6 +21,7 @@ import 'media_handler.dart';
 import 'track_resolver.dart';
 
 bool get _isAndroid => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+bool get _isIOS => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
 
 class AudioEngine {
   AudioEngine({required TrackResolver resolver}) : _resolver = resolver;
@@ -100,7 +101,10 @@ class AudioEngine {
     // 暂时性打断结束后自动恢复，永久失去焦点（别的音乐 App 开始放）不恢复。这里不再重复监听。
 
     _subs.addAll([
-      _player.positionStream.listen((p) => onPosition?.call(p.inMicroseconds / 1e6)),
+      _player.positionStream.listen((p) {
+        onPosition?.call(p.inMicroseconds / 1e6);
+        _watchPosition(p);
+      }),
       _player.durationStream.listen((d) {
         if (d != null) onDuration?.call(d.inMicroseconds / 1e6);
       }),
@@ -132,6 +136,8 @@ class AudioEngine {
   Future<void> playSong(Song song, {required bool autoplay, required bool loopOne, double? startAt}) async {
     // 解析要几百毫秒到几秒；期间用户可能已经切到别的歌，旧的结果直接丢掉
     final seq = ++_seq;
+    _posLogged = false;
+    _playSince = null;
     _tried.clear();
     _interruptRetried = false;
     _loopOne = loopOne;
@@ -182,7 +188,9 @@ class AudioEngine {
       final AudioSource source;
       final cacheKey = song.key ?? rp.uri.toString();
       // 需要请求头的音源不走锁定缓存：缓存源必须经本机代理转发，带头时有已知问题（just_audio #832）
-      if (_cacheOn && rp.headers.isEmpty && reason == ResolveReason.play && _cacheDir != null && _cacheDir!.isNotEmpty && !rp.uri.isScheme('file')) {
+      // iOS 不走锁定缓存：它要经 just_audio 的本机代理转发，代理边下边回、不带完整长度，
+      // AVPlayer 拿不到时长（日志「时长 0s」），进度也一直停在 0。iOS 上直接播原地址。
+      if (_cacheOn && !_isIOS && rp.headers.isEmpty && reason == ResolveReason.play && _cacheDir != null && _cacheDir!.isNotEmpty && !rp.uri.isScheme('file')) {
         // 边听边缓存：just_audio 的锁定缓存源。文件按歌曲 key 命名（播放地址带时效签名，按地址命名几乎不会命中）；
         // 重新取链 / 试听换源时不走缓存，避免把试听片段或坏链接缓存下来。
         final key = base64Url.encode(utf8.encode(cacheKey)).replaceAll('=', '');
@@ -231,6 +239,20 @@ class AudioEngine {
   }
 
   ProcessingState? _lastState;
+
+  // 进度诊断：每首歌播放 5 秒后记一次进度，进度不走时日志里能看出来（不用再猜）
+  DateTime? _playSince;
+  bool _posLogged = false;
+  void _watchPosition(Duration p) {
+    if (!_loaded || !_player.playing) {
+      _playSince = null;
+      return;
+    }
+    _playSince ??= DateTime.now();
+    if (_posLogged || DateTime.now().difference(_playSince!) < const Duration(seconds: 5)) return;
+    _posLogged = true;
+    AppLog.instance.add('播放', p.inMilliseconds < 1000 ? '播放 5 秒后进度仍为 ${p.inMilliseconds}ms（引擎没有上报进度）' : '进度正常 ${p.inSeconds}s');
+  }
 
   /// 本首歌是否已经因为「被打断」重试过一次。
   bool _interruptRetried = false;
