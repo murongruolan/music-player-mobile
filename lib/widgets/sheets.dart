@@ -776,9 +776,7 @@ void openCast(BuildContext context, {bool dark = false}) {
         if (app.cast == null) return toast('当前环境不支持投放', 'info');
         set(() => connecting = d.name);
         try {
-          await app.cast!.connect(d);
-          app.update(() => app.castDev = d.name);
-          if (app.hasSong) await app.castPlayCurrent(); // 有歌在播：立即把当前曲目投过去
+          await app.connectCast(d); // 有歌在播：立即把当前曲目投过去
           if (c.mounted) Navigator.of(c).pop();
           toast(app.hasSong ? '已投放到 ${d.name}' : '已连接 ${d.name}，播放时自动投放', 'cast');
         } catch (e) {
@@ -799,6 +797,18 @@ void openCast(BuildContext context, {bool dark = false}) {
           Padding(
             padding: const EdgeInsets.fromLTRB(Tk.pad, 14, Tk.pad, 8),
             child: Text('未发现可投放的设备\n确认电视 / 音箱已开启 DLNA 并与手机在同一 Wi-Fi', textAlign: TextAlign.center, style: ts(13, c: pal.t3, h: 1.6)),
+          ),
+        // 已连接且设备支持 RenderingControl：这里调电视 / 音箱的音量（手机音量键同样生效）
+        if (app.castDev != null && app.cast?.canVolume == true)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Tk.pad, 4, Tk.pad, 10),
+            child: Row(children: [
+              Icon(Icons.volume_mute_rounded, color: pal.t3, size: 18),
+              Expanded(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: LSlider(value: app.outputVolume, min: 0, max: 1, onChanged: app.setVolume))),
+              Icon(Icons.volume_up_rounded, color: pal.t3, size: 18),
+              const SizedBox(width: 8),
+              SizedBox(width: 34, child: Text('${(app.outputVolume * 100).round()}', textAlign: TextAlign.right, style: ts(12.5, c: pal.t2, num: true))),
+            ]),
           ),
         for (final d in devices)
           Item(
@@ -822,9 +832,8 @@ void openCast(BuildContext context, {bool dark = false}) {
               const SizedBox(width: 10),
               Expanded(
                 child: Btn('断开 ${app.castDev}', kind: BtnKind.danger, onTap: () async {
-                  await app.cast?.disconnect();
-                  app.update(() => app.castDev = null);
-                  Navigator.of(c).pop();
+                  await app.disconnectCast();
+                  if (c.mounted) Navigator.of(c).pop();
                   toast('已断开投放，按播放键回到本地播放', 'cast');
                 }),
               ),

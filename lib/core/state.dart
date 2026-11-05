@@ -7,7 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
 import '../audio/audio_engine.dart';
 import '../cast/cast_controller.dart';
-import '../cast/dlna.dart' show CastException;
+import '../cast/dlna.dart' show CastException, DlnaDevice;
 import '../source/source_manager.dart' show ResolveException;
 import '../download/downloads.dart';
 import '../source/music_resolver.dart';
@@ -280,6 +280,7 @@ class AppState extends ChangeNotifier {
       // 解析 / 加载失败：界面回到暂停态，迷你条显示原因
       playError = msg.replaceFirst(RegExp(r'^播放失败[：:]\s*'), '');
       update(() => playing = false);
+      _pushMediaCard(); // 卡片显示加载失败的这首（暂停态），不再停在上一首
       onEngineError?.call(msg);
       // 设置「全部失败播放下一首」：自动跳到下一首，但最多连跳 3 首，免得一路跑完整个列表
       _failStreak++;
@@ -296,6 +297,9 @@ class AppState extends ChangeNotifier {
       }
       notice?.call(_failStreak >= 3 ? '连续 $_failStreak 首都没能播放，已停止。$msg' : msg, 'info');
     };
+    e.onSeekRequest = seek; // 通知栏拖进度：投放中转给渲染端
+    e.onRemoteVolume = (v) => setVolume(v / 100);
+    e.onRemoteAdjust = (d) => setVolume(outputVolume + d * .05);
     e.onMediaAction = (a) {
       // 通知栏按钮 / 耳机线控 / 蓝牙控制统一路由
       switch (a) {
@@ -317,12 +321,30 @@ class AppState extends ChangeNotifier {
   void _bindCast() {
     final c = cast;
     if (c == null) return;
-    c.onPosition = (p) => pos.value = p;
+    c.onPosition = (p) {
+      pos.value = p;
+      // 渲染端进度跟通知卡片推算的差太多（拖动 / 卡顿）：重推一次卡片，锁屏进度条才对得上
+      final at = _cardAt;
+      if (at != null && casting) {
+        final expect = _cardPos + (playing ? DateTime.now().difference(at).inMilliseconds / 1000 : 0);
+        if ((expect - p).abs() > 3) _pushMediaCard();
+      }
+    };
     c.onDuration = (d) {
-      if (engineDuration != d) update(() => engineDuration = d);
+      if (engineDuration != d) {
+        update(() => engineDuration = d);
+        _pushMediaCard();
+      }
     };
     c.onPlaying = (p) {
-      if (playing != p) update(() => playing = p);
+      if (playing != p) {
+        update(() => playing = p);
+        _pushMediaCard(); // 电视遥控器暂停 / 继续：通知栏跟着变
+      }
+    };
+    c.onVolume = (v) {
+      engine?.setRemoteVolume(v);
+      notifyListeners();
     };
     c.onEnded = () {
       // 单曲循环：重投当前曲目；其余走引擎播完的同一入口（睡眠定时 / 切歌）
@@ -334,8 +356,58 @@ class AppState extends ChangeNotifier {
     };
     c.onError = (msg) {
       if (playing) update(() => playing = false);
+      _pushMediaCard();
       notice?.call(msg, 'info');
     };
+  }
+
+  /// 连接投放设备：有歌在播就立即投过去。手机音量键随之改成调渲染端音量。
+  Future<void> connectCast(DlnaDevice d) async {
+    final c = cast;
+    if (c == null) return;
+    await c.connect(d);
+    update(() => castDev = d.name);
+    if (c.canVolume) engine?.setRemoteVolume(c.volume ?? 50);
+    if (hasSong) await _castPlayCurrent();
+  }
+
+  /// 断开投放：渲染端停止，界面回到暂停（按播放键回本地播放），音量键回到本机。
+  Future<void> disconnectCast() async {
+    await cast?.disconnect();
+    engine?.setRemoteVolume(null);
+    update(() {
+      castDev = null;
+      playing = false;
+    });
+    _pushMediaCard();
+  }
+
+  /// 通知卡片最近一次推送时的进度（投放中据此判断要不要重推）。
+  double _cardPos = 0;
+  DateTime? _cardAt;
+
+  /// 刷新通知栏 / 锁屏卡片为当前这首的真实状态。本地引擎已加载时走引擎（带真实进度），
+  /// 加载中 / 加载失败 / 投放中直接按 AppState 推：原来这几种情况卡片不更新，
+  /// 停在上一首，或者投放时暂停了卡片还显示在播。
+  void _pushMediaCard({bool loading = false}) {
+    final e = engine;
+    if (e == null) return;
+    if (!hasSong) return;
+    final liked = this.liked.contains(cur);
+    if (engineActive && !casting) {
+      e.updateNotification(playing: playing, liked: liked);
+      return;
+    }
+    final s = songs[cur];
+    final dur = casting && engineDuration > 0 ? engineDuration : s.dur.toDouble();
+    _cardPos = pos.value;
+    _cardAt = DateTime.now();
+    e.showNowPlaying(s,
+        playing: playing,
+        liked: liked,
+        position: Duration(milliseconds: (pos.value * 1000).round()),
+        duration: Duration(milliseconds: (dur * 1000).round()),
+        loading: loading);
   }
 
   /// 投放当前曲目（播放器 / 投放面板入口）：同一 resolver 取流，地址交给渲染端拉流。
@@ -355,13 +427,16 @@ class AppState extends ChangeNotifier {
       await engine?.unload(); // 通知栏同步清空；断开投放后按播放键重载当前队列曲目
       await c.cast(songs[cur], rp.uri, autoplay: autoplay);
       _suppressEnginePlaying = false;
+      _pushMediaCard(); // unload 清空了卡片：换成投放中的这首
     } on ResolveException catch (e) {
       _suppressEnginePlaying = false;
       if (playing) update(() => playing = false);
+      _pushMediaCard();
       notice?.call(e.message, 'info');
     } on CastException catch (e) {
       _suppressEnginePlaying = false;
       if (playing) update(() => playing = false);
+      _pushMediaCard();
       notice?.call('投放失败：${e.message}', 'info');
     }
   }
@@ -572,7 +647,8 @@ class AppState extends ChangeNotifier {
     timer = 0;
     if (playing) update(() => playing = false);
     if (engine != null) unawaited(engine!.setPlaying(false));
-    if (engineActive) engine!.updateNotification(playing: false, liked: liked.contains(cur));
+    if (casting) unawaited(cast!.setPlaying(false));
+    _pushMediaCard();
     notice?.call('睡眠定时时间到，已停止播放', 'moon');
   }
 
@@ -584,8 +660,32 @@ class AppState extends ChangeNotifier {
     _sleepVolBase = null;
   }
 
+  bool _castVolWarned = false;
+
+  /// 音量条显示的值：投放中是渲染端音量，否则是播放器音量。
+  double get outputVolume {
+    final c = cast;
+    if (casting && c != null && c.canVolume) return (c.volume ?? 50) / 100;
+    return vol;
+  }
+
   /// 播放器音量条（0..1，相对系统音量）。睡眠淡出进行中时只记下新值，淡出结束后生效。
   void setVolume(double v) {
+    final c = cast;
+    if (casting && c != null) {
+      // 投放中：调的是电视 / 音箱的音量（本机引擎已卸载）
+      if (!c.canVolume) {
+        if (!_castVolWarned) notice?.call('这台设备不支持远程调节音量，请用设备自己的遥控器', 'info');
+        _castVolWarned = true;
+        return;
+      }
+      final n = (v.clamp(0.0, 1.0) * 100).round();
+      if (n == c.volume) return;
+      unawaited(c.setVolume(n));
+      engine?.setRemoteVolume(n);
+      notifyListeners();
+      return;
+    }
     if ((v - vol).abs() >= .2 || v == 0 || v == 1) AppLog.instance.add('操作', '播放器音量 ${(v * 100).round()}%');
     vol = v.clamp(0.0, 1.0);
     if (engineActive && !_sleepFading) unawaited(engine!.setVolume(vol));
@@ -648,6 +748,7 @@ class AppState extends ChangeNotifier {
     playError = null;
     if (hasSong) Cover.warm(songs[cur].cover); // 迷你条 / 播放器的封面先加载好，出现时不闪占位图
     if (online) lyricStore.load(cur);
+    _pushMediaCard(loading: true); // 先把卡片换成这首（加载中），加载失败也不会停在上一首
     unawaited(engine!.playSong(songs[cur], autoplay: playing, loopOne: mode == 'one').then((_) => _engineAfterLoad()));
   }
 
@@ -812,6 +913,8 @@ class AppState extends ChangeNotifier {
       if (engineActive && engine!.playingNow) {
         cloud.onPlayTick(cur, dt);
         _pushBtLyric();
+      } else if (casting) {
+        _pushBtLyric(); // 投放中车机 / 锁屏也跟歌词
       }
       return;
     }
@@ -885,6 +988,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     if (casting) {
       unawaited(cast!.setPlaying(playing));
+      _pushMediaCard(); // 投放中暂停 / 继续：通知栏跟着切（原来投放时卡片不刷新）
       return;
     }
     if (engine == null) return;
@@ -892,9 +996,11 @@ class AppState extends ChangeNotifier {
       unawaited(engine!.setPlaying(playing));
       // 通知栏 / 线控 / 蓝牙的键路由依据 playbackState.playing；不刷新的话
       // audio_service 会与真实状态脱节（实测 PLAY 键被当 pause 处理、按钮图标不切换）
-      engine!.updateNotification(playing: playing, liked: liked.contains(cur));
+      _pushMediaCard();
     } else if (playing) {
       _enginePlayCurrent(); // 引擎还没加载过任何曲目：按播放 = 从当前歌开始真实播放
+    } else {
+      _pushMediaCard(); // 加载中 / 加载失败时按暂停：卡片也切成暂停
     }
   }
 
@@ -968,7 +1074,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     if (online) library.favoritesChanged();
     // 通知栏收藏按钮图标跟随收藏态
-    if (engineActive && id == cur) engine!.updateNotification(playing: playing, liked: on);
+    if (id == cur) _pushMediaCard();
     return on;
   }
 
