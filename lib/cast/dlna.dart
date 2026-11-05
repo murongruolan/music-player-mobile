@@ -16,6 +16,7 @@ import 'package:xml/xml.dart';
 const _ssdpAddr = '239.255.255.250';
 const _ssdpPort = 1900;
 const _avtService = 'urn:schemas-upnp-org:service:AVTransport:1';
+const _rcService = 'urn:schemas-upnp-org:service:RenderingControl:1';
 
 /// 局域网里发现的一台 DLNA 渲染设备。
 class DlnaDevice {
@@ -23,6 +24,7 @@ class DlnaDevice {
   final String udn; // USN 去掉 :: 后缀，唯一标识
   final String location; // 设备描述 XML 的 URL
   final String controlUrl; // AVTransport SOAP 控制地址
+  final String? renderingUrl; // RenderingControl 控制地址（调音量）；没有就不能远程调音量
   final String? modelName;
 
   const DlnaDevice({
@@ -30,6 +32,7 @@ class DlnaDevice {
     required this.udn,
     required this.location,
     required this.controlUrl,
+    this.renderingUrl,
     this.modelName,
   });
 
@@ -150,17 +153,18 @@ class Dlna {
     if (root == null) throw const CastException('设备描述里没有 device 节点');
     final name = root.findElements('friendlyName').firstOrNull?.innerText.trim() ?? fallbackUdn;
     final model = root.findElements('modelName').firstOrNull?.innerText.trim();
-    String? control;
+    String? control, rendering;
+    final base = Uri.parse(location);
     for (final svc in root.findAllElements('service')) {
+      // serviceType 带版本号（:1 / :2 / :3），按前缀认
       final type = svc.findElements('serviceType').firstOrNull?.innerText.trim() ?? '';
-      if (type == _avtService) {
-        final raw = svc.findElements('controlURL').firstOrNull?.innerText.trim() ?? '';
-        if (raw.isNotEmpty) control = Uri.parse(location).resolve(raw).toString();
-        break;
-      }
+      final raw = svc.findElements('controlURL').firstOrNull?.innerText.trim() ?? '';
+      if (raw.isEmpty) continue;
+      if (control == null && type.startsWith(_avtService.substring(0, _avtService.length - 1))) control = base.resolve(raw).toString();
+      if (rendering == null && type.startsWith(_rcService.substring(0, _rcService.length - 1))) rendering = base.resolve(raw).toString();
     }
     if (control == null) throw const CastException('设备不支持 AVTransport（不是可投放的渲染端）');
-    return DlnaDevice(name: name, udn: fallbackUdn, location: location, modelName: model, controlUrl: control);
+    return DlnaDevice(name: name, udn: fallbackUdn, location: location, modelName: model, controlUrl: control, renderingUrl: rendering);
   }
 
   // ------------------------------------------------------------ SOAP 控制
@@ -195,13 +199,25 @@ class Dlna {
     return (state: _tag(state, 'CurrentTransportState') ?? 'UNKNOWN', position: pos, duration: dur);
   }
 
-  /// 音量（RenderingControl 的 controlURL 与 AVTransport 不同时会失败，调用方静默降级）。
+  /// 设置渲染端音量（0..100）。[controlUrl] 是 RenderingControl 的控制地址（[DlnaDevice.renderingUrl]）。
   static Future<void> setVolume({required String controlUrl, required int volume}) => _avt(
         controlUrl,
         'SetVolume',
         '<InstanceID>0</InstanceID><Channel>Master</Channel><DesiredVolume>${volume.clamp(0, 100)}</DesiredVolume>',
-        service: 'urn:schemas-upnp-org:service:RenderingControl:1',
+        service: _rcService,
       );
+
+  /// 读渲染端当前音量（0..100）；设备不回或回了看不懂的值返回 null。
+  static Future<int?> getVolume({required String controlUrl}) async {
+    final xml = await _avt(controlUrl, 'GetVolume', '<InstanceID>0</InstanceID><Channel>Master</Channel>', service: _rcService);
+    return parseVolume(xml);
+  }
+
+  /// 从 GetVolume 响应里取 CurrentVolume（纯函数，测试覆盖）。
+  static int? parseVolume(String xml) {
+    final v = int.tryParse(_tag(xml, 'CurrentVolume') ?? '');
+    return v == null || v < 0 ? null : v.clamp(0, 100);
+  }
 
   // ------------------------------------------------------------ 内部
 

@@ -40,6 +40,7 @@ class LyraMediaHandler extends BaseAudioHandler {
     required bool liked,
     required Duration position,
     required Duration duration,
+    bool loading = false,
   }) async {
     mediaItem.add(MediaItem(
       id: 'lyra-song-${song.id}',
@@ -68,7 +69,8 @@ class LyraMediaHandler extends BaseAudioHandler {
     playbackState.add(playbackState.value.copyWith(
       controls: controls,
       systemActions: const {MediaAction.seek},
-      processingState: AudioProcessingState.ready,
+      // 加载中（切歌后还没拿到地址 / 缓冲）：卡片先换成新歌，状态标成 loading
+      processingState: loading ? AudioProcessingState.loading : AudioProcessingState.ready,
       playing: playing,
       updatePosition: position,
       bufferedPosition: position,
@@ -87,6 +89,28 @@ class LyraMediaHandler extends BaseAudioHandler {
     final m = mediaItem.value;
     if (m == null || (m.title == title && m.artist == artist)) return;
     mediaItem.add(m.copyWith(title: title, artist: artist));
+  }
+
+  /// 投放到 DLNA 设备时，手机音量键改的是渲染端音量（0..100）。
+  void Function(int volume)? onRemoteVolume;
+  void Function(int direction)? onRemoteAdjust;
+
+  @override
+  Future<void> androidSetRemoteVolume(int volumeIndex) async => onRemoteVolume?.call(volumeIndex);
+
+  @override
+  Future<void> androidAdjustRemoteVolume(AndroidVolumeDirection direction) async {
+    final d = direction == AndroidVolumeDirection.raise ? 1 : (direction == AndroidVolumeDirection.lower ? -1 : 0);
+    if (d != 0) onRemoteAdjust?.call(d);
+  }
+
+  /// [volume] 非空：媒体会话切成远程播放（音量键 / 系统音量条控制渲染端）；null：回到本机音量。
+  void setRemoteVolume(int? volume) {
+    final info = volume == null
+        ? LocalAndroidPlaybackInfo()
+        : RemoteAndroidPlaybackInfo(volumeControlType: AndroidVolumeControlType.absolute, maxVolume: 100, volume: volume.clamp(0, 100));
+    if (androidPlaybackInfo.valueOrNull == info) return;
+    androidPlaybackInfo.add(info);
   }
 
   /// 清空通知（卸载音源 / 退出登录）。

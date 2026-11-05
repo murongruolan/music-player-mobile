@@ -66,15 +66,30 @@ class AudioEngine {
   /// 媒体通知 / 耳机线控的动作（play/pause/next/prev/like），由 AppState 路由。
   void Function(String action)? onMediaAction;
 
+  /// 通知栏 / 锁屏 / 蓝牙拖进度（秒）。挂了就由 AppState 处理，不挂时直接拖本地播放器。
+  void Function(double seconds)? onSeekRequest;
+
+  /// 投放中手机音量键：设到某个值 / 加减一档。
+  void Function(int volume)? onRemoteVolume;
+  void Function(int direction)? onRemoteAdjust;
+
   /// 初始化：音频焦点 + 通知通道。必须在 runApp 之前调用（audio_service 的要求）。
   /// [handler] 由 main.dart 先行创建并传入。
   Future<void> init(LyraMediaHandler handler) async {
     _handler = handler;
     _handler!.onAction = (a) => onMediaAction?.call(a);
     // 通知栏 / 锁屏拖进度条（原来 seek 没有实现，拖了会弹回去）
+    // 交给 AppState 时它会按投放 / 本地分流（投放中本地引擎没加载，原来拖了没反应）
     _handler!.onSeekTo = (p) {
-      if (_loaded) unawaited(_player.seek(p));
+      final r = onSeekRequest;
+      if (r != null) {
+        r(p.inMilliseconds / 1000);
+      } else if (_loaded) {
+        unawaited(_player.seek(p));
+      }
     };
+    _handler!.onRemoteVolume = (v) => onRemoteVolume?.call(v);
+    _handler!.onRemoteAdjust = (d) => onRemoteAdjust?.call(d);
 
     final session = await AudioSession.instance;
     await session.configure(const AudioSessionConfiguration.music());
@@ -395,10 +410,19 @@ class AudioEngine {
 
   // ---------------------------------------------------------------- 通知
 
-  /// 蓝牙歌词推送：把当前歌词行写进媒体信息。
-  void pushLyric(String title, String artist) {
-    if (_loaded) _handler?.setMediaText(title, artist);
+  /// 蓝牙歌词推送：把当前歌词行写进媒体信息（投放中也推，卡片由 [showNowPlaying] 维护）。
+  void pushLyric(String title, String artist) => _handler?.setMediaText(title, artist);
+
+  /// 不经本地播放器直接刷新通知卡片：切歌加载中、加载失败、投放中（本地引擎没加载）都靠它，
+  /// 否则卡片停在上一首 / 播放态不变。
+  void showNowPlaying(Song song, {required bool playing, required bool liked, required Duration position, required Duration duration, bool loading = false}) {
+    final h = _handler;
+    if (h == null) return;
+    unawaited(h.setNowPlaying(song, playing: playing, liked: liked, position: position, duration: duration, loading: loading));
   }
+
+  /// 投放中：媒体会话切成远程音量（0..100）；null 回到本机音量。
+  void setRemoteVolume(int? volume) => _handler?.setRemoteVolume(volume);
 
   /// 播放状态 / 收藏状态变化后刷新通知栏（收藏按钮图标随 liked 切换）。
   void updateNotification({required bool playing, required bool liked}) {

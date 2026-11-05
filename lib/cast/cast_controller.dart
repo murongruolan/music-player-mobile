@@ -25,6 +25,17 @@ class CastController {
   void Function()? onEnded;
   void Function(String message)? onError;
 
+  /// 渲染端音量变了（本机调的、或电视遥控器调的被轮询发现）。
+  void Function(int volume)? onVolume;
+
+  String? _rcUrl;
+
+  /// 渲染端当前音量 0..100；读不到时为 null（仍可设置）。
+  int? volume;
+
+  /// 设备描述里有 RenderingControl：可以远程调音量。
+  bool get canVolume => connected && _rcUrl != null;
+
   bool get connected => device != null && _controlUrl != null;
 
   /// 扫描局域网内的 DLNA 渲染设备。
@@ -35,7 +46,61 @@ class CastController {
     final desc = await Dlna.describe(d.location, fallbackUdn: d.udn); // 拿到 controlUrl
     device = desc;
     _controlUrl = desc.controlUrl;
+    _rcUrl = desc.renderingUrl;
+    volume = null;
+    _pollN = 0;
+    await _readVolume();
   }
+
+  // —— 音量：拖动时只保留最新值，同一时间只发一个 SetVolume（局域网 SOAP 一次几十到几百毫秒） ——
+  int? _wantVol;
+  bool _volBusy = false;
+  DateTime _volSetAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+  Future<void> setVolume(int v) async {
+    final rc = _rcUrl;
+    if (rc == null) return;
+    _wantVol = v.clamp(0, 100);
+    volume = _wantVol; // 界面先跟手
+    if (_volBusy) return;
+    _volBusy = true;
+    try {
+      while (_wantVol != null && _rcUrl == rc) {
+        final x = _wantVol!;
+        _wantVol = null;
+        try {
+          await Dlna.setVolume(controlUrl: rc, volume: x);
+        } on CastException catch (e) {
+          _wantVol = null;
+          onError?.call('调节音量失败：${e.message}');
+          break;
+        }
+      }
+    } finally {
+      _volBusy = false;
+      _volSetAt = DateTime.now();
+    }
+    final now = volume;
+    if (now != null) onVolume?.call(now);
+  }
+
+  Future<void> _readVolume() async {
+    final rc = _rcUrl;
+    if (rc == null) return;
+    try {
+      final v = await Dlna.getVolume(controlUrl: rc);
+      // 读的过程中用户刚拖过音量：以用户的为准
+      if (v == null || _volBusy || _rcUrl != rc || DateTime.now().difference(_volSetAt) < const Duration(seconds: 3)) return;
+      if (v != volume) {
+        volume = v;
+        onVolume?.call(v);
+      }
+    } on CastException {
+      // 部分设备只支持 SetVolume 不支持 GetVolume：保持可调，只是读不到初值
+    }
+  }
+
+  int _pollN = 0;
 
   /// 投放一首：解析出的 [url] 交给渲染端拉流，本地进度轮询启动。
   Future<void> cast(Song song, Uri url, {required bool autoplay}) async {
@@ -90,6 +155,9 @@ class CastController {
     }
     device = null;
     _controlUrl = null;
+    _rcUrl = null;
+    volume = null;
+    _wantVol = null;
     current = null;
   }
 
@@ -113,6 +181,7 @@ class CastController {
     if (ctl == null) return;
     try {
       final r = await Dlna.pollInfo(ctl);
+      if (++_pollN % 5 == 0) unawaited(_readVolume()); // 约 10 秒对一次音量（电视遥控器也会改）
       if (r.duration > 0) onDuration?.call(r.duration);
       if (r.position > 0) onPosition?.call(r.position);
       switch (r.state) {
