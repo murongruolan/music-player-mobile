@@ -5,6 +5,7 @@ import 'dart:convert' show jsonEncode, jsonDecode;
 import 'dart:io' as io;
 import 'dart:math' as math;
 import 'package:path_provider/path_provider.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import '../audio/audio_engine.dart';
 import '../cast/cast_controller.dart';
@@ -642,7 +643,8 @@ class AppState extends ChangeNotifier {
   void _pushBtLyric() {
     final e = engine!;
     final s = songs[cur];
-    if (!set.btLyric || !online || lyrics.length < 2) {
+    // iOS 不推：锁屏 / 控制中心 / 灵动岛显示的歌名会被换成一句句歌词，看起来像歌名乱了
+    if (!set.btLyric || !online || lyrics.length < 2 || defaultTargetPlatform == TargetPlatform.iOS) {
       if (_btPushed != null) {
         _btPushed = null;
         e.pushLyric(s.title, s.artist);
@@ -691,7 +693,7 @@ class AppState extends ChangeNotifier {
   /// 「保持音调」开启（默认）时音高不变；关闭时让音高跟随倍速。
   void applySpeedToEngine() {
     if (!engineActive) return;
-    unawaited(engine!.setSpeed(speed));
+    unawaited(engine!.setSpeed(speed).then((_) => _pushMediaCard())); // 锁屏进度按新速度推算
     unawaited(engine!.setPitch(set.pitch ? 1.0 : speed));
   }
 
@@ -1222,7 +1224,8 @@ class AppState extends ChangeNotifier {
       return;
     }
     if (engineActive) {
-      unawaited(engine!.seek(sec.clamp(0, d))); // 进度由引擎回调刷新
+      // 进度由引擎回调刷新；拖完重推一次通知卡片，锁屏 / 控制中心的进度跟上（iOS 只按推送时的位置推算）
+      unawaited(engine!.seek(sec.clamp(0, d)).then((_) => _pushMediaCard()));
       return;
     }
     pos.value = sec.clamp(0, d);

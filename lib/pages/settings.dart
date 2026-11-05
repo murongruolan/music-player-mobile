@@ -332,7 +332,7 @@ class SysLyricsPage extends StatelessWidget {
         Item(icon: 'palette', color: 'pink', label: '样式', val: '圆角卡片 · 18px', onTap: () => toast('可调整字号、颜色和背景透明度', 'palette')),
       ]),
       Group(title: '车机与蓝牙', children: [
-        Item(icon: 'bluetooth', color: 'blue', label: '蓝牙歌词推送', sub: '把当前行写入媒体信息（车机、蓝牙耳机、锁屏都能看到）', sw: s.btLyric, onSw: (v) => u(() => s.btLyric = v)),
+        Item(icon: 'bluetooth', color: 'blue', label: '蓝牙歌词推送', sub: isIOS ? '仅 Android：iOS 上会把锁屏和控制中心的歌名换成歌词，所以不推送' : '把当前行写入媒体信息（车机、蓝牙耳机、锁屏都能看到）', sw: s.btLyric, onSw: (v) => u(() => s.btLyric = v)),
         Item(icon: 'car', color: 'teal', label: '推送顺序', sub: '点一下切换', val: const ['仅歌词', '歌词 · 歌名', '歌名 · 歌词'][s.btOrder.clamp(0, 2)], onTap: () => u(() => s.btOrder = (s.btOrder + 1) % 3)),
       ]),
       if (!app.online) Group(title: '状态栏', children: [Item(icon: 'phone', color: 'orange', label: '状态栏歌词', sub: '仅部分 Android 定制系统支持', sw: s.sbLyric, onSw: (v) => u(() => s.sbLyric = v))]),

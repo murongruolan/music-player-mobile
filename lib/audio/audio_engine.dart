@@ -462,6 +462,7 @@ class AudioEngine {
       liked: liked,
       position: _player.position,
       duration: _player.duration ?? Duration.zero,
+      speed: _player.speed,
     ));
   }
 
@@ -474,6 +475,7 @@ class AudioEngine {
       liked: false, // 引擎不知道收藏状态；AppState 在 play 流程后会带真实 liked 再刷一次
       position: _player.position,
       duration: _player.duration ?? Duration.zero,
+      speed: _player.speed,
     ));
   }
 
