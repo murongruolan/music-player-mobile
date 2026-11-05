@@ -14,6 +14,10 @@ class CastController {
   Timer? _poll;
   bool _ended = false; // 每首歌只报一次「播完」
 
+  /// 这首歌在渲染端真正播起来过（报过 PLAYING）：之前的 STOPPED 是加载中的转场，不算播完。
+  bool _seenPlaying = false;
+  DateTime _castAt = DateTime.now();
+
   // —— 回调（AppState 挂；与 AudioEngine 的回调语义一致） ——
   void Function(double seconds)? onPosition;
   void Function(double seconds)? onDuration;
@@ -38,6 +42,8 @@ class CastController {
     final ctl = _controlUrl;
     if (ctl == null) throw const CastException('尚未连接设备');
     _ended = false;
+    _seenPlaying = false;
+    _castAt = DateTime.now();
     current = song;
     await Dlna.cast(controlUrl: ctl, uri: url.toString(), title: song.title, artist: song.artist);
     if (autoplay) {
@@ -111,11 +117,14 @@ class CastController {
       if (r.position > 0) onPosition?.call(r.position);
       switch (r.state) {
         case 'PLAYING':
+          _seenPlaying = true;
           onPlaying?.call(true);
         case 'PAUSED_PLAYBACK':
           onPlaying?.call(false);
         case 'STOPPED' || 'NO_MEDIA_PRESENT':
           // 投放后渲染端短暂处于 STOPPED 属正常（转场），只有播完一轮才回调 onEnded
+          // 没播起来过、而且投放还不到 15 秒：当作转场，不切歌（原来一投放就可能连环跳下一首）
+          if (!_seenPlaying && DateTime.now().difference(_castAt) < const Duration(seconds: 15)) return;
           if (!_ended && current != null) {
             _ended = true;
             onPlaying?.call(false);

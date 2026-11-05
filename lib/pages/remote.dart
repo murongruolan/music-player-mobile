@@ -339,7 +339,7 @@ class _RemoteCollectionPageState extends State<RemoteCollectionPage> {
                 }
                 toast(n > 0 ? '已收藏 $n 首到「我喜欢」' : '选中的歌都已收藏', 'heartf');
               }),
-              ('plus', '加歌单', () => openAddToPlaylist(context, sel.first)),
+              ('plus', '加歌单', () => openAddToPlaylist(context, sel.first, ids: [...sel])),
               ('download', '下载', () {
                 unawaited(app.downloads.enqueueAll(sel.map(app.songById)));
                 toast('已加入下载队列 · ${sel.length} 首', 'download');

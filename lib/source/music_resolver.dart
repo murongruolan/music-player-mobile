@@ -104,19 +104,20 @@ class MusicResolver implements TrackResolver {
     if (viaDirect != null) return viaDirect;
     try {
       if (_trialAlts[key]?.isNotEmpty ?? false) throw const ResolveException('只拿到试听片段');
-      final r = await manager.resolveUrl(track, preferred, sources, forceRefresh: fresh, probe: true, avoid: avoid);
+      final r = await manager.resolveUrl(track, preferred, sources, forceRefresh: fresh, probe: true, avoid: avoid, allowLower: _lower(a), firstOnly: !_crossScript(a));
+      _notifySwitches(a, preferred, r, sources);
       if (reason == ResolveReason.trial) a.notice?.call('上一个音源只有试听片段，已换到「${r.sourceName}」', 'refresh');
       return _done(a, song, t.platform, r, note: why);
     } on ResolveException catch (first) {
       // 智能换源：原平台拿不到地址时，找其它平台的同一首歌
-      if (!a.set.crossPlat) return _fail(a, song, first.message, _name(t.platform), source: firstSource);
+      if (!(a.set.smart && a.set.crossPlat)) return _fail(a, song, first.message, _name(t.platform), source: firstSource);
       final skip = _trialAlts[key] ?? const <String>{};
       final alts = [for (final x in await SourceManager.findAlternatives(a.content, track)) if (!skip.contains('${x.platform}:${x.nativeId}')) x];
       for (final alt in alts.take(6)) {
         try {
-          final r = await manager.resolveUrl(lxTrackOf(alt.toCloud()), preferred, sources, forceRefresh: fresh, probe: true);
+          final r = await manager.resolveUrl(lxTrackOf(alt.toCloud()), preferred, sources, forceRefresh: fresh, probe: true, allowLower: _lower(a), firstOnly: !_crossScript(a));
           final trial = classifyFailure(first.message) == FailKind.trial;
-          a.notice?.call('${_name(t.platform)}${trial ? '只有试听片段' : '解析失败'}，已换到${_name(alt.platform)}播放', 'refresh');
+          if (a.set.nA) a.notice?.call('${_name(t.platform)}${trial ? '只有试听片段' : '解析失败'}，已换到${_name(alt.platform)}播放', 'refresh');
           return _done(a, song, alt.platform, ResolvedUrl(r.url, r.quality, r.sourceId, r.sourceName, r.platform, alternative: alt),
               note: trial ? '原平台只有试听片段，已换平台' : '原平台失败，已换平台');
         } on ResolveException {
@@ -125,6 +126,18 @@ class MusicResolver implements TrackResolver {
       }
       return _fail(a, song, '${first.message}${alts.isEmpty ? '' : '（其它平台的同名歌也没有解析出来）'}', _name(t.platform), source: firstSource);
     }
+  }
+
+  /// 设置「智能换源」：主开关关掉时三个阶段都不做（只用第一个脚本、只要偏好音质、不换平台）。
+  static bool _lower(AppState a) => a.set.smart && a.set.gradual && a.set.allowDown;
+  static bool _crossScript(AppState a) => a.set.smart && a.set.crossScript;
+
+  /// 降了音质 / 换了脚本时按设置里的提醒开关提示（换平台的提示在换平台处）。
+  void _notifySwitches(AppState a, String preferred, ResolvedUrl r, List sources) {
+    if (r.fromCache) return;
+    final down = qualityFallback.indexOf(r.quality) > qualityFallback.indexOf(preferred == 'flac24bit' ? 'hires' : preferred);
+    if (down && a.set.nQ) a.notice?.call('没有${appQualityOf(preferred)}，已降到${appQualityOf(r.quality)}', 'hd');
+    if (sources.isNotEmpty && r.sourceId != (sources.first as dynamic).id && a.set.nS) a.notice?.call('已换用脚本「${r.sourceName}」解析', 'code');
   }
 
   ResolvedPlay _done(AppState a, Song song, String platform, ResolvedUrl r, {String note = ''}) {

@@ -599,25 +599,9 @@ class _DevicesPageState extends State<DevicesPage> {
         if (list.any((d) => !d.isCurrent))
           IBtn(selecting ? 'close' : 'check', onTap: () => selecting ? _exitSelecting() : setState(() => selecting = true)),
       ],
-      // SubPage.floating 是 body Stack 的直接 child：必须自己包 Positioned 定位到底部
-      // （对齐 remote.dart 的 _multiBar），否则按 topLeft 铺在顶栏上且布局异常。
-      floating: selecting && selected.isNotEmpty
-          ? Positioned(
-              left: Tk.pad,
-              right: Tk.pad,
-              bottom: MediaQuery.of(context).padding.bottom + 84,
-              child: Btn(
-                '移除所选（${selected.length}）',
-                icon: 'logout',
-                kind: BtnKind.danger,
-                block: true,
-                onTap: loading ? null : _removeSelected,
-              ),
-            )
-          : null,
       children: [
         Hint(
-          selecting ? '勾选要移除的设备（本机不可移除），点底部按钮批量移除。' : '最多同时登录 $maxDevices 台设备。移除后该设备需要重新登录。右上角可进入多选模式批量移除。',
+          selecting ? '勾选要移除的设备（本机不可移除），点列表下方的按钮批量移除。' : '最多同时登录 $maxDevices 台设备。移除后该设备需要重新登录。右上角可进入多选模式批量移除。',
           padding: const EdgeInsets.fromLTRB(Tk.pad, 0, Tk.pad, 12),
         ),
         if (list.isEmpty)
@@ -642,6 +626,18 @@ class _DevicesPageState extends State<DevicesPage> {
                       : Btn('移除', small: true, kind: BtnKind.danger, onTap: loading ? null : () => showLDialog(context, icon: 'logout', iconColor: pal.danger, title: '移除「${d.deviceName}」？', body: '该设备需要重新登录', actions: [('取消', BtnKind.sec, null), ('移除', BtnKind.danger, () => _remove(d))])),
             ),
         ]),
+        // 批量移除按钮紧跟在最后一台设备下面（原来悬浮在屏幕底部，会被迷你播放条 / 底栏挡住或要滑很久）
+        if (selecting)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Tk.pad, 4, Tk.pad, 0),
+            child: Btn(
+              selected.isEmpty ? '先勾选要移除的设备' : '移除所选（${selected.length}）',
+              icon: 'logout',
+              kind: BtnKind.danger,
+              block: true,
+              onTap: loading || selected.isEmpty ? null : _removeSelected,
+            ),
+          ),
       ],
     );
   }
@@ -880,6 +876,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
   Future<void> _send() async {
     if (cd > 0) return;
     final app = context.appRead;
+    if (app.net == null) return toast('演示模式，不发起请求', 'info'); // 演示模式没有网络层，直接调接口会崩
     try {
       await PasswordApi(app.api.client).forgot(app.account?.email ?? '');
       if (!mounted) return;
@@ -909,6 +906,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
         ..addAll(e);
       shake++;
     });
+    if (context.appRead.net == null) return toast('演示模式，不发起请求', 'info');
     setState(() => busy = true);
     final app = context.appRead;
     try {

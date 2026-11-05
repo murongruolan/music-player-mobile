@@ -29,11 +29,12 @@ String appQualityOf(String lx) => switch (lx) {
     };
 
 /// 从偏好音质往下找第一个「歌曲有、音源也支持」的档位（桌面端 qualityOrder）。
-String? pickQuality(String preferred, List<String> track, List<String> source) {
+/// [allowLower] = false：只要偏好档位，没有就返回 null（设置里关掉「逐级降低音质」/「不可用时自动降级」）。
+String? pickQuality(String preferred, List<String> track, List<String> source, {bool allowLower = true}) {
   final tier = preferred == 'flac24bit' ? 'hires' : preferred;
   final start = qualityFallback.indexOf(tier).clamp(0, qualityFallback.length - 1);
   final have = track.toSet();
-  for (final t in qualityFallback.skip(start)) {
+  for (final t in qualityFallback.skip(start).take(allowLower ? qualityFallback.length : 1)) {
     final aliases = t == 'hires' || t == 'flac24bit' ? const ['hires', 'flac24bit'] : [t];
     for (final q in aliases) {
       if (source.contains(q) && aliases.any(have.contains)) return q;
