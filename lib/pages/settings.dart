@@ -433,7 +433,8 @@ class _PlaybackPageState extends State<PlaybackPage> {
         Item(icon: 'wave', color: 'green', label: '淡入淡出', sub: '暂停与恢复时音量平滑过渡', sw: s.fade, onSw: (v) => u(() { s.fade = v; app.applyFadeToEngine(); })),
         Item(icon: 'play', color: 'orange', label: '启动时自动播放', sw: s.autoplay, onSw: (v) => u(() => s.autoplay = v)),
         Item(icon: 'up', color: 'pink', label: '启动时打开播放页', sw: s.autoOpen, onSw: (v) => u(() => s.autoOpen = v)),
-        Item(
+        // 电池优化豁免只有 Android 有（iOS 后台播放靠 UIBackgroundModes audio）
+        if (nativeSupported && !isIOS) Item(
           icon: 'shield',
           color: 'green',
           label: '后台播放保活',
