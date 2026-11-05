@@ -598,7 +598,7 @@ class _Ripple extends CustomPainter {
     final breathe = math.sin(t * math.pi * 2) * .5 + .5;
     // 底层三圈：越外越淡，音量大时整体张开
     for (var i = 2; i >= 0; i--) {
-      final r = 74 + (i + 1) * 22 + (active ? breathe * 4 + amp * 10 * (i + 1) : 0);
+      final r = 74.0 + (i + 1) * 22 + (active ? breathe * 4 + amp * 10 * (i + 1) : 0.0);
       canvas.drawCircle(c, r, Paint()..color = color.withValues(alpha: .10 + (2 - i) * .07));
     }
     if (!active) return;
