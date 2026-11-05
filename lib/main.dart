@@ -76,6 +76,7 @@ Future<void> main() async {
   await app.initPlatformLogin(); // 平台登录凭证（钥匙串）；网易云游客 Cookie 在后台取
   await app.telemetry.init(); // 读上次没发完的埋点
   await app.downloads.init(); // 下载清单 + 目录
+  await app.floatLyric.init(); // 悬浮歌词样式 + 原生回调
   unawaited(app.applyCacheToEngine()); // 边听边缓存开关联动引擎
   app.restoreSession();
   if (app.authed) unawaited(app.autoplayLast()); // 「启动时自动播放」：音乐库和音源脚本已在 cloud.init 里读好

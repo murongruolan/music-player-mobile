@@ -9,6 +9,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <!-- 听歌识曲：录 3~10 秒算指纹（只在本机计算，不上传录音） -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <!-- 桌面悬浮歌词：显示在其他应用上层（用户在设置里手动授权，不开就不显示） -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
     <!-- allowBackup=false：令牌存在 Keystore 加密的存储里，系统备份恢复到新机后密钥对不上会读失败 -->
     <application
         android:label="Lyra"
@@ -33,11 +35,105 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
+        </activity>
+        <!-- 桌面图标：每款一个 activity-alias，启动入口在 alias 上（MainActivity 本身不再带 LAUNCHER）。
+             App 内「App 图标」切换时启用一个、禁用其余（AppIcons.kt）。默认「鎏金」。 -->
+        <activity-alias
+            android:name=".Icon_gold"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher"
+            android:enabled="true"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-        </activity>
+        </activity-alias>
+        <activity-alias
+            android:name=".Icon_night"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_night"
+            android:roundIcon="@mipmap/ic_launcher_night"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".Icon_aurora"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_aurora"
+            android:roundIcon="@mipmap/ic_launcher_aurora"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".Icon_vinyl"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_vinyl"
+            android:roundIcon="@mipmap/ic_launcher_vinyl"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".Icon_mono"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_mono"
+            android:roundIcon="@mipmap/ic_launcher_mono"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".Icon_neon"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_neon"
+            android:roundIcon="@mipmap/ic_launcher_neon"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".Icon_glass"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_glass"
+            android:roundIcon="@mipmap/ic_launcher_glass"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".Icon_pixel"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_pixel"
+            android:roundIcon="@mipmap/ic_launcher_pixel"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

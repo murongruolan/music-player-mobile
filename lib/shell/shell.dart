@@ -67,6 +67,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
     AppLog.instance.add('应用', '前后台：${s.name}');
     if (s == AppLifecycleState.resumed) detectClipboard(context.appRead);
     if (s == AppLifecycleState.paused || s == AppLifecycleState.inactive) unawaited(context.appRead.saveQueueNow()); // 进程随时可能被杀
+    if (s == AppLifecycleState.resumed || s == AppLifecycleState.paused) context.appRead.floatLyric.setForeground(s == AppLifecycleState.resumed); // Android：切到后台才显示悬浮歌词
   }
 
   void _onTab(int i) {
