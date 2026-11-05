@@ -29,7 +29,9 @@ class AudioEngine {
   // EQ 只在 Android 有系统实现；iOS/Web 静默跳过（见 docs/audio/README.md 限制一节）
   static final AndroidEqualizer _equalizer = AndroidEqualizer();
   final AudioPlayer _player = AudioPlayer(
-    audioPipeline: AudioPipeline(androidAudioEffects: [_equalizer]),
+    // 均衡器只挂在 Android 上：iOS 的 just_audio 没有 androidEqualizer* 方法，挂上后每次加载音源都会去取
+    // 均衡器参数，抛 MissingPluginException，导致所有歌都「播放失败」。
+    audioPipeline: AudioPipeline(androidAudioEffects: _isAndroid ? [_equalizer] : const []),
     // 带请求头的音源（云盘 Basic 认证、直链 Referer）不走 just_audio 的本机代理（127.0.0.1）：
     // Android 上 ExoPlayer 原生支持请求头；代理按「路径?查询」查表，查不到直接崩，请求根本出不去。
     useProxyForRequestHeaders: false,
