@@ -119,7 +119,8 @@ class _Normal extends StatelessWidget {
         );
     final liked = app.liked.contains(app.cur);
     return Row(children: [
-      Expanded(child: Padding(padding: EdgeInsets.only(left: math.max(pad.left, 24)), child: shell.widget.normal(context, Size(size.width - dockW - math.max(pad.left, 24), size.height)))),
+      // 上下留白：原来封面顶到屏幕上沿、播放键贴着下沿
+      Expanded(child: Padding(padding: EdgeInsets.fromLTRB(math.max(pad.left, 28), 22, 0, 14), child: shell.widget.normal(context, Size(size.width - dockW - math.max(pad.left, 28), size.height - 36)))),
       SizedBox(
         width: dockW + pad.right,
         child: Padding(
@@ -152,12 +153,12 @@ class _LandInfo extends StatelessWidget {
     final white = Colors.white.withValues(alpha: .92);
     return Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Expanded(child: Center(child: art)),
-      const SizedBox(height: 12),
+      const SizedBox(height: 14),
       Text(s.title, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: ts(17, w: FontWeight.w700, c: white)),
       const SizedBox(height: 2),
       Text(s.artist, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: ts(12.5, c: Colors.white.withValues(alpha: .6))),
-      const SizedBox(height: 6),
-      const ProgressBar(padding: EdgeInsets.zero, track: 3, trackDrag: 6),
+      const SizedBox(height: 4),
+      const ProgressBar(padding: EdgeInsets.symmetric(horizontal: 12), track: 3, trackDrag: 6),
       Row(mainAxisAlignment: MainAxisAlignment.center, children: [
         IBtn('prev', color: white, iconSize: 28, size: 48, onTap: app.prev),
         const SizedBox(width: 14),
@@ -165,7 +166,6 @@ class _LandInfo extends StatelessWidget {
         const SizedBox(width: 14),
         IBtn('next', color: white, iconSize: 28, size: 48, onTap: app.next),
       ]),
-      const SizedBox(height: 10),
     ]);
   }
 }
@@ -250,7 +250,7 @@ class _StandbySkinState extends State<StandbySkin> {
         return CustomPaint(painter: WaveGlowPainter(songHue(s), _phase, app.playing ? app.beat() : 0));
       }),
       normal: (c, size) => Row(children: [
-        SizedBox(width: size.width * .42, child: _LandInfo(art: AspectRatio(aspectRatio: 1, child: Cover.song(s, size: 0, radius: 14, shadow: true)))),
+        SizedBox(width: size.width * .4, child: _LandInfo(art: AspectRatio(aspectRatio: 1, child: Cover.song(s, size: 0, radius: 14, shadow: true)))),
         const SizedBox(width: 22),
         Expanded(child: LyricView(anchor: .45, compact: true, fontSize: math.max(18, size.height * .05), padding: const EdgeInsets.symmetric(horizontal: 4))),
       ]),
