@@ -41,7 +41,8 @@ class LocateButton extends StatelessWidget {
   /// 目标行的滚动偏移（行顶）；拿不到返回 null。
   double? _rowTop(int i) {
     final ro = rowsKey.currentContext?.findRenderObject();
-    if (ro is! RenderSliver) return null;
+    // 还没布局过（第一帧 / 刚换了列表）时读 constraints 会抛异常
+    if (ro is! RenderSliver || !ro.attached || ro.geometry == null) return null;
     return ro.constraints.precedingScrollExtent + i * rows!.extent;
   }
 
