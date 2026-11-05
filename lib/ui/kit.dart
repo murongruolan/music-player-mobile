@@ -530,11 +530,14 @@ class Item extends StatelessWidget {
   final VoidCallback? onTap;
   final bool danger, chev;
   final Widget? trailing, lead;
-  const Item({super.key, this.icon, this.color, required this.label, this.sub, this.val, this.sw, this.onSw, this.onTap, this.danger = false, this.chev = true, this.trailing, this.lead});
+
+  /// 请求服务端中（改昵称 / 绑定等）：右侧的 › 换成转圈，这一行暂时不能点。
+  final bool busy;
+  const Item({super.key, this.icon, this.color, required this.label, this.sub, this.val, this.sw, this.onSw, this.onTap, this.danger = false, this.chev = true, this.trailing, this.lead, this.busy = false});
   @override
   Widget build(BuildContext context) {
     final pal = context.pal;
-    final tap = sw != null ? () => onSw?.call(!sw!) : onTap;
+    final tap = busy ? null : (sw != null ? () => onSw?.call(!sw!) : onTap);
     return Press(
       onTap: tap,
       scale: 1,
@@ -558,7 +561,10 @@ class Item extends StatelessWidget {
           if (sw != null) LSwitch(sw!, onSw),
           if (sw == null && trailing == null) ...[
             if (val != null) ConstrainedBox(constraints: const BoxConstraints(maxWidth: 150), child: Text(val!, maxLines: 1, overflow: TextOverflow.ellipsis, style: ts(14, c: pal.t3))),
-            if (chev && (onTap != null)) Icon(ic('right'), size: 20, color: pal.t3),
+            if (busy)
+              Padding(padding: const EdgeInsets.only(left: 6, right: 2), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: pal.t3)))
+            else if (chev && (onTap != null))
+              Icon(ic('right'), size: 20, color: pal.t3),
           ],
         ]),
       ),
@@ -1171,8 +1177,9 @@ class _SongRowState extends State<SongRow> with SingleTickerProviderStateMixin {
       onHorizontalDragEnd: (d) => _settle(d.primaryVelocity ?? 0),
       child: ClipRect(
         child: Stack(children: [
+          // 侧滑按钮只在滑开时才构建（长列表里每行省掉 3 个按钮的构建 / 布局）
           Positioned.fill(
-            child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+            child: AnimatedBuilder(animation: c, builder: (_, __) => c.value == 0 ? const SizedBox() : Row(mainAxisAlignment: MainAxisAlignment.end, children: [
               _act('next', '下一首', const Color(0xFF3D8BF4), Colors.white, () {
                 app.playNext(s.id);
                 toast('下一首播放：${s.title}', 'next');
@@ -1187,7 +1194,7 @@ class _SongRowState extends State<SongRow> with SingleTickerProviderStateMixin {
                 c.animateTo(0);
                 onSongMore?.call(context, s.id, widget.ctx);
               }),
-            ]),
+            ])),
           ),
           AnimatedBuilder(animation: c, builder: (_, ch) => Transform.translate(offset: Offset(c.value * open, 0), child: ch), child: Container(color: pal.bg, child: row)),
         ]),

@@ -6,7 +6,7 @@ import '../core/state.dart';
 import '../core/tokens.dart';
 import '../data/mock.dart';
 import '../data/models.dart';
-import '../platform/models.dart' show SearchType, SearchResult, PTrack, CatalogItem, Plat, PlatformException;
+import '../platform/models.dart' show SearchType, SearchResult, PTrack, CatalogItem, CatalogType, Plat, PlatformException;
 import '../platform/registry.dart';
 import '../player/player.dart';
 import '../shell/nav.dart';

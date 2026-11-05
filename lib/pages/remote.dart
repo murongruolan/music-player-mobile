@@ -283,8 +283,17 @@ class _RemoteCollectionPageState extends State<RemoteCollectionPage> {
         if (h == null && error != null)
           EmptyState('info', '没有加载出来', desc: error, action: Btn.sec('重试', icon: 'refresh', small: true, onTap: _load)),
         if (h != null && ids.isEmpty && !hasMore) EmptyState('music', '这里还没有歌', desc: '${plat.name}没有返回歌曲，可能需要登录平台账号或该内容已下架。'),
-        for (final (i, id) in shown.indexed)
-          multi ? _pickRow(context, id) : SongRow(songs[id], key: ValueKey(id), num: widget.type == CatalogType.leaderboard && sort == '默认' ? i : null, list: 'all', listName: listName, queue: shown),
+      ],
+      // 歌曲行按需构建（长歌单 / 歌手几百首也不卡）；右下角「定位」滚到正在播放的那首
+      rows: ListRows(
+        count: shown.length,
+        current: () => shown.indexOf(app.cur),
+        builder: (context, i) {
+          final id = shown[i];
+          return multi ? _pickRow(context, id) : SongRow(songs[id], key: ValueKey(id), num: widget.type == CatalogType.leaderboard && sort == '默认' ? i : null, list: 'all', listName: listName, queue: shown);
+        },
+      ),
+      footer: [
         if (h != null && hasMore) AutoLoad(key: ValueKey('more$page$error'), onLoad: _load, busy: busy, error: error),
       ],
     );

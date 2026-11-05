@@ -363,16 +363,27 @@ class _AccountPageState extends State<AccountPage> {
   }
 
   /// 统一的「执行 + 错误提示」包装：busy 期间不重复提交，业务错误直接展示后端文案。
-  Future<void> _guard(Future<void> Function() f, {String okMsg = ''}) async {
+  /// 正在请求的是哪一行（'nick' / 'qq' / 'code'）：那一行右侧显示转圈。
+  String? busyRow;
+
+  Future<void> _guard(Future<void> Function() f, {String okMsg = '', String? row}) async {
     if (busy) return;
-    setState(() => busy = true);
+    setState(() {
+      busy = true;
+      busyRow = row;
+    });
     try {
       await f();
       if (okMsg.isNotEmpty && mounted) toast(okMsg, 'check');
     } on ApiException catch (e) {
       if (mounted && !e.isCancelled) toast(e.userMessage, 'info');
     } finally {
-      if (mounted) setState(() => busy = false);
+      if (mounted) {
+        setState(() {
+          busy = false;
+          busyRow = null;
+        });
+      }
     }
   }
 
@@ -395,13 +406,13 @@ class _AccountPageState extends State<AccountPage> {
         const SizedBox(height: 18),
       ]),
       Group(title: '资料', children: [
-        Item(icon: 'user', color: 'blue', label: '昵称与头像', val: name, onTap: () => _editNickname(context)),
+        Item(icon: 'user', color: 'blue', label: '昵称与头像', val: name, busy: busyRow == 'nick', onTap: () => _editNickname(context)),
         Item(icon: 'mail', color: 'orange', label: '邮箱', val: acc?.email ?? (app.online ? '' : 'ali@example.com')),
         Item(icon: 'lock', color: 'gray', label: '修改密码', onTap: () => push(context, const ChangePasswordPage())),
-        Item(icon: 'link', color: 'cyan', label: 'QQ 绑定', val: (acc?.qq?.isNotEmpty ?? false) ? '已绑定 ${acc!.qq}' : '未绑定', onTap: () => _editQQ(context)),
+        Item(icon: 'link', color: 'cyan', label: 'QQ 绑定', val: (acc?.qq?.isNotEmpty ?? false) ? '已绑定 ${acc!.qq}' : '未绑定', busy: busyRow == 'qq', onTap: () => _editQQ(context)),
       ]),
       Group(title: '会员', children: [
-        Item(icon: 'key', color: 'gold', label: '激活码', sub: activated ? '输入升级码提升会员等级' : '输入激活码解锁全部功能', onTap: () => _activate(context)),
+        Item(icon: 'key', color: 'gold', label: '激活码', sub: activated ? '输入升级码提升会员等级' : '输入激活码解锁全部功能', busy: busyRow == 'code', onTap: () => _activate(context)),
         Item(icon: 'crown', color: 'pink', label: '会员权益', val: '赞助专属 ${BenefitsPage.sponsorOnly} 项', onTap: () => push(context, const BenefitsPage())),
       ]),
       Group(title: '安全', children: [
@@ -439,7 +450,7 @@ class _AccountPageState extends State<AccountPage> {
       final app = context.appRead;
       final nu = await AccountApi(app.api.client).updateProfile(nickname: nickname);
       app.update(() => app.account = nu);
-    }, okMsg: '已保存');
+    }, okMsg: '已保存', row: 'nick');
   }
 
   /// 绑定 / 解绑 QQ：填 QQ 号即可（账号级，桌面端绑定过的这里直接显示）。格式同桌面端：5~12 位数字、不以 0 开头。
@@ -452,7 +463,7 @@ class _AccountPageState extends State<AccountPage> {
         ('解绑', BtnKind.danger, () => _guard(() async {
               final nu = await AccountApi(app.api.client).bindQQ(null);
               app.update(() => app.account = nu);
-            }, okMsg: '已解绑')),
+            }, okMsg: '已解绑', row: 'qq')),
       ]);
       return;
     }
@@ -471,7 +482,7 @@ class _AccountPageState extends State<AccountPage> {
     await _guard(() async {
       final nu = await AccountApi(app.api.client).bindQQ(qq);
       app.update(() => app.account = nu);
-    }, okMsg: '已绑定');
+    }, okMsg: '已绑定', row: 'qq');
   }
 
   /// 激活码 / 升级码兑换。激活 / 升级成功后返回带新会员态的用户。
@@ -493,7 +504,7 @@ class _AccountPageState extends State<AccountPage> {
       final nu = await AccountApi(app.api.client).redeemCode(code);
       app.update(() => app.account = nu);
       if (mounted) toast('激活成功 · ${nu.membershipName.isEmpty ? '会员' : nu.membershipName}', 'crown');
-    });
+    }, row: 'code');
   }
 }
 
@@ -914,10 +925,13 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
     super.dispose();
   }
 
+  bool sending = false;
+
   Future<void> _send() async {
-    if (cd > 0) return;
+    if (cd > 0 || sending) return;
     final app = context.appRead;
     if (app.net == null) return toast('演示模式，不发起请求', 'info'); // 演示模式没有网络层，直接调接口会崩
+    setState(() => sending = true);
     try {
       await PasswordApi(app.api.client).forgot(app.account?.email ?? '');
       if (!mounted) return;
@@ -933,6 +947,8 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
       toast('验证码已发送至 ${app.account?.email ?? '你的邮箱'}', 'mail');
     } on ApiException catch (e) {
       if (!e.isCancelled) toast(e.userMessage, 'info');
+    } finally {
+      if (mounted) setState(() => sending = false);
     }
   }
 
@@ -995,6 +1011,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
               shake: err.containsKey('code') ? shake : 0,
               suffix: cd > 0 ? '${cd}s' : '获取验证码',
               onSuffix: _send,
+              suffixBusy: sending,
               onChanged: (_) => setState(() => err.remove('code')),
             ),
             LField(controller: p1, label: '新密码', icon: 'lock', password: true, error: err['p1'], shake: err.containsKey('p1') ? shake : 0, onChanged: (_) => setState(() => err.remove('p1'))),

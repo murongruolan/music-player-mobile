@@ -923,6 +923,9 @@ class AppState extends ChangeNotifier {
 
   /// 能不能真正播放。联网模式下音源解析（脚本运行时 / 平台取流）还没接入，先拦下来并提示，
   /// 不再用计时器假装在播放。
+  /// 点播放但还没导入音源脚本时调用（main.dart 挂成提示框）。
+  void Function()? onNoSource;
+
   bool get canPlay => !online || (engine != null && sources.sources.isNotEmpty);
 
   /// 日志用：「歌名 - 歌手 [平台]」。
@@ -937,7 +940,12 @@ class AppState extends ChangeNotifier {
   bool _blockPlay([int? id]) {
     if (canPlay) return false;
     if (online && engine != null && id != null && id >= 0 && id < songs.length && (songs[id].key?.startsWith('$davPlatform:') ?? false)) return false;
-    notice?.call(engine == null ? '当前环境不支持播放' : '还没有导入音源脚本：在「设置 → 平台与解析脚本」导入后就能播放', 'info');
+    // 没有音源：弹一个不会自己消失的提示框（原来是 1.9 秒的气泡，看不完就没了），可以直接去导入
+    if (engine != null && onNoSource != null) {
+      onNoSource!();
+    } else {
+      notice?.call(engine == null ? '当前环境不支持播放' : '还没有导入音源脚本：在「设置 → 平台与解析脚本」导入后就能播放', 'info');
+    }
     return true;
   }
 

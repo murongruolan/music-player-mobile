@@ -34,7 +34,10 @@ class _LibraryPageState extends State<LibraryPage> {
     final online = app.online;
     final syncSt = online ? app.cloud.status?.value : null;
     final synced = !online || (app.isSponsor && app.set.cloudSync);
+    // 「我喜欢」的歌曲行：按需构建（几千首收藏也不卡），支持定位到正在播放
+    var likedIds = const <int>[];
     if (seg == '我喜欢') {
+      likedIds = app.liked.where((id) => id < songs.length).where((id) => filter != 'Hi-Res' || songs[id].quality == 'Hi-Res').where((id) => online || filter != '已下载' || id % 2 == 0).toList();
       body.addAll([
         CardBox(
           margin: const EdgeInsets.fromLTRB(Tk.pad, 14, Tk.pad, 0),
@@ -68,8 +71,6 @@ class _LibraryPageState extends State<LibraryPage> {
           )
         else
           const SizedBox(height: 10),
-        for (final id in app.liked.where((id) => id < songs.length).where((id) => filter != 'Hi-Res' || songs[id].quality == 'Hi-Res').where((id) => online || filter != '已下载' || id % 2 == 0))
-          SongRow(songs[id], key: ValueKey('l$id'), list: 'like', listName: '我喜欢的音乐', heart: true),
         if (app.liked.isEmpty)
           online
               ? EmptyState('heart', '还没有收藏的歌曲', desc: app.isSponsor ? '开启「备份与同步 → 多端实时同步」后，桌面端的收藏会同步到这里。' : '赞助用户可以把桌面端的收藏同步到这里。平台搜索接入后也能直接在手机上收藏。')
@@ -193,6 +194,13 @@ class _LibraryPageState extends State<LibraryPage> {
             child: Column(key: ValueKey(seg), crossAxisAlignment: CrossAxisAlignment.stretch, children: [for (final (i, w) in body.indexed) i < 14 ? Rise(i, w) : w]),
           ),
         ],
+        rows: likedIds.isEmpty
+            ? null
+            : ListRows(
+                count: likedIds.length,
+                current: () => likedIds.indexOf(app.cur),
+                builder: (c, i) => SongRow(songs[likedIds[i]], key: ValueKey('l${likedIds[i]}'), list: 'like', listName: '我喜欢的音乐', heart: true),
+              ),
       ),
       if (seg == '本地' && dim == '歌曲' && !app.online) _azBar(context),
     ]);
