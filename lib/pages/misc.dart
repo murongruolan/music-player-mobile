@@ -361,7 +361,7 @@ class _AccountPageState extends State<AccountPage> {
       ]),
       Group(title: '会员', children: [
         Item(icon: 'key', color: 'gold', label: '激活码', sub: activated ? '输入升级码提升会员等级' : '输入激活码解锁全部功能', onTap: () => _activate(context)),
-        Item(icon: 'crown', color: 'pink', label: '会员权益', val: '6 项', onTap: () => push(context, const BenefitsPage())),
+        Item(icon: 'crown', color: 'pink', label: '会员权益', val: '赞助专属 ${BenefitsPage.sponsorOnly} 项', onTap: () => push(context, const BenefitsPage())),
       ]),
       Group(title: '安全', children: [
         Item(icon: 'phone', color: 'violet', label: '登录设备', val: deviceCount < 0 ? (app.online ? null : '${loginDevices.length} 台') : '$deviceCount 台', onTap: () => push(context, const DevicesPage())),
@@ -1000,16 +1000,18 @@ class BenefitsPage extends StatelessWidget {
   const BenefitsPage({super.key});
 
   /// 权益对照表：(名称, 免费档, 赞助档)。true=有，false=无，字符串=数量文案。
+  /// 只列 App 里真实存在、且确实按赞助区分的功能（代码里只有云同步 / 云备份 / 云端统计按 isSponsor 拦）。
   static const _rows = <(String, Object, Object)>[
-    ('在线播放与收藏', true, true),
-    ('平台登录与每日推荐', true, true),
-    ('播放器皮肤', '11 套', '15 套'),
+    ('在线播放、收藏、歌单', true, true),
+    ('平台登录、直链播放', true, true),
+    ('全部播放器皮肤', true, true),
+    ('下载（含 Hi-Res）与边听边缓存', true, true),
+    ('音乐云盘（WebDAV）', true, true),
     ('多端实时同步', false, true),
     ('账号云备份', false, true),
     ('云端听歌统计', false, true),
-    ('Hi-Res 下载', false, true),
-    ('优先体验新功能', false, true),
   ];
+  static int get sponsorOnly => _rows.where((r) => r.$2 == false).length;
 
   Widget _mark(BuildContext c, Object v, {bool sponsor = false}) {
     final pal = c.pal;
@@ -1039,7 +1041,7 @@ class BenefitsPage extends StatelessWidget {
             Text(
               activated
                   ? '感谢支持。下面的功能你都可以用。${expires == null ? '' : ' ${expires.year}-${expires.month.toString().padLeft(2, '0')}-${expires.day.toString().padLeft(2, '0')} 到期'}'
-                  : '激活后解锁云同步、云备份、Hi-Res 下载等全部能力。',
+                  : '激活后解锁多端实时同步、账号云备份和云端听歌统计。',
               style: ts(12.5, c: pal.t2, h: 1.5),
             ),
           ])),
