@@ -98,7 +98,8 @@ class _LibraryPageState extends State<LibraryPage> {
           if (list.isEmpty) continue;
           body.add(Padding(padding: const EdgeInsets.fromLTRB(Tk.pad, 18, 0, 4), child: Text(title, style: ts(12.5, w: FontWeight.w600, c: pal.t3))));
           for (final st in list) {
-            final id = app.library.idOfKey(st.key) ?? app.library.register(CloudTrack(
+            // 先用播放时记下的完整曲目（带封面和音源信息），没有才用统计里的歌名歌手注册
+            final id = app.library.idOfPlayed(st.key) ?? app.library.register(CloudTrack(
                   id: st.key,
                   platform: st.source,
                   songId: st.songId,

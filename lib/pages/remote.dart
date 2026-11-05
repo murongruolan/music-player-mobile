@@ -215,7 +215,8 @@ class _RemoteCollectionPageState extends State<RemoteCollectionPage> {
           Padding(padding: const EdgeInsets.symmetric(horizontal: 30), child: Text(title, textAlign: TextAlign.center, style: ts(22, w: FontWeight.w800, c: pal.t1))),
           const SizedBox(height: 8),
           Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Avatar(by.characters.first, size: 22),
+            // 歌手页：小头像用歌手照片（原来是名字首字）；歌单 / 专辑没有创建者头像，仍用首字
+            Avatar(by.characters.first, size: 22, url: artist ? cover : null),
             const SizedBox(width: 6),
             Flexible(child: Text(meta, maxLines: 1, overflow: TextOverflow.ellipsis, style: ts(13, c: pal.t2))),
           ]),

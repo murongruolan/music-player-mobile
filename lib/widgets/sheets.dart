@@ -23,13 +23,46 @@ import '../ui/icons.dart';
 import '../ui/kit.dart';
 import '../ui/custom_font.dart';
 import '../core/share_code.dart';
-import '../platform/models.dart' show Plat;
+import '../platform/models.dart' show Plat, CatalogType, SearchType;
+import '../pages/remote.dart' show RemoteCollectionPage;
+import '../player/player.dart' show closePlayer;
+import '../source/source_manager.dart' show normalizeSinger;
 import '../core/float_lyric.dart' show nativeSupported, isIOS;
 import 'import_playlist.dart';
 import 'plat_login.dart';
 
 void registerSheets() {
   onSongMore = openSongMore;
+}
+
+/// 打开一首歌的歌手页：在歌曲所在平台搜这位歌手（名字一致的那个），找到就开平台歌手页（热门歌曲、简介）；
+/// 找不到或平台不支持歌手页时开音乐库里的歌手页。从播放器里点的会先收起播放器（原来页面开在播放器下面，
+/// 看上去点了没反应，收起播放器才发现已经跳过去了）。
+Future<void> openArtistOf(BuildContext context, int id) async {
+  final app = context.appRead;
+  final s = app.songById(id);
+  closePlayer();
+  final key = s.key ?? '';
+  final plat = key.contains(':') ? key.substring(0, key.indexOf(':')) : '';
+  final name = s.artist.split(RegExp(r'\s*[/、&,，]\s*')).first.trim();
+  if (app.online && name.isNotEmpty && Plat.all.contains(plat)) {
+    // 歌手页支持的平台：本平台；不支持（酷我 / 咪咕）就到网易云找
+    final target = (app.content.of(plat)?.collectionTypes.contains(CatalogType.artist) ?? false) ? plat : Plat.wy;
+    final f = app.taste.followed.where((x) => normalizeSinger(x.name) == normalizeSinger(name) && x.catalogId != null && x.platform == target).firstOrNull;
+    if (f != null) {
+      unawaited(push(context, RemoteCollectionPage(platform: target, type: CatalogType.artist, id: f.catalogId!, title: f.name, cover: f.cover)));
+      return;
+    }
+    try {
+      final o = await app.content.search(target, name, SearchType.artist, limit: 5, fallback: false);
+      final hit = o.result.items.where((a) => normalizeSinger(a.title) == normalizeSinger(name)).firstOrNull;
+      if (hit != null) {
+        unawaited(push(context, RemoteCollectionPage(platform: target, type: CatalogType.artist, id: hit.id, title: hit.title, cover: hit.cover)));
+        return;
+      }
+    } catch (_) {}
+  }
+  unawaited(push(context, ArtistPage(id: id)));
 }
 
 // ============ 歌曲更多 ============
@@ -132,7 +165,7 @@ void openSongMore(BuildContext context, int id, String ctx, {bool dark = false})
         Group(children: [
           Item(icon: 'user', color: 'blue', label: '查看歌手', val: s.artist, onTap: () {
             close();
-            push(context, ArtistPage(id: id));
+            unawaited(openArtistOf(context, id));
           }),
           // 电台里的歌：不感兴趣 = 从队列拿掉，以后的电台也不再放（记在本机）
           if (isRadioQueue(app) && app.queue.contains(id))

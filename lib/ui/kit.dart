@@ -634,10 +634,10 @@ class Avatar extends StatelessWidget {
             : Stack(fit: StackFit.expand, alignment: Alignment.center, children: [
                 Center(child: Text(text, style: ts(size * .42, w: FontWeight.w700, c: pal.ink))),
                 ClipOval(
-                  child: Image.network(
-                    url!,
+                  // 和封面一样带浏览器 UA 请求（网易 / QQ 图床拦 Dart 默认 UA，原来头像常常 403 只剩首字）
+                  child: Image(
+                    image: ResizeImage(UaImage(coverUrl(url) ?? url!), width: (size * MediaQuery.devicePixelRatioOf(context)).round()),
                     fit: BoxFit.cover,
-                    cacheWidth: (size * MediaQuery.devicePixelRatioOf(context)).round(),
                     gaplessPlayback: true,
                     frameBuilder: (_, ch, frame, sync) => sync ? ch : AnimatedOpacity(opacity: frame == null ? 0 : 1, duration: const Duration(milliseconds: 220), child: ch),
                     errorBuilder: (_, __, ___) => const SizedBox.shrink(),

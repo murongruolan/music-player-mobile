@@ -1084,6 +1084,7 @@ class AppState extends ChangeNotifier {
       queue = listOf(list);
       if (name != null) queueName = name;
     }
+    if (mode == 'shuffle' && hasSong && cur != id) _shuffleTrail.add(cur); // 随机模式下点了别的歌，上一首能回来
     if (!queue.contains(id)) {
       final at = queue.indexOf(cur); // cur 不在队列（首次播放 = -1）时放在队首
       queue.insert(at < 0 ? 0 : math.min(at + 1, queue.length), id);
@@ -1150,13 +1151,15 @@ class AppState extends ChangeNotifier {
     AppLog.instance.add('操作', '下一首');
     _step(1);
   }
+  /// 上一首：直接切到上一首（原来播放超过 3 秒时是回到本曲开头，看起来像「上一首没反应」）。
+  /// 只有一首歌时回到开头。
   void prev() {
-    AppLog.instance.add('操作', pos.value > 3 ? '回到开头' : '上一首');
-    if (pos.value > 3) {
+    AppLog.instance.add('操作', '上一首');
+    if (queue.length <= 1) {
       if (casting) {
-        unawaited(cast!.seek(0)); // 投放中：渲染端回到曲目开头
+        unawaited(cast!.seek(0));
       } else if (engineActive) {
-        engine!.seek(0); // 真实播放：回到曲目开头（进度由引擎回调刷新）
+        engine!.seek(0);
       } else {
         pos.value = 0;
       }
@@ -1166,11 +1169,24 @@ class AppState extends ChangeNotifier {
     _step(-1);
   }
 
+  /// 随机播放时走过的歌（最近的在后）：上一首按这个往回退，而不是再随机一首。
+  final _shuffleTrail = <int>[];
+
   void _step(int d, {bool notify = true}) {
     if (queue.isEmpty) return;
     final i = queue.indexOf(cur);
     if (mode == 'shuffle') {
-      cur = queue[(i + 3 + math.Random().nextInt(math.max(1, queue.length - 2))) % queue.length];
+      if (d < 0) {
+        // 往回退到上一首真正播过的；退完了就按列表顺序的上一首
+        while (_shuffleTrail.isNotEmpty && (!queue.contains(_shuffleTrail.last) || _shuffleTrail.last == cur)) {
+          _shuffleTrail.removeLast();
+        }
+        cur = _shuffleTrail.isNotEmpty ? _shuffleTrail.removeLast() : queue[(i - 1 + queue.length) % queue.length];
+      } else {
+        _shuffleTrail.add(cur);
+        if (_shuffleTrail.length > 200) _shuffleTrail.removeAt(0);
+        cur = queue[(i + 3 + math.Random().nextInt(math.max(1, queue.length - 2))) % queue.length];
+      }
     } else {
       cur = queue[(i + d + queue.length) % queue.length];
     }

@@ -115,6 +115,7 @@ class Cloud with WidgetsBindingObserver {
       final s = _app.songById(songId);
       final key = s.key;
       if (key != null && key.contains(':')) {
+        _app.library.rememberPlayed(songId); // 「最近」页重启后还有封面
         final i = key.indexOf(':');
         stats.begin(key: key, source: key.substring(0, i), songId: key.substring(i + 1), name: s.title, artist: s.artist, album: s.album, durationSec: s.dur);
       } else {
