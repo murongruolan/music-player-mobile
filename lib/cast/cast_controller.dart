@@ -16,6 +16,32 @@ class CastController {
   Timer? _poll;
   bool _ended = false; // 每首歌只报一次「播完」
 
+  // 轮询间隙的位置外推：GetPositionInfo 每 2 秒一次，直接回写会让进度条两秒一跳
+  // （本地播放是引擎 ~200ms 一报）。两次轮询之间按流逝秒数本地推进，下轮轮询对表。
+  Timer? _extrapolate;
+  double _lastPos = 0;
+  DateTime _lastPosAt = DateTime.now();
+  bool _playingNow = false;
+  double _lastDur = 0;
+
+  /// 轮询代际：切歌 / 重投 / 断开时 +1，进行中的旧请求回来后发现代际变了就丢掉结果
+  /// （只取消定时器不够：已经发出去的 GetPositionInfo 回来照样会把旧位置写回进度条）。
+  int _gen = 0;
+
+  /// 以某个位置为基准重新开始外推（轮询对表、拖动、暂停 / 继续、换歌都要调）。
+  void _anchor(double pos, {bool? playing}) {
+    _lastPos = pos;
+    _lastPosAt = DateTime.now();
+    if (playing != null) _playingNow = playing;
+  }
+
+  void _stopTimers() {
+    _poll?.cancel();
+    _poll = null;
+    _extrapolate?.cancel();
+    _extrapolate = null;
+  }
+
   /// 这首歌在渲染端真正播起来过（报过 PLAYING）：之前的 STOPPED 是加载中的转场，不算播完。
   bool _seenPlaying = false;
   DateTime _castAt = DateTime.now();
@@ -130,6 +156,8 @@ class CastController {
     _seenPlaying = false;
     _castAt = DateTime.now();
     current = song;
+    _anchor(0, playing: false); // 新的一首从 0 开始外推（原来沿用上一首的位置）
+    _lastDur = 0;
     await Dlna.cast(controlUrl: ctl, uri: url.toString(), title: song.title, artist: song.artist);
     if (autoplay) {
       await Dlna.play(ctl);
@@ -144,6 +172,8 @@ class CastController {
     if (ctl == null) return;
     try {
       await (play ? Dlna.play(ctl) : Dlna.pause(ctl));
+      // 暂停：立刻停止外推（原来要等下一轮轮询，最多多走 2 秒再跳回）；继续：从当前位置重新计时
+      _anchor(_playingNow ? _lastPos + DateTime.now().difference(_lastPosAt).inMilliseconds / 1000 : _lastPos, playing: play);
       onPlaying?.call(play);
     } on CastException catch (e) {
       onError?.call(e.message);
@@ -155,17 +185,39 @@ class CastController {
     if (ctl == null) return;
     try {
       await Dlna.seek(ctl, seconds);
+      _anchor(seconds); // 拖动后从新位置外推（原来会跳回拖动前的位置直到下一轮轮询）
       onPosition?.call(seconds);
     } on CastException catch (e) {
       onError?.call(e.message);
     }
   }
 
+  /// 投放切歌 / 重投前暂停轮询与外推：解析期间旧一轮的进度回调不再回写。
+  /// 否则切歌后进度条先被旧位置顶满，等新一轮轮询才开始才归零（实测现象）。
+  void suspendPolling() {
+    _gen++;
+    _stopTimers();
+  }
+
+  /// 切歌失败（取不到地址等）后恢复轮询：渲染端还在放上一首，界面要继续跟着它。
+  void resumePolling() {
+    if (!connected || _poll != null) return;
+    _startPoll(playing: _playingNow);
+  }
+
   /// 断开：停止渲染端播放并清掉轮询。本地恢复播放由 AppState 决定。
   Future<void> disconnect() async {
     final ctl = _controlUrl;
-    _poll?.cancel();
-    _poll = null;
+    _gen++;
+    _stopTimers();
+    // 先清掉连接状态再发 Stop：Stop 可能被 Wi-Fi 省电拖几秒，这期间 connected 还是 true 的话，
+    // App 仍认为在投放，按播放键会把 Play 发给电视而不是本地播放（「断开后第一次点播放被吞」）
+    device = null;
+    _controlUrl = null;
+    _rcUrl = null;
+    volume = null;
+    _wantVol = null;
+    current = null;
     if (ctl != null) {
       try {
         await Dlna.stop(ctl);
@@ -173,37 +225,53 @@ class CastController {
         // 设备已关机 / 离线：断开本身就是清理，静默
       }
     }
-    device = null;
-    _controlUrl = null;
-    _rcUrl = null;
-    volume = null;
-    _wantVol = null;
-    current = null;
   }
 
   void dispose() {
-    _poll?.cancel();
-    _poll = null;
+    _gen++;
+    _stopTimers();
   }
 
   // ------------------------------------------------------------ 内部
 
   void _startPoll({required bool playing}) {
-    _poll?.cancel();
+    _stopTimers();
+    _gen++;
+    _anchor(_lastPos, playing: playing);
     onPlaying?.call(playing);
-    // 立即取一次，随后每 2 秒轮询（局域网开销可忽略）
+    // 立即取一次，随后每 2 秒轮询（局域网开销可忽略）；间隙由外推定时器补齐
     unawaited(_pollOnce());
     _poll = Timer.periodic(const Duration(seconds: 2), (_) => unawaited(_pollOnce()));
+    _extrapolate?.cancel();
+    _extrapolate = Timer.periodic(const Duration(milliseconds: 500), (_) => _extrapolateOnce());
+  }
+
+  /// 两次轮询之间按流逝秒数推进进度，只在渲染端确实在播时推进（暂停 / 转场冻结）。
+  void _extrapolateOnce() {
+    if (!_playingNow || !connected || onPosition == null) return;
+    final dt = DateTime.now().difference(_lastPosAt).inMilliseconds / 1000;
+    if (dt <= 0) return;
+    final p = _lastPos + dt;
+    onPosition?.call(_lastDur > 0 && p > _lastDur ? _lastDur : p); // 不外推到时长以外
   }
 
   Future<void> _pollOnce() async {
     final ctl = _controlUrl;
     if (ctl == null) return;
+    final g = _gen;
     try {
       final r = await Dlna.pollInfo(ctl);
+      if (g != _gen || ctl != _controlUrl) return; // 请求期间切了歌 / 断开了：旧结果丢掉
       if (++_pollN % 5 == 0) unawaited(_readVolume()); // 约 10 秒对一次音量（电视遥控器也会改）
-      if (r.duration > 0) onDuration?.call(r.duration);
-      if (r.position > 0) onPosition?.call(r.position);
+      if (r.duration > 0) {
+        _lastDur = r.duration;
+        onDuration?.call(r.duration);
+      }
+      if (r.position > 0) {
+        _anchor(r.position);
+        onPosition?.call(r.position);
+      }
+      _playingNow = r.state == 'PLAYING';
       switch (r.state) {
         case 'PLAYING':
           _seenPlaying = true;
@@ -221,9 +289,10 @@ class CastController {
           }
       }
     } on CastException catch (e) {
-      // 设备离线 / 网络抖动：停掉轮询并上报，AppState 决定断开
-      _poll?.cancel();
-      _poll = null;
+      if (g != _gen) return;
+      // 设备离线 / 网络抖动：停掉轮询和外推并上报（原来外推还在走，进度条自己往前跑），AppState 决定断开
+      _stopTimers();
+      _playingNow = false;
       onError?.call('投放设备失联：${e.message}');
     }
   }

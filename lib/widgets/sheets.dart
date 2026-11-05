@@ -948,9 +948,11 @@ void openCast(BuildContext context, {bool dark = false}) {
             if (app.castDev != null) ...[
               const SizedBox(width: 10),
               Expanded(
-                child: Btn('断开 ${app.castDev}', kind: BtnKind.danger, onTap: () async {
-                  await app.disconnectCast();
-                  if (c.mounted) Navigator.of(c).pop();
+                child: Btn('断开 ${app.castDev}', kind: BtnKind.danger, onTap: () {
+                  // 断开指令后台送达：disconnectCast 会先把界面与状态落到「已断开」，
+                  // 渲染端 Stop 的 SOAP 可能被 Wi-Fi 省电拖慢，不能挡住弹层关闭与提示。
+                  unawaited(app.disconnectCast());
+                  Navigator.of(c).pop();
                   toast('已断开投放，按播放键回到本地播放', 'cast');
                 }),
               ),
