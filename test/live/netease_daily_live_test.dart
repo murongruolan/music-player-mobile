@@ -1,5 +1,5 @@
 // 网易云每日推荐 / 私人 FM 联网冒烟。LIVE=1 时运行。
-// 没有账号：只能验证游客 Cookie 下私人 FM 能不能拿到歌，以及每日推荐在未登录时返回 301。
+// 没有账号：只能验证游客 Cookie 下私人 FM 能不能拿到歌，以及每日推荐在未登录时的返回。
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyra/platform/login/netease_login.dart';
 import 'package:lyra/platform/netease.dart';
@@ -14,6 +14,6 @@ void main() {
       await probe('personalFm 游客 #$i', () => p.personalFm(anon ?? ''), (l) => '${l.length} 首：${l.map((t) => '${t.title}-${t.artist}').join('，')}');
     }
     await probe('personalFm 无 Cookie', () => p.personalFm(''), (l) => '${l.length} 首：${l.map((t) => t.title).join('，')}');
-    await probe('dailySongs 游客（应当 301）', () => p.dailySongs(anon ?? ''), (l) => '${l.length} 首');
+    await probe('dailySongs 游客（实测返回通用推荐）', () => p.dailySongs(anon ?? ''), (l) => '${l.length} 首');
   }, skip: !live);
 }
