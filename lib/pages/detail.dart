@@ -189,8 +189,11 @@ class _PlaylistPageState extends State<PlaylistPage> {
                 }
                 toast('已添加 ${sel.length} 首到下一首播放', 'next');
               }),
-              ('plus', '加歌单', () => openAddToPlaylist(context, sel.isEmpty ? ids.first : sel.first)),
-              ('download', '下载', () => toast('已加入下载 · ${sel.length} 首', 'download')),
+              ('plus', '加歌单', () => openAddToPlaylist(context, sel.isEmpty ? ids.first : sel.first, ids: sel.isEmpty ? null : [...sel])),
+              ('download', '下载', () {
+                if (app.online) unawaited(app.downloads.enqueueAll(sel.map(app.songById)));
+                toast('已加入下载 · ${sel.length} 首', 'download');
+              }),
               ('trash', '移除', () => showLDialog(context, icon: 'trash', title: '从歌单移除 ${sel.length} 首？', actions: [
                     ('取消', BtnKind.sec, null),
                     ('移除', BtnKind.danger, () {

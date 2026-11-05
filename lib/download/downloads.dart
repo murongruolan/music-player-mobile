@@ -22,6 +22,7 @@ import '../net/net.dart';
 import '../platform/lyric_parse.dart';
 import '../platform/models.dart';
 import '../core/network.dart';
+import '../ui/cover.dart' show Cover, coverUrl;
 import '../core/state.dart';
 import '../source/lx_track.dart' show appQualityOf;
 
@@ -300,7 +301,8 @@ class DownloadStore extends ChangeNotifier {
     final url = t?.cover;
     if (url == null || url.isEmpty) return '';
     try {
-      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
+      // 网易 / QQ 图床按 UA 拦截，Dart 默认 UA 一律 403（和封面加载同一个坑）
+      final res = await http.get(Uri.parse(coverUrl(url) ?? url), headers: const {'User-Agent': Cover.ua}).timeout(const Duration(seconds: 10));
       if (res.statusCode == 200 && res.bodyBytes.length > 1024) {
         await io.File(path).writeAsBytes(res.bodyBytes);
         return path;

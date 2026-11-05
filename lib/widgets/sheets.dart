@@ -2,8 +2,11 @@
 // 睡眠定时、均衡器、音质、倍速、投放、皮肤与背景、歌词快调、歌词分享卡、播放链路、播放队列、底栏样式、App 图标、字体。
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 import '../cast/dlna.dart';
 import '../source/music_resolver.dart';
 import '../core/state.dart';
@@ -18,6 +21,7 @@ import '../ui/brand.dart';
 import '../ui/cover.dart';
 import '../ui/icons.dart';
 import '../ui/kit.dart';
+import '../ui/custom_font.dart';
 import 'plat_login.dart';
 
 void registerSheets() {
@@ -149,7 +153,20 @@ void openSongMore(BuildContext context, int id, String ctx, {bool dark = false})
             app.dislike(id);
             toast('已移除，以后的推荐和电台不再放这首', 'nodislike');
           }),
-        if (ctx == 'local')
+        // 联网模式：已下载的歌可以删掉本地文件（真删除，下载记录一起去掉）
+        if (app.online && (app.library.trackOf(id) case final t?) && app.downloads.isDownloaded(t.id))
+          Item(icon: 'trash', color: 'red', label: '删除已下载的文件', danger: true, onTap: () {
+            close();
+            final it = app.downloads.items.firstWhere((x) => x.key == t.id);
+            showLDialog(context, icon: 'trash', iconColor: pal.danger, title: '删除下载的文件？', body: '「${s.title}」的本地文件会被删除，之后在线播放不受影响。', actions: [
+              ('取消', BtnKind.sec, null),
+              ('删除', BtnKind.danger, () async {
+                await app.downloads.remove(it);
+                toast('已删除下载的文件', 'trash');
+              }),
+            ]);
+          }),
+        if (ctx == 'local' && !app.online)
           Item(icon: 'trash', color: 'red', label: '从设备删除', danger: true, onTap: () {
             close();
             showLDialog(context, icon: 'trash', iconColor: pal.danger, title: '从设备删除？', body: '「${s.title}」的音频文件会被永久删除，此操作不可撤销。', actions: [('取消', BtnKind.sec, null), ('删除', BtnKind.danger, () => toast('已删除', 'trash'))]);
@@ -160,8 +177,10 @@ void openSongMore(BuildContext context, int id, String ctx, {bool dark = false})
 }
 
 // ============ 加入歌单 / 新建歌单 ============
-void openAddToPlaylist(BuildContext context, int id) {
-  showLSheet(context, title: '加入歌单', builder: (c) {
+/// 加入歌单。[ids] 给了就批量加（多选），否则只加 [id]。
+void openAddToPlaylist(BuildContext context, int id, {List<int>? ids}) {
+  final all = ids ?? [id];
+  showLSheet(context, title: all.length > 1 ? '加入歌单 · ${all.length} 首' : '加入歌单', builder: (c) {
     final app = c.app;
     final pal = c.pal;
     return Column(children: [
@@ -173,8 +192,12 @@ void openAddToPlaylist(BuildContext context, int id) {
         Item(lead: Cover.pl(p, size: 48, radius: 10), label: p.title, sub: '${app.online ? p.ids.length : p.count} 首', onTap: () {
           Navigator.of(c).pop();
           if (app.online) {
-            final n = app.library.addToPlaylist(p.id, [id]);
-            toast(n > 0 ? '已加入「${p.title}」' : '「${p.title}」里已经有这首歌了', n > 0 ? 'check' : 'info');
+            final n = app.library.addToPlaylist(p.id, all);
+            if (all.length == 1) {
+              toast(n > 0 ? '已加入「${p.title}」' : '「${p.title}」里已经有这首歌了', n > 0 ? 'check' : 'info');
+            } else {
+              toast(n == 0 ? '选中的歌「${p.title}」里都有了' : '已加入 $n 首到「${p.title}」${n < all.length ? '（${all.length - n} 首已在歌单里）' : ''}', n > 0 ? 'check' : 'info');
+            }
             return;
           }
           toast('已加入「${p.title}」', 'check');
@@ -840,14 +863,16 @@ class _ScanStripState extends State<_ScanStrip> with SingleTickerProviderStateMi
 
 // ============ 歌词分享卡 / 播放链路 ============
 void openLyricCard(BuildContext context) {
+  final cardKey = GlobalKey();
   showLSheet(context, title: '歌词分享卡', dark: true, builder: (c) {
     final app = c.app;
     final s = app.song;
     final k = app.lyricIndex;
+    final text = [lyrics[k].text, lyrics[(k + 1) % lyrics.length].text].where((x) => x.trim().isNotEmpty).join('\n');
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: Tk.pad),
       child: Column(children: [
-        SizedBox(
+        RepaintBoundary(key: cardKey, child: SizedBox(
           height: 360,
           child: Cover.song(
           s,
@@ -874,17 +899,29 @@ void openLyricCard(BuildContext context) {
             ),
           ),
         ),
-        ),
+        )),
         const SizedBox(height: 14),
         Row(children: [
-          Expanded(child: Btn.sec('保存图片', icon: 'download', onTap: () {
+          Expanded(child: Btn.sec('复制歌词', icon: 'copy', onTap: () {
+            Clipboard.setData(ClipboardData(text: '$text\n—— ${s.title} · ${s.artist}'));
             Navigator.of(c).pop();
-            toast('已保存到相册', 'image');
+            toast('已复制歌词', 'copy');
           })),
           const SizedBox(width: 10),
-          Expanded(child: Btn('分享', icon: 'share', onTap: () {
-            Navigator.of(c).pop();
-            toast('已打开系统分享', 'share');
+          // 分享图片：把卡片渲染成 PNG 交给系统分享面板（面板里可以「保存到相册」或发给好友）
+          Expanded(child: Btn('分享图片', icon: 'share', onTap: () async {
+            try {
+              final b = cardKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+              if (b == null) return;
+              final img = await b.toImage(pixelRatio: 3);
+              final png = await img.toByteData(format: ui.ImageByteFormat.png);
+              if (png == null) return;
+              final file = XFile.fromData(png.buffer.asUint8List(), mimeType: 'image/png', name: 'lyra-lyric.png');
+              if (c.mounted) Navigator.of(c).pop();
+              await Share.shareXFiles([file], text: '${s.title} · ${s.artist}');
+            } catch (e) {
+              toast('分享失败：$e', 'info');
+            }
           })),
         ]),
       ]),
@@ -1105,7 +1142,7 @@ void openAppIcons(BuildContext context) {
               Press(
                 onTap: () {
                   app.update(() => app.appIcon = a[0]);
-                  toast('App 图标：${a[1]}', 'grid');
+                  toast('App 内图标已换成「${a[1]}」', 'grid');
                 },
                 child: Column(children: [
                   AnimatedContainer(duration: Tk.base, padding: const EdgeInsets.all(3), decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), border: Border.all(color: app.appIcon == a[0] ? pal.acc : Colors.transparent, width: 2)), child: AppIcon(a[0], size: 60)),
@@ -1117,7 +1154,7 @@ void openAppIcons(BuildContext context) {
           ],
         ),
       ),
-      const Hint('图标为「Lyra」暂名设计：天琴座（Lyra）的竖琴 + 织女星。更换后系统会提示一次。'),
+      const Hint('图标为「Lyra」暂名设计：天琴座（Lyra）的竖琴 + 织女星。这里只更换 App 里显示的图标（迷你播放器、分享卡等），桌面上的应用图标暂时不能更换。'),
     ]);
   });
 }
@@ -1145,12 +1182,25 @@ void openFonts(BuildContext context) {
             ]),
           ),
         ),
-      Group(children: [Item(icon: 'plus', color: 'blue', label: '导入字体', sub: '支持 .ttf / .otf，导入后只在本 App 内生效', onTap: () => toast('已打开文件选择器', 'font'))]),
+      Group(children: [
+        if (customFontReady)
+          Item(icon: 'font', color: 'teal', label: '导入的字体', sw: app.font == 'custom', onSw: (v) => app.update(() => app.font = v ? 'custom' : 'system')),
+        Item(icon: 'plus', color: 'blue', label: customFontReady ? '重新导入字体' : '导入字体', sub: '支持 .ttf / .otf，导入后只在本 App 内生效', onTap: () async {
+          try {
+            final name = await importCustomFont();
+            if (name == null) return;
+            app.update(() => app.font = 'custom');
+            toast('已导入「$name」', 'font');
+          } catch (e) {
+            toast(e is FormatException ? e.message : '导入失败：$e', 'info');
+          }
+        }),
+      ]),
     ]);
   });
 }
 
-String? fontFamilyOf(String id) => const {'serif': 'serif', 'mono': 'monospace', 'kai': 'serif', 'round': 'sans-serif'}[id];
+String? fontFamilyOf(String id) => id == 'custom' ? (customFontReady ? customFontFamily : null) : const {'serif': 'serif', 'mono': 'monospace', 'kai': 'serif', 'round': 'sans-serif'}[id];
 List<String>? fontFallbackOf(String id) => const {
       'round': ['SF Pro Rounded', 'HarmonyOS Sans SC', 'MiSans', 'PingFang SC'],
       'serif': ['Songti SC', 'Noto Serif SC', 'Noto Serif CJK SC', 'Source Han Serif SC'],

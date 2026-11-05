@@ -71,6 +71,10 @@ class AudioEngine {
   Future<void> init(LyraMediaHandler handler) async {
     _handler = handler;
     _handler!.onAction = (a) => onMediaAction?.call(a);
+    // 通知栏 / 锁屏拖进度条（原来 seek 没有实现，拖了会弹回去）
+    _handler!.onSeekTo = (p) {
+      if (_loaded) unawaited(_player.seek(p));
+    };
 
     final session = await AudioSession.instance;
     await session.configure(const AudioSessionConfiguration.music());
@@ -390,6 +394,11 @@ class AudioEngine {
   }
 
   // ---------------------------------------------------------------- 通知
+
+  /// 蓝牙歌词推送：把当前歌词行写进媒体信息。
+  void pushLyric(String title, String artist) {
+    if (_loaded) _handler?.setMediaText(title, artist);
+  }
 
   /// 播放状态 / 收藏状态变化后刷新通知栏（收藏按钮图标随 liked 切换）。
   void updateNotification({required bool playing, required bool liked}) {

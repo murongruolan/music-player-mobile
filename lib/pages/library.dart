@@ -12,6 +12,7 @@ import '../ui/kit.dart';
 import '../widgets/sheets.dart';
 import 'common.dart';
 import 'detail.dart';
+import 'misc.dart' show DownloadPage;
 
 class LibraryPage extends StatefulWidget {
   const LibraryPage({super.key});
@@ -172,7 +173,7 @@ class _LibraryPageState extends State<LibraryPage> {
         controller: tabScroll[3],
         actions: [
           IBtn('chart', onTap: () => push(context, const StatsPage())),
-          IBtn('download', onTap: () => online ? toast('导入平台歌单需要先接入平台接口', 'info') : openImportPlaylist(context)),
+          IBtn('download', onTap: () => online ? push(context, const DownloadPage()) : openImportPlaylist(context)), // 联网：下载管理
           IBtn('plus', onTap: () => openNewPlaylist(context)),
         ],
         children: [

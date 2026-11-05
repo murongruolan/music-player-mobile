@@ -109,14 +109,15 @@ class SourceManager {
   /// [probe]：拿到地址后先发一个 `Range: bytes=0-1` 请求看文件多大、能不能访问：
   /// 试听片段 / 404 换下一个音源，403 重新取一次地址仍不行再换。探测本身失败（超时、不支持 Range）不拦截。
   /// [avoid]：这次跳过的音源 id（上一个地址被判定为试听片段时）。
-  Future<ResolvedUrl> resolveUrl(Json track, String preferred, List<CloudSource> sources, {bool forceRefresh = false, bool probe = false, Set<String> avoid = const {}}) async {
+  /// [allowLower]：音质可以往下降；[firstOnly]：只用第一个音源（关掉「换用同平台其他脚本」）。
+  Future<ResolvedUrl> resolveUrl(Json track, String preferred, List<CloudSource> sources, {bool forceRefresh = false, bool probe = false, Set<String> avoid = const {}, bool allowLower = true, bool firstOnly = false}) async {
     final platform = '${track['platform']}';
     if (platform == 'local' || platform.isEmpty) throw const ResolveException('本地歌曲不需要在线解析');
     if (sources.isEmpty) throw const ResolveException('还没有导入音源脚本');
     final errors = <String>[];
     final trackQualities = [for (final q in (track['qualities'] as List? ?? const [])) '$q'];
     final duration = track['duration'] is num ? (track['duration'] as num).toInt() : 0;
-    for (final s in sources) {
+    for (final s in firstOnly ? sources.take(1) : sources) {
       if (avoid.contains(s.id)) {
         errors.add('${s.name}：只拿到试听片段');
         continue;
@@ -133,7 +134,7 @@ class SourceManager {
         errors.add('${s.name} 不支持${Plat.names[platform] ?? platform}');
         continue;
       }
-      final q = pickQuality(preferred, trackQualities, cap.qualities);
+      final q = pickQuality(preferred, trackQualities, cap.qualities, allowLower: allowLower);
       if (q == null) {
         errors.add('${s.name} 不支持这首歌可用的音质');
         continue;
@@ -190,7 +191,8 @@ class SourceManager {
     if (range != null) total = int.tryParse(range.split('/').last.trim());
     if (total == null && res.statusCode == 200) total = int.tryParse(res.headers['content-length'] ?? '');
     if (total == null || total <= 0 || durationSec < 30) return null;
-    return total < durationSec * 16000 * trialRatio ? UrlIssue.trial : null;
+    // 按 32kbps 估：试听片段只有全长的百分之几，低码率（64 / 96kbps）的完整歌不会被误判
+    return total < durationSec * 4000 * trialRatio ? UrlIssue.trial : null;
   }
 
   static const _probeUa = 'Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36';

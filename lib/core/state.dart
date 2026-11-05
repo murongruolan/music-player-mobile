@@ -41,6 +41,9 @@ class Settings {
   bool smart = true, gradual = true, crossScript = true, crossPlat = true, autoNext = true;
   bool nQ = true, nS = true, nA = false, allowDown = true;
   bool floatLyric = false, floatLock = false, btLyric = true, sbLyric = false;
+
+  /// 蓝牙歌词推送的顺序：0 仅歌词，1 歌词 · 歌名，2 歌名 · 歌词。
+  int btOrder = 1;
   double dlConc = 3;
   bool dlCover = true, dlLyric = true, wifiOnly = true, cache = true, vinylSpin = true, haptics = true, pitch = true;
   bool finishSong = true, fadeStop = true, cloudSync = true, autoBackup = true, crash = true, navAutoMin = true, clipDetect = true;
@@ -262,6 +265,8 @@ class AppState extends ChangeNotifier {
     if (e == null) return;
     e.onPosition = (p) => pos.value = p;
     e.onDuration = (d) {
+      // 时长未知的歌（云盘文件）：用引擎给出的实际时长回填，进度条 / 歌词才有刻度
+      if (hasSong && songs[cur].dur <= 0 && d > 0) songs[cur] = songs[cur].copyWith(dur: d.round());
       if (engineDuration != d) update(() => engineDuration = d); // song getter 的实际时长变了
     };
     e.onPlaying = (p) {
@@ -275,8 +280,21 @@ class AppState extends ChangeNotifier {
       // 解析 / 加载失败：界面回到暂停态，迷你条显示原因
       playError = msg.replaceFirst(RegExp(r'^播放失败[：:]\s*'), '');
       update(() => playing = false);
-      notice?.call(msg, 'info');
       onEngineError?.call(msg);
+      // 设置「全部失败播放下一首」：自动跳到下一首，但最多连跳 3 首，免得一路跑完整个列表
+      _failStreak++;
+      if (set.smart && set.autoNext && queue.length > 1 && _failStreak < 3) {
+        notice?.call('$msg，已跳到下一首', 'info');
+        final id = cur;
+        Future<void>.delayed(const Duration(milliseconds: 800), () {
+          if (cur == id && !playing) {
+            playing = true;
+            _step(1);
+          }
+        });
+        return;
+      }
+      notice?.call(_failStreak >= 3 ? '连续 $_failStreak 首都没能播放，已停止。$msg' : msg, 'info');
     };
     e.onMediaAction = (a) {
       // 通知栏按钮 / 耳机线控 / 蓝牙控制统一路由
@@ -351,6 +369,31 @@ class AppState extends ChangeNotifier {
   /// 边听边缓存：开关 + 缓存目录下发引擎（settings 切换与启动时调用）。
   String? _streamCacheDir;
 
+  /// 边听边缓存上限 1 GB：超出时先删最久没动过的文件（启动 / 开关时检查一次）。
+  static const _streamCacheMax = 1024 * 1024 * 1024;
+  Future<void> _trimStreamCache(String dir) async {
+    try {
+      final files = <(io.File, int, DateTime)>[];
+      await for (final e in io.Directory(dir).list()) {
+        if (e is io.File) {
+          final st = await e.stat();
+          files.add((e, st.size, st.modified));
+        }
+      }
+      var total = files.fold<int>(0, (a, f) => a + f.$2);
+      if (total <= _streamCacheMax) return;
+      files.sort((a, b) => a.$3.compareTo(b.$3));
+      for (final f in files) {
+        if (total <= _streamCacheMax * .8) break;
+        try {
+          await f.$1.delete();
+          total -= f.$2;
+        } catch (_) {}
+      }
+      AppLog.instance.add('缓存', '边听边缓存超过 1 GB，已清理到 ${(total / 1048576).round()} MB');
+    } catch (_) {}
+  }
+
   Future<void> applyCacheToEngine() async {
     final e = engine;
     if (e == null) return;
@@ -361,6 +404,7 @@ class AppState extends ChangeNotifier {
         dir = '${d.path}${io.Platform.pathSeparator}stream-cache';
         await io.Directory(dir).create(recursive: true);
         _streamCacheDir = dir;
+        unawaited(_trimStreamCache(dir));
       } catch (_) {
         dir = null; // 目录不可用：本次会话退回直连
       }
@@ -383,9 +427,39 @@ class AppState extends ChangeNotifier {
   }
 
   /// 引擎加载完成后的收尾：套用速度 / 音调并刷新通知栏（带真实收藏态）。
+  /// 蓝牙歌词推送：歌词行变了就把它写进媒体信息（车机 / 蓝牙耳机 / 锁屏显示）。关掉开关时恢复歌名。
+  String? _btPushed;
+  void _pushBtLyric() {
+    final e = engine!;
+    final s = songs[cur];
+    if (!set.btLyric || !online || lyrics.length < 2) {
+      if (_btPushed != null) {
+        _btPushed = null;
+        e.pushLyric(s.title, s.artist);
+      }
+      return;
+    }
+    final line = lyrics[lyricIndex.clamp(0, lyrics.length - 1)].text.trim();
+    final text = line.isEmpty ? '♪' : line;
+    _btPushed = text; // 每次都推：通知刷新（暂停 / 收藏）会把标题改回歌名，引擎侧内容没变时自己会跳过
+    switch (set.btOrder) {
+      case 0:
+        e.pushLyric(text, s.artist);
+      case 2:
+        e.pushLyric(s.title, text);
+      default:
+        e.pushLyric(text, '${s.title} · ${s.artist}');
+    }
+  }
+
+  /// 连续播放失败的首数（自动跳下一首的上限用）；成功加载一首就清零。
+  int _failStreak = 0;
+
   void _engineAfterLoad() {
     final e = engine!;
     if (!e.loaded) return;
+    _failStreak = 0;
+    _btPushed = null;
     _restoreSleepVolume(); // 淡出中用户切了歌：恢复音量，淡出窗口由 _sleepTick 重新进入
     unawaited(e.setVolume(vol));
     applySpeedToEngine();
@@ -671,7 +745,7 @@ class AppState extends ChangeNotifier {
   /// 按经过的时间 × 倍速往前推，最多推 0.6 秒（防止卡顿 / 缓冲时跑过头）。
   double get smoothPos {
     final p = pos.value;
-    if (!playing || !hasSong && online) return p;
+    if (!playing || (!hasSong && online)) return p;
     final dt = math.min(_posClock.elapsedMicroseconds / 1e6, 0.6);
     return p + dt * speed;
   }
@@ -731,8 +805,17 @@ class AppState extends ChangeNotifier {
     final dt = now.difference(_last).inMicroseconds / 1e6;
     _last = now;
     if (!playing || !hasSong) return;
+    // 真实播放：只有引擎真的在播才计听歌统计；进度全由引擎回调驱动。
+    // 引擎没加载成功（加载中 / 失败）时绝不能走下面的模拟时钟：云盘歌曲时长是 0，
+    // 模拟时钟每 50ms 判一次「播完了」切下一首，一路跳完整个列表，统计也被刷满。
+    if (engine != null) {
+      if (engineActive && engine!.playingNow) {
+        cloud.onPlayTick(cur, dt);
+        _pushBtLyric();
+      }
+      return;
+    }
     cloud.onPlayTick(cur, dt);
-    if (engineActive) return; // 真实进度由引擎回调驱动，这里只负责听歌统计
     var p = pos.value + dt * speed;
     if (p >= song.dur) {
       if (mode == 'one') {
@@ -747,6 +830,7 @@ class AppState extends ChangeNotifier {
 
   /// [ids]：明确的播放队列（平台歌单 / 榜单 / 搜索结果）；不给时按 [list] 取。
   void play(int id, {String? list, String? name, List<int>? ids}) {
+    _failStreak = 0;
     AppLog.instance.add('操作', '点播 ${_songLabel(id)}${name == null ? '' : ' · 队列「$name」'}${ids == null ? '' : '（${ids.length} 首）'}');
     if (_blockPlay(id)) return;
     if (ids != null) {
@@ -756,7 +840,10 @@ class AppState extends ChangeNotifier {
       queue = listOf(list);
       if (name != null) queueName = name;
     }
-    if (!queue.contains(id)) queue.insert(math.min(queue.indexOf(cur) + 1, queue.length), id);
+    if (!queue.contains(id)) {
+      final at = queue.indexOf(cur); // cur 不在队列（首次播放 = -1）时放在队首
+      queue.insert(at < 0 ? 0 : math.min(at + 1, queue.length), id);
+    }
     cur = id;
     pos.value = 0;
     engineDuration = 0;
@@ -775,7 +862,7 @@ class AppState extends ChangeNotifier {
     AppLog.instance.add('操作', '播放全部 $list${shuffle ? '（随机）' : ''}');
     if (_blockPlay()) return;
     queue = listOf(list);
-    if (shuffle) queue.shuffle(math.Random(7));
+    if (shuffle) queue.shuffle(math.Random());
     if (name != null) queueName = name;
     if (queue.isEmpty) return;
     cur = queue.first;
@@ -986,6 +1073,9 @@ class AppState extends ChangeNotifier {
     unawaited(anns.reset());
     unawaited(cloud.reset());
     if (online) unawaited(library.reset());
+    lyricStore
+      ..reset()
+      ..clear();
     if (!authed) return notifyListeners();
     authed = false;
     authPage = 'login';
