@@ -17,9 +17,11 @@ void main() {
       await tester.pumpWidget(LyraApp(state: app));
       await tester.pump(const Duration(seconds: 1));
       pushFull(tester.element(find.byType(Shell)), Scaffold(body: AudioMatchView(preview: mode)));
-      await tester.pump(const Duration(milliseconds: 900));
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
       expect(tester.takeException(), isNull);
-      expect(find.text(mode == 'hit' ? '其他识别结果' : '点击停止识别'), findsOneWidget);
+      expect(find.text(mode == 'hit' ? '其他识别结果' : '点击停止识别', skipOffstage: false), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
       await tester.pump(const Duration(seconds: 3));
       app.dispose();

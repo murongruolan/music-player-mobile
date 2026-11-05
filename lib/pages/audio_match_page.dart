@@ -318,6 +318,7 @@ class _AudioMatchViewState extends State<AudioMatchView> with TickerProviderStat
     };
     return Container(
       key: const ValueKey('listen'),
+      width: double.infinity,
       decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [pal.bg, Color.lerp(pal.bg, pal.acc, pal.dark ? .06 : .08)!])),
       child: Column(children: [
         const Spacer(flex: 3),
@@ -362,7 +363,7 @@ class _AudioMatchViewState extends State<AudioMatchView> with TickerProviderStat
         const Spacer(flex: 4),
         Padding(
           padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 18),
-          child: Text('只在本机计算声音指纹，不上传录音 · 识别结果来自网易云音乐', style: ts(11.5, c: pal.t3)),
+          child: Padding(padding: const EdgeInsets.symmetric(horizontal: 24), child: Text('只在本机计算声音指纹，不上传录音 · 识别结果来自网易云音乐', textAlign: TextAlign.center, style: ts(11.5, c: pal.t3))),
         ),
       ]),
     );
