@@ -14,7 +14,7 @@ const _map = <String, IconData>{
   'cast': Icons.cast_rounded, 'lyric': Icons.lyrics_outlined, 'quote': Icons.format_quote_rounded, 'mic': Icons.mic_none_rounded,
   'gear': Icons.settings_outlined, 'palette': Icons.palette_outlined, 'check': Icons.check_rounded,
   'refresh': Icons.refresh_rounded, 'trash': Icons.delete_outline_rounded, 'drag': Icons.drag_indicator_rounded,
-  'scan': Icons.qr_code_scanner_rounded, 'cloud': Icons.cloud_outlined, 'shield': Icons.verified_user_outlined, 'locate': Icons.my_location_rounded,
+  'scan': Icons.qr_code_scanner_rounded, 'cloud': Icons.cloud_outlined, 'shield': Icons.verified_user_outlined, 'locate': Icons.my_location_rounded, 'expand': Icons.fullscreen_rounded,
   'info': Icons.info_outline_rounded, 'bell': Icons.notifications_none_rounded, 'chart': Icons.bar_chart_rounded,
   'folder': Icons.folder_outlined, 'link': Icons.link_rounded, 'phone': Icons.smartphone_rounded, 'tv': Icons.tv_rounded,
   'mail': Icons.mail_outline_rounded, 'lock': Icons.lock_outline_rounded, 'eye': Icons.visibility_outlined,

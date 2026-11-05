@@ -95,7 +95,7 @@ const scriptsSeed = [
 const skinCats = ['动效', '拟物', '花样', '极简'];
 const skins = [
   Skin('spring', '律动', '动效', 'Apple Music 风格：封面形变、弹簧瀑布或波浪歌词、内嵌队列', usesBg: true, tag: '默认'),
-  Skin('standby', '待机', '动效', '横屏全屏：两侧随节拍荡开的波光 + 衬线大字歌词，充电时自动进入', tag: '横屏'),
+
   Skin('particles', '粒子', '动效', '与桌面端同源的 3D 点云，可拖动旋转'),
   Skin('pulse', '声波', '动效', '扩散声波环 + 节拍频谱', usesBg: true),
   Skin('vinyl', '唱片', '拟物', '黑胶旋转、唱针起落', usesBg: true),
@@ -109,7 +109,14 @@ const skins = [
   Skin('magazine', '杂志', '极简', '纸张底色、超大号排版，当前歌词作为引文', tag: '新'),
   Skin('dial', '表盘', '极简', '手表表盘：60 格刻度环就是进度条，指针随播放走动', tag: '新'),
   Skin('minimal', '极简', '极简', '纯文本列表，最省电'),
+  // 横屏皮肤：普通态（封面 · 控制 · 歌词 · 右侧功能坞）↔ 全屏态（沉浸大字），交叉淡化切换
+  Skin('standby', '待机', '横屏', '两侧随节拍荡开的波光；不操作时进全屏衬线大字歌词 + 时钟', tag: '横屏'),
+  Skin('land_vinyl', '唱片', '横屏', '模糊封面背景，旋转黑胶 + 右侧歌词；全屏时大唱片压在屏边', tag: '新'),
+  Skin('land_clock', '时钟', '横屏', '床头 / 桌面待机：大时钟 + 当前歌词，全屏只留时钟和一句', tag: '新'),
 ];
+
+/// 横屏皮肤（播放器全屏、锁横屏）。
+bool isLandscapeSkin(String id) => skinBy(id).cat == '横屏';
 Skin skinBy(String id) => skins.firstWhere((s) => s.id == id, orElse: () => skins.first);
 
 const qualities = [

@@ -125,7 +125,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final app = context.app;
     final sk = skinBy(app.skin);
     final mq = MediaQuery.of(context);
-    final full = app.skin == 'standby';
+    final full = isLandscapeSkin(app.skin);
     return GestureDetector(
       onVerticalDragStart: _start,
       onVerticalDragUpdate: _update,

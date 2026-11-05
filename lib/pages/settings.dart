@@ -134,18 +134,27 @@ void openHomeOrder(BuildContext context) {
 
 void openSkins(BuildContext context, {bool dark = false}) {
   var tab = '全部';
+  // 竖屏 / 横屏两组：横屏皮肤单独一个页签（进入时锁横屏、全屏沉浸）
+  var land = isLandscapeSkin(context.appRead.skin);
+  final portrait = skins.where((s) => !isLandscapeSkin(s.id)).toList();
+  final landscape = skins.where((s) => isLandscapeSkin(s.id)).toList();
   showLSheet(context, title: '播放器皮肤', sub: '${skins.length} 套', dark: dark, builder: (c) => StatefulBuilder(builder: (c, set) {
         final app = c.app;
         final pal = c.pal;
-        final list = skins.where((s) => tab == '全部' || s.cat == tab).toList();
+        final list = land ? landscape : portrait.where((s) => tab == '全部' || s.cat == tab).toList();
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Seg(['竖屏 · ${portrait.length}', '横屏 · ${landscape.length}'], land ? '横屏 · ${landscape.length}' : '竖屏 · ${portrait.length}', (v) => set(() => land = v.startsWith('横屏'))),
+          const SizedBox(height: 10),
+          if (!land)
           SizedBox(
             height: 36,
             child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: Tk.pad), children: [
               for (final t in ['全部', ...skinCats])
-                Padding(padding: const EdgeInsets.only(right: 8), child: LChip(t, on: t == tab, onTap: () => set(() => tab = t), trailing: Text('${t == '全部' ? skins.length : skins.where((s) => s.cat == t).length}', style: ts(11, c: pal.t3, num: true)))),
+                Padding(padding: const EdgeInsets.only(right: 8), child: LChip(t, on: t == tab, onTap: () => set(() => tab = t), trailing: Text('${t == '全部' ? portrait.length : portrait.where((s) => s.cat == t).length}', style: ts(11, c: pal.t3, num: true)))),
             ]),
-          ),
+          )
+          else
+            const Hint('横屏皮肤会把播放器转成横屏全屏：普通态有封面、控制和歌词，不操作 12 秒自动进入全屏大字（适合充电支架 / 床头），点一下回来。', padding: EdgeInsets.symmetric(horizontal: Tk.pad)),
           const SizedBox(height: 12),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: Tk.pad),
