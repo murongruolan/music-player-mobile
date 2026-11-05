@@ -64,7 +64,8 @@ PlaylistRef? parsePlaylistUrl(String raw) {
     return id == null ? null : PlaylistRef(Plat.kw, id);
   }
   if (host.endsWith('kugou.com')) {
-    final collection = RegExp(r'(collection_[a-z0-9_]+)', caseSensitive: false).firstMatch(raw)?.group(1);
+    // global_collection_id=collection_3_… ；注意参数名本身也含「collection_id」，id 必须以 collection_数字 开头
+    final collection = q['global_collection_id'] ?? RegExp(r'(?<![a-z_])(collection_\d[a-z0-9_]*)', caseSensitive: false).firstMatch(raw)?.group(1);
     if (collection != null) return PlaylistRef(Plat.kg, collection);
     final gcid = RegExp(r'(?:^|/)(gcid_[a-z0-9_]+)(?:/|$)', caseSensitive: false).firstMatch(url.path)?.group(1);
     if (gcid != null) return PlaylistRef(Plat.kg, gcid);
