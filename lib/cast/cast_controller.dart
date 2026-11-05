@@ -16,6 +16,13 @@ class CastController {
   Timer? _poll;
   bool _ended = false; // 每首歌只报一次「播完」
 
+  // 轮询间隙的位置外推：GetPositionInfo 每 2 秒一次，直接回写会让进度条两秒一跳
+  // （本地播放是引擎 ~200ms 一报）。两次轮询之间按流逝秒数本地推进，下轮轮询对表。
+  Timer? _extrapolate;
+  double _lastPos = 0;
+  DateTime _lastPosAt = DateTime.now();
+  bool _playingNow = false;
+
   /// 这首歌在渲染端真正播起来过（报过 PLAYING）：之前的 STOPPED 是加载中的转场，不算播完。
   bool _seenPlaying = false;
   DateTime _castAt = DateTime.now();
@@ -161,11 +168,22 @@ class CastController {
     }
   }
 
+  /// 投放切歌 / 重投前暂停轮询与外推：解析期间旧一轮的进度回调不再回写。
+  /// 否则切歌后进度条先被旧位置顶满，等新一轮轮询才开始才归零（实测现象）。
+  void suspendPolling() {
+    _poll?.cancel();
+    _poll = null;
+    _extrapolate?.cancel();
+    _extrapolate = null;
+  }
+
   /// 断开：停止渲染端播放并清掉轮询。本地恢复播放由 AppState 决定。
   Future<void> disconnect() async {
     final ctl = _controlUrl;
     _poll?.cancel();
     _poll = null;
+    _extrapolate?.cancel();
+    _extrapolate = null;
     if (ctl != null) {
       try {
         await Dlna.stop(ctl);
@@ -184,16 +202,30 @@ class CastController {
   void dispose() {
     _poll?.cancel();
     _poll = null;
+    _extrapolate?.cancel();
+    _extrapolate = null;
   }
 
   // ------------------------------------------------------------ 内部
 
   void _startPoll({required bool playing}) {
     _poll?.cancel();
+    _playingNow = playing;
+    _lastPosAt = DateTime.now();
     onPlaying?.call(playing);
-    // 立即取一次，随后每 2 秒轮询（局域网开销可忽略）
+    // 立即取一次，随后每 2 秒轮询（局域网开销可忽略）；间隙由外推定时器补齐
     unawaited(_pollOnce());
     _poll = Timer.periodic(const Duration(seconds: 2), (_) => unawaited(_pollOnce()));
+    _extrapolate?.cancel();
+    _extrapolate = Timer.periodic(const Duration(milliseconds: 500), (_) => _extrapolateOnce());
+  }
+
+  /// 两次轮询之间按流逝秒数推进进度，只在渲染端确实在播时推进（暂停 / 转场冻结）。
+  void _extrapolateOnce() {
+    if (!_playingNow || !connected || onPosition == null) return;
+    final dt = DateTime.now().difference(_lastPosAt).inMilliseconds / 1000;
+    if (dt <= 0) return;
+    onPosition?.call(_lastPos + dt);
   }
 
   Future<void> _pollOnce() async {
@@ -203,7 +235,12 @@ class CastController {
       final r = await Dlna.pollInfo(ctl);
       if (++_pollN % 5 == 0) unawaited(_readVolume()); // 约 10 秒对一次音量（电视遥控器也会改）
       if (r.duration > 0) onDuration?.call(r.duration);
-      if (r.position > 0) onPosition?.call(r.position);
+      if (r.position > 0) {
+        _lastPos = r.position;
+        _lastPosAt = DateTime.now();
+        onPosition?.call(r.position);
+      }
+      _playingNow = r.state == 'PLAYING';
       switch (r.state) {
         case 'PLAYING':
           _seenPlaying = true;

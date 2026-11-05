@@ -405,13 +405,16 @@ class AppState extends ChangeNotifier {
 
   /// 断开投放：渲染端停止，界面回到暂停（按播放键回本地播放），音量键回到本机。
   Future<void> disconnectCast() async {
-    await cast?.disconnect();
+    final c = cast;
     engine?.setRemoteVolume(null);
+    // 界面与状态先落到「已断开」：渲染端 Stop 的 SOAP 可能被 Wi-Fi 省电拖慢几秒，
+    // 不能让它挡住断开的即时反馈（原实现先等 Stop 再更新，扫描中按断开像没生效）。
     update(() {
       castDev = null;
       playing = false;
     });
     _pushMediaCard();
+    await c?.disconnect();
   }
 
   /// 通知卡片最近一次推送时的进度（投放中据此判断要不要重推）。
@@ -449,6 +452,7 @@ class AppState extends ChangeNotifier {
   Future<void> _castPlayCurrent() async {
     final c = cast, r = resolver;
     if (c == null || r == null || !hasSong) return;
+    c.suspendPolling(); // 切歌 / 重投前停掉旧一轮的轮询与外推：解析期间旧位置不再回写进度条
     final autoplay = playing;
     try {
       final rp = await r.resolve(songs[cur]);
@@ -915,7 +919,9 @@ class AppState extends ChangeNotifier {
   Song get song {
     final s = hasSong ? songs[cur] : Song.placeholder;
     final d = engineDuration.round();
-    if (engineActive && d > 0 && d != s.dur) return s.copyWith(dur: d);
+    // 投放中：位置与时长都来自渲染端（同一把尺子）。分母若仍用元数据时长，
+    // 渲染端每走 1 秒的刻度对不上（实测：进度条提前满格、永远等不到播完）。
+    if ((engineActive || casting) && d > 0 && d != s.dur) return s.copyWith(dur: d);
     return s;
   }
 
