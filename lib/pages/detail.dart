@@ -538,7 +538,7 @@ class _Heatmap extends StatelessWidget {
     final start = DateTime(today.year, today.month, today.day - (foot.length - 1));
     final lead = start.weekday - 1; // 第一列前面空几格（周一开头）
     final cols = ((lead + foot.length) / 7).ceil();
-    Color colorOf(int lv) => lv == 0 ? (pal.dark ? const Color(0x14FFFFFF) : const Color(0x12000000)) : pal.acc.withValues(alpha: const [0, .32, .55, .78, 1.0][lv]);
+    Color colorOf(int lv) => lv == 0 ? (pal.dark ? const Color(0x14FFFFFF) : const Color(0x12000000)) : pal.acc.withValues(alpha: const <double>[0, .32, .55, .78, 1][lv]);
     return LayoutBuilder(builder: (c, cs) {
       const gap = 3.0, labelW = 18.0;
       final cell = ((cs.maxWidth - labelW - gap * (cols - 1)) / cols).clamp(6.0, 22.0);
