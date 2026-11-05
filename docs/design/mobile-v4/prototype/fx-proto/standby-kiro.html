@@ -314,7 +314,7 @@ void main() { gl_FragColor = frag(); }
 
   // ---------------- 参数（初值 = 素材包 params/calibrated_params.json） ----------------
   const P = {
-    magic: '#4b73be',
+    magic: '#5ab2ff', // 规格 §5.1：蓝主题实际约 #5AB2FF（校准文件里的 #4b73be 偏暗）
     cCurveIntensity: .03, cCurveSharpness: .03,
     // 在素材包校准值基础上对照录屏再调：左边弱、疏（暗弧 3 道左右），右边强（亮弧明显），细高光环落在右侧约 0.88 屏宽处
     cLeftWaveHeight: .035, cLeftWaveWidth: .2, cLeftWaveSpeed: .3, cLeftWaveRadius: .6,
@@ -336,7 +336,7 @@ void main() { gl_FragColor = frag(); }
   panel.appendChild(color);
   $('magic').oninput = e => P.magic = e.target.value;
   const presets = document.createElement('div'); presets.className = 'row';
-  for (const [n, c] of [['蓝（录屏）', '#4b73be'], ['红', '#b84a52'], ['紫', '#7a62c9'], ['绿', '#3f9a7a']]) {
+  for (const [n, c] of [['蓝（录屏）', '#5ab2ff'], ['蓝（校准值）', '#4b73be'], ['红', '#b84a52'], ['紫', '#7a62c9'], ['绿', '#3f9a7a']]) {
     const b = document.createElement('button'); b.textContent = n; b.onclick = () => { P.magic = c; $('magic').value = c; }; presets.appendChild(b);
   }
   panel.appendChild(presets);
