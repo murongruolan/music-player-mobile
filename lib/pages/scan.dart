@@ -471,21 +471,8 @@ class _OnlineScanState extends State<_OnlineScan> {
 /// 联网模式的听歌识曲外壳：暗色全屏 + 返回按钮。
 class _OnlineMatchShell extends StatelessWidget {
   const _OnlineMatchShell();
+  // 顶栏（返回 / 标题 / 识别记录）在 AudioMatchView 里：识别中跟随主题浅色，结果页是封面取色的深色
   @override
-  Widget build(BuildContext context) {
-    final pal = context.pal.forceDark;
-    final mq = MediaQuery.of(context);
-    return PalScope(
-      pal: pal,
-      child: Scaffold(
-        backgroundColor: const Color(0xFF07080C),
-        body: Stack(children: [
-          const Positioned.fill(child: AudioMatchView()),
-          Positioned(top: mq.padding.top + 6, left: 8, child: IBtn('left', color: Colors.white, onTap: () => Navigator.of(context).pop())),
-          Positioned(top: mq.padding.top + 16, left: 0, right: 0, child: IgnorePointer(child: Center(child: Text('听歌识曲', style: ts(16, w: FontWeight.w700, c: Colors.white))))),
-        ]),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Scaffold(backgroundColor: context.pal.bg, body: const AudioMatchView());
 }
 
