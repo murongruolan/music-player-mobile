@@ -75,7 +75,11 @@ class Dlna {
         final hit = parseSsdpResponse(String.fromCharCodes(dg.data));
         if (hit != null) seen[hit.$1] = hit.$2;
       });
-      await Future<void>.delayed(timeout);
+      // UDP 会丢：1 秒后再发一遍（常见做法，部分电视第一包不应答）
+      await Future<void>.delayed(const Duration(seconds: 1));
+      socket.send(_mSearch('urn:schemas-upnp-org:device:MediaRenderer:1'), InternetAddress(_ssdpAddr), _ssdpPort);
+      socket.send(_mSearch('upnp:rootdevice'), InternetAddress(_ssdpAddr), _ssdpPort);
+      await Future<void>.delayed(timeout - const Duration(seconds: 1));
       sub.cancel();
     } finally {
       socket.close();

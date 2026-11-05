@@ -4,6 +4,8 @@
 
 import 'dart:async';
 
+import 'package:flutter/services.dart';
+
 import '../data/models.dart';
 import 'dlna.dart';
 
@@ -38,8 +40,26 @@ class CastController {
 
   bool get connected => device != null && _controlUrl != null;
 
-  /// 扫描局域网内的 DLNA 渲染设备。
-  Future<List<DlnaDevice>> discover() => Dlna.discover();
+  static const _native = MethodChannel('lyra/native');
+
+  /// 扫描局域网内的 DLNA 渲染设备。Android 上扫描期间持有 Wi-Fi 组播锁
+  /// （不少机型的 Wi-Fi 驱动默认丢弃组播 / 省电过滤，SSDP 发现会收不到包）。
+  Future<List<DlnaDevice>> discover() async {
+    await _multicast(true);
+    try {
+      return await Dlna.discover();
+    } finally {
+      await _multicast(false);
+    }
+  }
+
+  Future<void> _multicast(bool on) async {
+    try {
+      await _native.invokeMethod<void>('net.multicast', on);
+    } catch (_) {
+      // 非 Android / 测试环境没有这个通道：忽略
+    }
+  }
 
   /// 连接设备：拉设备描述确认 AVTransport 可用。
   Future<void> connect(DlnaDevice d) async {

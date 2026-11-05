@@ -843,17 +843,23 @@ void openSpeed(BuildContext context, {bool dark = false}) {
 }
 
 void openCast(BuildContext context, {bool dark = false}) {
+  // 面板状态必须放在 StatefulBuilder 的 builder 外面：原来写在 builder 里，每次 set() 重建都把
+  // scanning 重置成 true、devices 清空，并且再发起一轮扫描——扫到了也显示不出来，永远停在「扫描中」。
+  List<DlnaDevice> devices = [];
+  var scanning = true;
+  var connecting = '';
+  String? error;
+  var started = false;
+  var closed = false;
+  var gen = 0; // 每轮扫描一个编号：重新扫描时旧一轮的结果丢掉
+
   showLSheet(context, title: '投放', sub: '同一 Wi-Fi 下的 DLNA 设备', dark: dark, builder: (c) {
     final app = c.app;
     final pal = c.pal;
     // 真实 DLNA 发现：SSDP 组播 → 设备描述解析。连接后经 resolver 取流，声音由渲染端播放。
     return StatefulBuilder(builder: (c, set) {
-      List<DlnaDevice> devices = [];
-      var scanning = true;
-      var connecting = '';
-      String? error;
-
       Future<void> rescan() async {
+        final g = ++gen;
         set(() {
           scanning = true;
           error = null;
@@ -861,19 +867,27 @@ void openCast(BuildContext context, {bool dark = false}) {
         });
         try {
           final r = await app.cast?.discover() ?? const <DlnaDevice>[];
-          if (c.mounted) set(() {
+          if (closed || g != gen || !c.mounted) return;
+          set(() {
             devices = r;
             scanning = false;
           });
         } catch (e) {
-          if (c.mounted) set(() {
+          if (closed || g != gen || !c.mounted) return;
+          set(() {
             scanning = false;
             error = '$e';
           });
         }
       }
 
-      unawaited(rescan());
+      // 只在面板第一次构建时扫一次（放到这一帧之后，构建过程中不能 set）
+      if (!started) {
+        started = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!closed) unawaited(rescan());
+        });
+      }
 
       Future<void> pick(DlnaDevice d) async {
         if (app.cast == null) return toast('当前环境不支持投放', 'info');
@@ -886,7 +900,7 @@ void openCast(BuildContext context, {bool dark = false}) {
           app.update(() => app.castDev = null);
           toast('投放失败：$e', 'info');
         }
-        if (c.mounted) set(() => connecting = '');
+        if (!closed && c.mounted) set(() => connecting = '');
       }
 
       return Column(children: [
@@ -945,7 +959,7 @@ void openCast(BuildContext context, {bool dark = false}) {
         ),
       ]);
     });
-  });
+  }).whenComplete(() => closed = true);
 }
 
 class _ScanStrip extends StatefulWidget {
