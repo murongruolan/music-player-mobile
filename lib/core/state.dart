@@ -456,7 +456,10 @@ class AppState extends ChangeNotifier {
     final autoplay = playing;
     try {
       final rp = await r.resolve(songs[cur]);
-      if (rp == null) return;
+      if (rp == null) {
+        c.resumePolling();
+        return;
+      }
       if (!casting) return; // 等待解析期间用户断开了投放
       _suppressEnginePlaying = true; // 本地引擎让位：暂停 / 卸载产生的回调不回写 UI
       if (engineActive) await engine!.setPlaying(false);
@@ -466,6 +469,7 @@ class AppState extends ChangeNotifier {
       _pushMediaCard(); // unload 清空了卡片：换成投放中的这首
     } on ResolveException catch (e) {
       _suppressEnginePlaying = false;
+      c.resumePolling(); // 取不到新地址：渲染端还在放上一首，继续跟着它
       if (playing) update(() => playing = false);
       _pushMediaCard();
       notice?.call(e.message, 'info');
@@ -921,7 +925,10 @@ class AppState extends ChangeNotifier {
     final d = engineDuration.round();
     // 投放中：位置与时长都来自渲染端（同一把尺子）。分母若仍用元数据时长，
     // 渲染端每走 1 秒的刻度对不上（实测：进度条提前满格、永远等不到播完）。
-    if ((engineActive || casting) && d > 0 && d != s.dur) return s.copyWith(dur: d);
+    if (engineActive && d > 0 && d != s.dur) return s.copyWith(dur: d);
+    // 投放中：渲染端报的时长和歌曲时长差不多（±15%，比如 247 秒报成 245）或者歌曲时长未知时才用它。
+    // 不少电视对边下边播的流报的时长不靠谱（0、几个小时、按码率估错），这时还用元数据时长。
+    if (casting && d > 0 && d != s.dur && (s.dur <= 0 || (d - s.dur).abs() <= s.dur * .15)) return s.copyWith(dur: d);
     return s;
   }
 
