@@ -316,9 +316,10 @@ void main() { gl_FragColor = frag(); }
   const P = {
     magic: '#4b73be',
     cCurveIntensity: .03, cCurveSharpness: .03,
-    cLeftWaveHeight: .06, cLeftWaveWidth: .13, cLeftWaveSpeed: .30, cLeftWaveRadius: .82,
-    cRightWaveHeight: .08, cRightWaveWidth: .26, cRightWaveSpeed: .24, cRightWaveRadius: .78,
-    cLeftCircleR: .30, cRightCircleR: .05,
+    // 在素材包校准值基础上对照录屏再调：左边弱、疏（暗弧 3 道左右），右边强（亮弧明显），细高光环落在右侧约 0.88 屏宽处
+    cLeftWaveHeight: .035, cLeftWaveWidth: .2, cLeftWaveSpeed: .3, cLeftWaveRadius: .6,
+    cRightWaveHeight: .15, cRightWaveWidth: .26, cRightWaveSpeed: .24, cRightWaveRadius: .85,
+    cLeftCircleR: .12, cRightCircleR: .24,
     ringPeriod: 6, ringReach: 1.4, ringSpeed: .1, ringHeight: .7,
     energy: .5, blur: 5,
   };
