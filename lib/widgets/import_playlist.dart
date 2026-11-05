@@ -12,6 +12,7 @@ import '../pages/detail.dart';
 import '../pages/remote.dart' show appPlatform;
 import '../platform/models.dart';
 import '../platform/playlist_link.dart';
+import '../platform/registry.dart' show platformError;
 import '../shell/shell.dart';
 import '../ui/cover.dart';
 import '../ui/kit.dart';
@@ -111,7 +112,7 @@ void openImportOnline(BuildContext context, {String? initial}) {
           } catch (e) {
             if (!closed) set(() {
               stage = 2;
-              error = '导入中断：$e';
+              error = '导入中断：${platformError(e)}';
             });
           }
         }
