@@ -11,6 +11,7 @@ import '../auth/auth.dart';
 import '../core/app_log.dart';
 import '../core/state.dart';
 import '../core/tokens.dart';
+import '../download/downloads.dart' show DownloadStore;
 import '../data/mock.dart';
 import '../data/models.dart';
 import '../net/api_config.dart';
@@ -217,39 +218,79 @@ class _DownloadPageState extends State<DownloadPage> {
     final s = app.set;
     final dl = app.downloads;
     String fmtSize(int b) => b >= 1048576 ? '${(b / 1048576).toStringAsFixed(1)} MB' : '${(b / 1024).round()} KB';
+    return ListenableBuilder(listenable: dl, builder: (context, _) => _body(context, app, pal, s, dl, fmtSize));
+  }
+
+  Widget _body(BuildContext context, AppState app, Pal pal, Settings s, DownloadStore dl, String Function(int) fmtSize) {
     final ongoingKeys = [...dl.running];
     final waiting = dl.waitingSongs;
+    final paused = dl.pausedSongs;
+    final pending = ongoingKeys.length + waiting.length + paused.length;
+    String keyOf(Song song) => app.library.trackOf(song.id)?.id ?? '';
+    String sizeLine(String key) {
+      final (got, total) = dl.bytesOf(key);
+      if (total > 0) return '${fmtSize(got)} / ${fmtSize(total)}';
+      return got > 0 ? fmtSize(got) : '';
+    }
+
+    Widget row(Song song, String key, {required bool active}) {
+      final p = dl.progressOf(key);
+      final reason = dl.pausedReason(key);
+      final size = sizeLine(key);
+      final sub = active ? '${(p * 100).round()}%${size.isEmpty ? '' : ' · $size'}' : [reason ?? '已暂停', if (size.isNotEmpty) size].join(' · ');
+      return SizedBox(
+        height: 70,
+        child: Row(children: [
+          const SizedBox(width: Tk.pad),
+          Cover.song(song, size: 48),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(song.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: ts(15, w: FontWeight.w600, c: pal.t1)),
+              const SizedBox(height: 7),
+              ClipRRect(borderRadius: BorderRadius.circular(2), child: LinearProgressIndicator(value: p, minHeight: 4, color: active ? pal.acc : pal.t3, backgroundColor: pal.s3)),
+              const SizedBox(height: 5),
+              Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: ts(12, c: reason != null && reason.startsWith('下载中断') ? pal.danger : pal.t3, num: true)),
+            ]),
+          ),
+          IBtn(active ? 'pause' : 'play', onTap: () => active ? dl.pause(key) : unawaited(dl.resume(key))),
+          IBtn('close', color: pal.t3, onTap: () => dl.cancel(key)),
+          const SizedBox(width: 6),
+        ]),
+      );
+    }
+
     return SubPage(title: '下载管理', children: [
       if (!app.online)
         const Hint('下载与离线播放需要在联网模式（登录后）使用。', padding: EdgeInsets.fromLTRB(Tk.pad, 8, Tk.pad, 10)),
       if (app.online) ...[
-        if (ongoingKeys.isEmpty && waiting.isEmpty && dl.items.isEmpty)
+        if (pending == 0 && dl.items.isEmpty)
           const EmptyState('download', '还没有下载', desc: '在歌曲的「···」里点下载，或歌单页点下载按钮；下载完成后断网也能播放。'),
-        if (ongoingKeys.isNotEmpty)
-          Padding(padding: const EdgeInsets.fromLTRB(Tk.pad, 0, 0, 6), child: Text('下载中 · ${ongoingKeys.length + waiting.length}', style: ts(12.5, w: FontWeight.w600, c: pal.t3))),
+        if (pending > 0)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Tk.pad, 0, Tk.pad - 4, 2),
+            child: Row(children: [
+              Expanded(child: Text('未完成 · $pending', style: ts(12.5, w: FontWeight.w600, c: pal.t3))),
+              if (ongoingKeys.isNotEmpty || waiting.isNotEmpty)
+                Press(onTap: dl.pauseAll, child: Padding(padding: const EdgeInsets.all(6), child: Text('全部暂停', style: ts(12.5, w: FontWeight.w600, c: pal.accText))))
+              else
+                Press(onTap: () => unawaited(dl.resumeAll()), child: Padding(padding: const EdgeInsets.all(6), child: Text('全部继续', style: ts(12.5, w: FontWeight.w600, c: pal.accText)))),
+            ]),
+          ),
         for (final key in ongoingKeys)
-          if (dl.songByKey(key) case final song?)
-            SizedBox(
-              height: 70,
-              child: Row(children: [
-                const SizedBox(width: Tk.pad),
-                Cover.song(song, size: 48),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(song.title, style: ts(15, w: FontWeight.w600, c: pal.t1)),
-                    const SizedBox(height: 7),
-                    ClipRRect(
-                        borderRadius: BorderRadius.circular(2),
-                        child: LinearProgressIndicator(value: dl.progressOf(key), minHeight: 4, color: pal.acc, backgroundColor: pal.s3)),
-                    const SizedBox(height: 5),
-                    Text('${(dl.progressOf(key) * 100).round()}%', style: ts(12, c: pal.t3)),
-                  ]),
-                ),
-              ]),
-            ),
+          if (dl.songByKey(key) case final song?) row(song, key, active: true),
         for (final song in waiting)
-          Item(icon: 'clock', color: 'gray', label: song.title, sub: '排队中 · ${song.artist}（点击移出队列）', onTap: () => dl.removeWaiting(song)),
+          Item(
+            icon: 'clock',
+            color: 'gray',
+            label: song.title,
+            sub: '排队中 · ${song.artist}',
+            trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+              IBtn('pause', onTap: () => dl.pause(keyOf(song))),
+              IBtn('close', color: pal.t3, onTap: () => dl.removeWaiting(song)),
+            ]),
+          ),
+        for (final song in paused) row(song, keyOf(song), active: false),
         const SizedBox(height: 14),
         if (dl.items.isNotEmpty)
           Padding(padding: const EdgeInsets.fromLTRB(Tk.pad, 0, 0, 6), child: Text('已下载 · ${dl.items.length}', style: ts(12.5, w: FontWeight.w600, c: pal.t3))),

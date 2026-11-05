@@ -1,3 +1,4 @@
+import 'dart:async';
 // 主界面外壳：内容区（嵌套 Navigator，二级页右侧推入 + 左缘右滑返回）+ 迷你播放条 + 底栏。
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -65,6 +66,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState s) {
     AppLog.instance.add('应用', '前后台：${s.name}');
     if (s == AppLifecycleState.resumed) detectClipboard(context.appRead);
+    if (s == AppLifecycleState.paused || s == AppLifecycleState.inactive) unawaited(context.appRead.saveQueueNow()); // 进程随时可能被杀
   }
 
   void _onTab(int i) {
