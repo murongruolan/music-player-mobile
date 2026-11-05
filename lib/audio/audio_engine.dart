@@ -123,7 +123,8 @@ class AudioEngine {
   /// - 加载后时长明显短于歌曲时长（< 85%）→ 判定为试听片段，换音源；
   /// - 播放中途出错 → 从当前位置重新取地址续播；
   /// - 没播到歌曲时长的 85% 就结束了 → 判定为试听片段，换音源后从结束处接着播。
-  Future<void> playSong(Song song, {required bool autoplay, required bool loopOne}) async {
+  /// [startAt]：从这个位置（秒）开始（恢复上次播放进度用）。
+  Future<void> playSong(Song song, {required bool autoplay, required bool loopOne, double? startAt}) async {
     // 解析要几百毫秒到几秒；期间用户可能已经切到别的歌，旧的结果直接丢掉
     final seq = ++_seq;
     _tried.clear();
@@ -137,7 +138,7 @@ class AudioEngine {
       await _player.stop().catchError((Object _) {});
       if (seq != _seq) return;
     }
-    await _load(song, seq, autoplay: autoplay);
+    await _load(song, seq, autoplay: autoplay, at: startAt == null || startAt < 1 ? null : Duration(milliseconds: (startAt * 1000).round()));
   }
 
   /// 本首歌已经用过的补救方式（每种一次，避免来回重试）。

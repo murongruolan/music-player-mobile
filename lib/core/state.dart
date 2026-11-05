@@ -1,6 +1,7 @@
 // 全局状态（对应原型 core.js 的 S 与 ACT）。所有页面通过 context.app 读取，修改后 notifyListeners。
 // 接口对接时：把 mock 读取换成 Repository 调用即可，UI 不需要改。
 import 'dart:async';
+import 'dart:convert' show jsonEncode, jsonDecode;
 import 'dart:io' as io;
 import 'dart:math' as math;
 import 'package:path_provider/path_provider.dart';
@@ -25,6 +26,7 @@ import '../platform/login/qq_login.dart';
 import '../platform/models.dart' show Plat;
 import '../platform/prefetch.dart';
 import '../platform/registry.dart';
+import '../sync/cloud_models.dart' show CloudTrack;
 import 'announcements.dart';
 import 'app_log.dart';
 import 'cloud.dart';
@@ -516,15 +518,110 @@ class AppState extends ChangeNotifier {
   /// 淡入淡出开关下发引擎（settings 切换时调用；启动由 _bindEngine 收尾处理）。
   void applyFadeToEngine() => engine?.setFade(set.fade);
 
-  /// 「启动时自动播放」：恢复上次播放的歌并直接开播（脚本未就绪 / 无歌时静默跳过）。
+  // ---------- 播放队列持久化：下次启动恢复整个队列 + 当前曲 + 进度 + 播放模式 ----------
+  static const _kQueue = 'queue.v1', _kQueuePos = 'queue.pos.v1';
+  int? _queueSig;
+  Timer? _queueT;
+  double _savedPos = -1;
+  bool _queueRestored = false;
+
+  int get _queueSigNow => Object.hash(Object.hashAll(queue), cur, mode, queueName);
+
+  void _scheduleQueueSave() {
+    if (!online || !_queueRestored) return; // 恢复之前不写，免得把上次的队列覆盖成空
+    if (_queueSigNow == _queueSig) return;
+    _queueT?.cancel();
+    _queueT = Timer(const Duration(seconds: 1), () => unawaited(saveQueueNow()));
+  }
+
+  /// 立即保存（切到后台 / 暂停时也调）。只存平台 / 云盘曲目；手机本地文件下次未必还在，跳过。
+  Future<void> saveQueueNow() async {
+    final p = net?.prefs;
+    if (p == null || !online || !_queueRestored) return;
+    _queueT?.cancel();
+    final sig = _queueSigNow;
+    if (sig != _queueSig) {
+      _queueSig = sig;
+      final tracks = <Map<String, dynamic>>[];
+      var at = -1;
+      for (final id in queue) {
+        final t = library.trackOf(id);
+        if (t == null || t.isLocal) continue;
+        if (id == cur) at = tracks.length;
+        tracks.add(t.toDesktop());
+      }
+      if (tracks.isEmpty) {
+        await p.delete(_kQueue);
+      } else {
+        await p.write(_kQueue, jsonEncode({'v': 1, 'tracks': tracks, 'cur': at < 0 ? 0 : at, 'mode': mode, 'name': queueName}));
+      }
+    }
+    _savePos(force: true);
+  }
+
+  /// 进度单独存（小，常写）：播放中约每 10 秒一次，暂停 / 切后台时立刻存。
+  void _savePos({bool force = false}) {
+    final p = net?.prefs;
+    if (p == null || !hasSong || !_queueRestored) return;
+    final v = pos.value;
+    if (!force && (v - _savedPos).abs() < 10) return;
+    _savedPos = v;
+    unawaited(p.write(_kQueuePos, v.toStringAsFixed(1)));
+  }
+
+  /// 启动时恢复上次的播放队列。开了「启动时自动播放」就从上次的位置接着播，否则停在暂停态。
+  /// 旧版本只存了最后一首（last.song.v1）：没有队列记录时退回到它。
   Future<void> autoplayLast() async {
-    if (!online || engine == null || !set.autoplay || hasSong) return;
-    // 存的是曲目 key（歌曲 id 是本次启动登记的顺序号，跨启动不稳定）
-    final key = await net?.prefs.read('last.song.v1') ?? '';
-    final id = key.isEmpty ? null : library.idOfKey(key);
-    if (id == null || id >= songs.length) return;
-    if (sources.forPlayback().isEmpty) return;
-    play(id, ids: [id]);
+    try {
+      if (!online || hasSong) return;
+      final p = net!.prefs;
+      final raw = await p.read(_kQueue);
+      var restoredIds = <int>[];
+      var at = 0;
+      if (raw != null && raw.isNotEmpty) {
+        try {
+          final j = jsonDecode(raw) as Map<String, dynamic>;
+          for (final t in (j['tracks'] as List? ?? const [])) {
+            try {
+              restoredIds.add(library.register(CloudTrack.fromDesktop(Map<String, dynamic>.from(t as Map))));
+            } catch (_) {}
+          }
+          at = (j['cur'] as num? ?? 0).toInt().clamp(0, restoredIds.isEmpty ? 0 : restoredIds.length - 1);
+          final m = j['mode'] as String? ?? mode;
+          if (const ['loop', 'one', 'shuffle', 'order'].contains(m)) mode = m;
+          queueName = j['name'] as String? ?? '';
+        } catch (_) {
+          restoredIds = [];
+        }
+      }
+      if (restoredIds.isEmpty) {
+        // 旧数据：存的是曲目 key（歌曲 id 是本次启动登记的顺序号，跨启动不稳定）
+        final key = await p.read('last.song.v1') ?? '';
+        final id = key.isEmpty ? null : library.idOfKey(key);
+        if (id == null || id >= songs.length) return;
+        restoredIds = [id];
+      }
+      queue = restoredIds;
+      cur = restoredIds[at];
+      final savedPos = double.tryParse(await p.read(_kQueuePos) ?? '') ?? 0;
+      pos.value = savedPos.clamp(0, math.max(0, songs[cur].dur - 3).toDouble());
+      _savedPos = pos.value;
+      engineDuration = 0;
+      playing = false;
+      AppLog.instance.add('播放', '恢复上次的队列：${queue.length} 首，停在「${songs[cur].title}」${pos.value.round()}s');
+      Cover.warm(songs[cur].cover);
+      lyricStore.load(cur);
+      _queueSig = _queueSigNow;
+      _queueRestored = true;
+      notifyListeners();
+      if (engine != null && set.autoplay && sources.forPlayback().isNotEmpty) {
+        playing = true;
+        notifyListeners();
+        _enginePlayCurrent();
+      }
+    } finally {
+      _queueRestored = true;
+    }
   }
 
   /// 引擎加载完成后的收尾：套用速度 / 音调并刷新通知栏（带真实收藏态）。
@@ -775,7 +872,8 @@ class AppState extends ChangeNotifier {
     if (hasSong) Cover.warm(songs[cur].cover); // 迷你条 / 播放器的封面先加载好，出现时不闪占位图
     if (online) lyricStore.load(cur);
     _pushMediaCard(loading: true); // 先把卡片换成这首（加载中），加载失败也不会停在上一首
-    unawaited(engine!.playSong(songs[cur], autoplay: playing, loopOne: mode == 'one').then((_) => _engineAfterLoad()));
+    // pos 不为 0 只在「恢复上次进度后按播放」时出现（点歌 / 切歌都会先把 pos 归零）
+    unawaited(engine!.playSong(songs[cur], autoplay: playing, loopOne: mode == 'one', startAt: pos.value).then((_) => _engineAfterLoad()));
   }
 
   // ---------- 派生 ----------
@@ -846,6 +944,7 @@ class AppState extends ChangeNotifier {
   void notifyListeners() {
     super.notifyListeners();
     if (net != null) {
+      _scheduleQueueSave(); // 队列 / 当前曲 / 模式变了才真的写
       cloud.onAppChanged(); // 设置变了 → 防抖推送
       cloud.evaluate(); // 登录 / 会员 / 开关变了 → 开关实时同步
     }
@@ -940,8 +1039,10 @@ class AppState extends ChangeNotifier {
       if (engineActive && engine!.playingNow) {
         cloud.onPlayTick(cur, dt);
         _pushBtLyric();
+        _savePos();
       } else if (casting) {
         _pushBtLyric(); // 投放中车机 / 锁屏也跟歌词
+        _savePos();
       }
       return;
     }
@@ -1011,6 +1112,7 @@ class AppState extends ChangeNotifier {
   void toggle() {
     if (!hasSong) return;
     playing = !playing;
+    if (!playing) _savePos(force: true);
     AppLog.instance.add('操作', '${playing ? '播放' : '暂停'} ${_songLabel(cur)}${engineActive ? '' : '（引擎未加载，${playing ? '开始加载' : '仅界面'}）'}');
     notifyListeners();
     if (casting) {
@@ -1205,7 +1307,13 @@ class AppState extends ChangeNotifier {
     account = null;
     unawaited(anns.reset());
     unawaited(cloud.reset());
-    if (online) unawaited(library.reset());
+    if (online) {
+      unawaited(library.reset());
+      _queueT?.cancel();
+      _queueSig = null;
+      unawaited(net?.prefs.delete(_kQueue));
+      unawaited(net?.prefs.delete(_kQueuePos));
+    }
     lyricStore
       ..reset()
       ..clear();
