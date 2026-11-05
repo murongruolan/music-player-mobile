@@ -13,7 +13,7 @@ import '../shell/shell.dart';
 import '../ui/cover.dart';
 import '../ui/icons.dart';
 import '../ui/kit.dart';
-import '../widgets/sheets.dart' show openAddToPlaylist;
+import '../widgets/sheets.dart' show openAddToPlaylist, openShareCode;
 import 'common.dart';
 
 // ---------------------------------------------------------------- 转换
@@ -191,6 +191,9 @@ class _RemoteCollectionPageState extends State<RemoteCollectionPage> {
     return SubPage(
       title: title,
       fadeTitle: true,
+      actions: [
+        if (widget.type == CatalogType.playlist) IBtn('share', onTap: () => openShareCode(context, remotePlaylist: (platform: widget.platform, id: widget.id, name: title))),
+      ],
       floating: multi ? _multiBar(context) : null,
       hero: (y) => Positioned(
         left: 0,

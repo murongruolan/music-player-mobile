@@ -7,6 +7,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
 import '../audio/audio_engine.dart';
 import '../cast/cast_controller.dart';
+import 'daily_feed.dart';
+import 'share_code.dart';
 import '../cast/dlna.dart' show CastException, DlnaDevice;
 import '../source/source_manager.dart' show ResolveException;
 import '../download/downloads.dart';
@@ -74,6 +76,21 @@ class AppState extends ChangeNotifier {
   int tab = 0; // 0 发现 1 搜索 2 每日 3 音乐库 4 我的
   bool navMin = false, searchFocus = false;
   int? clipSong; // 剪贴板里识别到的分享口令（歌曲 id）
+  PlaylistShareCode? clipList; // 剪贴板里识别到的歌单口令（联网模式）
+
+  /// 最近处理过的口令（[shareSig]）：同一个口令只弹一次横幅；自己复制的也记上。
+  String? _clipSeen;
+  Future<bool> clipSeen(String sig) async {
+    _clipSeen ??= await net?.prefs.read('clip.seen.v1') ?? '';
+    return _clipSeen == sig;
+  }
+
+  void markClipHandled(String text) {
+    final c = parseShareCode(text);
+    if (c == null) return;
+    _clipSeen = shareSig(c);
+    unawaited(net?.prefs.write('clip.seen.v1', _clipSeen!));
+  }
 
   // ---------- 播放 ----------
   int cur = 0;
@@ -121,6 +138,12 @@ class AppState extends ChangeNotifier {
 
   /// 关注的歌手、不感兴趣的歌（本机）。
   late final taste = TasteStore(net?.prefs, notifyListeners);
+
+  /// 每日推荐（网易云直连 / 私人 FM 兜底）。
+  late final daily = DailyFeed(this);
+
+  /// 曲目 key（`wy:186016`）是否被标记过不感兴趣。
+  bool isDislikedKey(String key) => taste.disliked.contains(key);
 
   /// 导入的音源脚本（联网模式），持久化并可经 lx_sources 云同步。
   late final sources = ScriptStore(this, net?.prefs);
@@ -213,7 +236,10 @@ class AppState extends ChangeNotifier {
   /// 启动时读完凭证后调用：同步「已登录」显示，并在后台准备网易云游客 Cookie。
   Future<void> initPlatformLogin() async {
     await platCreds.load();
-    _platSub ??= platCreds.changes.listen((_) => _syncPlatLogin());
+    _platSub ??= platCreds.changes.listen((p) {
+      _syncPlatLogin();
+      if (PlatformHub.codeOf(p) == Plat.wy) daily.reset(); // 换了网易云账号 / 退出：每日推荐重新拉
+    });
     _syncPlatLogin();
     if (online && platCreds.anonymousCookie(Plat.wy) == null) {
       // 后台取，不挡启动；游客 Cookie 只是锦上添花，失败不提示，下次启动再试
@@ -776,6 +802,7 @@ class AppState extends ChangeNotifier {
     history.clear();
     platLogin.clear();
     clipSong = null;
+    clipList = null;
   }
 
   /// 有没有正在播放 / 暂停中的歌。没有时迷你播放条隐藏、播放器打不开。

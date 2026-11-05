@@ -140,7 +140,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
               child: BottomNav(tab: app.tab, onTab: _onTab),
             ),
           ),
-          if (app.clipSong != null) const ClipBanner(),
+          if (app.clipSong != null || app.clipList != null) const ClipBanner(),
         ]),
       ),
     );
