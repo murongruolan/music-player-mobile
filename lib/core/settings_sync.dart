@@ -30,6 +30,7 @@ final Map<String, _F<bool>> _bools = {
   'floatLock': ((s) => s.floatLock, (s, v) => s.floatLock = v),
   'btLyric': ((s) => s.btLyric, (s, v) => s.btLyric = v),
   'sbLyric': ((s) => s.sbLyric, (s, v) => s.sbLyric = v),
+  'islandLyric': ((s) => s.islandLyric, (s, v) => s.islandLyric = v),
   'dlCover': ((s) => s.dlCover, (s, v) => s.dlCover = v),
   'dlLyric': ((s) => s.dlLyric, (s, v) => s.dlLyric = v),
   'wifiOnly': ((s) => s.wifiOnly, (s, v) => s.wifiOnly = v),

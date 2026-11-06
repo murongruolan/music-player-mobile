@@ -20,13 +20,18 @@ import UIKit
   }
 }
 
-/// Dart ↔ 原生（通道 lyra/native）：画中画歌词（iOS 上的「悬浮歌词」）、桌面图标。
+/// Dart ↔ 原生（通道 lyra/native）：画中画歌词（iOS 上的「悬浮歌词」）、灵动岛歌词、桌面图标。
 enum NativeBridge {
   static var channel: FlutterMethodChannel?
 
   static func attach(_ messenger: FlutterBinaryMessenger) {
     let ch = FlutterMethodChannel(name: "lyra/native", binaryMessenger: messenger)
     channel = ch
+    LiveIsland.endAll(wait: false)  // 上次运行留下的实时活动
+    // App 被划掉：灵动岛 / 锁屏歌词跟着收起，别留一句不动的歌词
+    NotificationCenter.default.addObserver(forName: UIApplication.willTerminateNotification, object: nil, queue: nil) { _ in
+      LiveIsland.endAll(wait: true)
+    }
     LyricPiP.shared.onEvent = { name, arg in
       DispatchQueue.main.async { channel?.invokeMethod("float.\(name)", arguments: arg) }
     }
@@ -67,7 +72,11 @@ enum NativeBridge {
           result(error == nil)
         }
       default:
-        result(FlutterMethodNotImplemented)
+        if call.method.hasPrefix("island.") {
+          LiveIsland.handle(call.method, a, result)
+        } else {
+          result(FlutterMethodNotImplemented)
+        }
       }
     }
   }
