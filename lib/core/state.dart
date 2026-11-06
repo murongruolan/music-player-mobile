@@ -30,6 +30,7 @@ import '../platform/registry.dart';
 import '../sync/cloud_models.dart' show CloudTrack;
 import 'announcements.dart';
 import 'float_lyric.dart';
+import 'live_island.dart';
 import 'app_log.dart';
 import 'cloud.dart';
 import 'library_store.dart';
@@ -47,6 +48,8 @@ class Settings {
   bool smart = true, gradual = true, crossScript = true, crossPlat = true, autoNext = true;
   bool nQ = true, nS = true, nA = false, allowDown = true;
   bool floatLyric = false, floatLock = false, btLyric = true, sbLyric = false;
+  /// 灵动岛 / 锁屏歌词（iOS 16.1+ 实时活动）。
+  bool islandLyric = true;
 
   /// 蓝牙歌词推送的顺序：0 仅歌词，1 歌词 · 歌名，2 歌名 · 歌词。
   int btOrder = 1;
@@ -151,6 +154,7 @@ class AppState extends ChangeNotifier {
 
   /// 悬浮歌词（Android 悬浮窗 / iOS 画中画）与桌面图标。
   late final floatLyric = FloatLyricCtl(this);
+  late final island = LiveIslandCtl(this);
 
   /// 导入的音源脚本（联网模式），持久化并可经 lx_sources 云同步。
   late final sources = ScriptStore(this, net?.prefs);
@@ -1066,6 +1070,7 @@ class AppState extends ChangeNotifier {
     final dt = now.difference(_last).inMicroseconds / 1e6;
     _last = now;
     floatLyric.tick(); // 暂停也要推（收起悬浮窗 / 画中画切暂停态）
+    island.tick(); // 灵动岛 / 锁屏歌词（iOS）
     if (!playing || !hasSong) return;
     // 真实播放：只有引擎真的在播才计听歌统计；进度全由引擎回调驱动。
     // 引擎没加载成功（加载中 / 失败）时绝不能走下面的模拟时钟：云盘歌曲时长是 0，

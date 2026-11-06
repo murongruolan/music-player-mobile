@@ -50,6 +50,9 @@
 	<array>
 		<string>audio</string>
 	</array>
+	<!-- 灵动岛 / 锁屏歌词（实时活动，iOS 16.1+，界面在 LyraWidget 扩展里） -->
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>听歌识曲需要用麦克风听几秒正在播放的歌。录音只在手机上计算指纹，不会上传。</string>
 	<key>NSCameraUsageDescription</key>
