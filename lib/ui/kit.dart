@@ -610,7 +610,7 @@ class Hint extends StatelessWidget {
   Widget build(BuildContext context) => Padding(padding: padding, child: Text(text, textAlign: align, style: ts(12, c: context.pal.t3, h: 1.55)));
 }
 
-class Avatar extends StatelessWidget {
+class Avatar extends StatefulWidget {
   final String text;
   final double size;
   final VoidCallback? onTap;
@@ -619,7 +619,45 @@ class Avatar extends StatelessWidget {
   final String? url;
   const Avatar(this.text, {super.key, this.size = 36, this.onTap, this.url});
   @override
+  State<Avatar> createState() => _AvatarState();
+}
+
+class _AvatarState extends State<Avatar> {
+  // 加载失败自动重试（1.5s 起翻倍，最多 5 次）：iOS 新装首次启动时「允许联网」弹窗还没点，
+  // 第一次请求必定失败，以前要切一次 Tab 才会重新取，首页一直是首字头像。
+  int _attempt = 0;
+  Timer? _retry;
+
+  @override
+  void didUpdateWidget(Avatar old) {
+    super.didUpdateWidget(old);
+    if (old.url != widget.url) {
+      _retry?.cancel();
+      _retry = null;
+      _attempt = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _retry?.cancel();
+    super.dispose();
+  }
+
+  void _failed() {
+    if (_retry != null || _attempt >= 5) return;
+    _retry = Timer(Duration(milliseconds: 1500 << _attempt), () {
+      if (!mounted) return;
+      setState(() {
+        _retry = null;
+        _attempt++;
+      });
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final text = widget.text, size = widget.size, url = widget.url, onTap = widget.onTap;
     final pal = context.pal;
     return Press(
       onTap: onTap,
@@ -636,11 +674,14 @@ class Avatar extends StatelessWidget {
                 ClipOval(
                   // 和封面一样带浏览器 UA 请求（网易 / QQ 图床拦 Dart 默认 UA，原来头像常常 403 只剩首字）
                   child: Image(
-                    image: ResizeImage(UaImage(coverUrl(url) ?? url!), width: (size * MediaQuery.devicePixelRatioOf(context)).round()),
+                    image: ResizeImage(UaImage(coverUrl(url) ?? url, attempt: _attempt), width: (size * MediaQuery.devicePixelRatioOf(context)).round()),
                     fit: BoxFit.cover,
                     gaplessPlayback: true,
                     frameBuilder: (_, ch, frame, sync) => sync ? ch : AnimatedOpacity(opacity: frame == null ? 0 : 1, duration: const Duration(milliseconds: 220), child: ch),
-                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                    errorBuilder: (_, __, ___) {
+                      _failed();
+                      return const SizedBox.shrink();
+                    },
                   ),
                 ),
               ]),

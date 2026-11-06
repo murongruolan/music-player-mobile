@@ -28,14 +28,16 @@ class FloatStyle {
   double bg = .45;
   int y = -1; // 距屏幕顶部的像素，-1 = 默认位置
   bool trans = false; // 第二行显示翻译（没有翻译时显示下一句）
+  int layout = 1; // iOS 画中画：0 = 两行居中，1 = 本句左上 / 下一句右下
 
-  Map<String, dynamic> toJson() => {'size': size, 'color': color, 'bg': bg, 'y': y, 'trans': trans};
+  Map<String, dynamic> toJson() => {'size': size, 'color': color, 'bg': bg, 'y': y, 'trans': trans, 'layout': layout};
   void load(Map<String, dynamic> j) {
     size = (j['size'] as num? ?? size).toDouble();
     color = (j['color'] as num? ?? color).toInt();
     bg = (j['bg'] as num? ?? bg).toDouble();
     y = (j['y'] as num? ?? y).toInt();
     trans = j['trans'] as bool? ?? trans;
+    layout = (j['layout'] as num? ?? layout).toInt();
   }
 }
 
@@ -113,7 +115,7 @@ class FloatLyricCtl {
   int get playedColor => _color;
   int get _color => style.color != 0 ? style.color : accents[_app.accent.clamp(0, accents.length - 1)].fill.toARGB32();
 
-  Future<void> _pushStyle() => _call('float.style', {'size': style.size.toDouble(), 'color': _color, 'bg': style.bg.toDouble(), 'locked': _app.set.floatLock, 'y': style.y});
+  Future<void> _pushStyle() => _call('float.style', {'size': style.size.toDouble(), 'color': _color, 'bg': style.bg.toDouble(), 'locked': _app.set.floatLock, 'y': style.y, 'layout': style.layout});
 
   /// 样式改了（设置页 / 主题色 / 锁定）。
   Future<void> applyStyle() async {
@@ -254,8 +256,10 @@ class FloatLyricCtl {
     final s = _app.song;
     String text, next;
     double start = 0, end = 0;
+    var keys = const <double>[];
     if (has) {
       final l = ls[k];
+      keys = l.fillKeys();
       text = l.text.trim().isEmpty ? '♪' : l.text.trim();
       final tr = l.trans.trim();
       next = style.trans && tr.isNotEmpty ? tr : (k + 1 < ls.length ? ls[k + 1].text.trim() : '');
@@ -274,6 +278,7 @@ class FloatLyricCtl {
       'pos': (_app.smoothPos + _app.set.loff).toDouble(),
       'playing': _app.playing,
       'speed': _app.speed.toDouble(),
+      'keys': keys, // 句内染色关键点（和 App 内歌词同一套时间）
     }));
   }
 
