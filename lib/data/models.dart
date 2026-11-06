@@ -70,6 +70,26 @@ class LyricLine {
     return math.max(0.6, math.min(d * .92, est));
   }
 
+  /// [progressAt] 的折线关键点 [t0, f0, t1, f1, ...]（时间升序）：交给原生（画中画歌词）
+  /// 按时钟插值，和 App 里的歌词染色走同一套时间，不再按整行时长平均铺开。
+  List<double> fillKeys() {
+    final w = words;
+    final len = text.length;
+    if (w == null || w.isEmpty || len == 0) return [t, 0, t + _sungDur, 1];
+    final out = <double>[];
+    for (final x in w) {
+      out
+        ..add(x.start)
+        ..add(x.from / len)
+        ..add(x.start + math.max(0, x.dur))
+        ..add(x.to / len);
+    }
+    if (out[out.length - 1] < 1) {
+      out[out.length - 1] = 1; // 最后一个词唱完 = 整行染满（末尾标点 / 空格不留白）
+    }
+    return out;
+  }
+
   /// 在时间 [p]（秒）时这一行已唱到的位置，0..1（按字符比例；逐字时间精确到字内插值）。
   double progressAt(double p) {
     final w = words;

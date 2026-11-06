@@ -187,7 +187,10 @@ String placeholderAsset(double hue, int variant) {
 /// 失败抛给 errorBuilder（占位图兜底）；ImageCache 按 key 缓存，不会重复请求。
 class UaImage extends ImageProvider<UaImage> {
   final String url;
-  const UaImage(this.url);
+
+  /// 第几次重试：失败的图不会再次请求（ImageCache 按 key 记住了失败），换个 attempt 才会重新取。
+  final int attempt;
+  const UaImage(this.url, {this.attempt = 0});
 
   /// 所有封面共用一个连接池（列表一屏几十张图，每张新建连接太浪费）。
   static final http.Client _client = http.Client();
@@ -235,9 +238,9 @@ class UaImage extends ImageProvider<UaImage> {
   }
 
   @override
-  bool operator ==(Object other) => other is UaImage && other.url == url;
+  bool operator ==(Object other) => other is UaImage && other.url == url && other.attempt == attempt;
   @override
-  int get hashCode => url.hashCode;
+  int get hashCode => Object.hash(url, attempt);
   @override
   String toString() => 'UaImage("$url")';
 }

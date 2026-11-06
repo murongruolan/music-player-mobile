@@ -367,6 +367,8 @@ List<Widget> _floatGroups(BuildContext context, AppState app) {
       if (!isIOS)
         Item(icon: 'lock', color: 'gray', label: '锁定位置', sub: '锁定后点击穿透，不影响其他应用；悬浮窗上点一下可以锁定', sw: s.floatLock, onSw: (v) => restyle(() => s.floatLock = v)),
       Item(icon: 'lyrics', color: 'teal', label: '第二行显示翻译', sub: '没有翻译时显示下一句', sw: st.trans, onSw: (v) => restyle(() => st.trans = v)),
+      if (isIOS)
+        Item(icon: 'layers', color: 'blue', label: '排列方式', sub: '点一下切换', val: st.layout == 1 ? '本句左上 · 下句右下' : '两行居中', onTap: () => restyle(() => st.layout = st.layout == 1 ? 0 : 1)),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         child: LSlider(label: '字号', value: st.size, min: 12, max: 32, step: 1, fmt: (v) => '${v.round()}', onChanged: (v) => restyle(() => st.size = v)),

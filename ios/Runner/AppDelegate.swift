@@ -38,7 +38,8 @@ enum NativeBridge {
       case "float.request":
         result(nil)
       case "float.style":
-        LyricPiP.shared.style(size: a["size"] as? Double, color: (a["color"] as? NSNumber)?.int64Value)
+        LyricPiP.shared.style(
+          size: a["size"] as? Double, color: (a["color"] as? NSNumber)?.int64Value, layout: (a["layout"] as? NSNumber)?.intValue)
         result(nil)
       case "float.show":
         result(LyricPiP.shared.start())
@@ -53,7 +54,8 @@ enum NativeBridge {
           end: a["end"] as? Double ?? 0,
           pos: a["pos"] as? Double ?? 0,
           playing: a["playing"] as? Bool ?? false,
-          speed: a["speed"] as? Double ?? 1)
+          speed: a["speed"] as? Double ?? 1,
+          keys: (a["keys"] as? [NSNumber])?.map { $0.doubleValue } ?? [])
         result(nil)
       case "icon.current":
         let name = UIApplication.shared.alternateIconName ?? ""
@@ -91,6 +93,10 @@ final class LyricPiP: NSObject, AVPictureInPictureControllerDelegate, AVPictureI
   private var baseAt = CACurrentMediaTime()
   private var playing = false
   private var speed = 1.0
+  /// 句内染色关键点 [t0, f0, t1, f1, ...]（Dart 按逐字时间 / 估算演唱时长算好），空 = 按整句时长平均
+  private var keys: [Double] = []
+  /// 0 = 两行居中，1 = 本句左上 / 下一句右下
+  private var layout = 1
   private var fontSize: CGFloat = 18
   private var played = UIColor(red: 0.957, green: 0.824, blue: 0.541, alpha: 1)
 
@@ -99,8 +105,9 @@ final class LyricPiP: NSObject, AVPictureInPictureControllerDelegate, AVPictureI
 
   var isSupported: Bool { AVPictureInPictureController.isPictureInPictureSupported() }
 
-  func style(size: Double?, color: Int64?) {
+  func style(size: Double?, color: Int64?, layout: Int? = nil) {
     if let s = size { fontSize = CGFloat(max(12, min(36, s))) }
+    if let l = layout { self.layout = l }
     if let c = color {
       let v = UInt32(truncatingIfNeeded: c)
       played = UIColor(
@@ -166,8 +173,11 @@ final class LyricPiP: NSObject, AVPictureInPictureControllerDelegate, AVPictureI
     display.flushAndRemoveImage()
   }
 
-  func update(text: String, next: String, start: Double, end: Double, pos: Double, playing: Bool, speed: Double) {
+  func update(
+    text: String, next: String, start: Double, end: Double, pos: Double, playing: Bool, speed: Double, keys: [Double]
+  ) {
     let changed = playing != self.playing
+    self.keys = keys.count >= 4 && keys.count % 2 == 0 ? keys : []
     self.text = text
     self.next = next
     self.lineStart = start
@@ -190,9 +200,40 @@ final class LyricPiP: NSObject, AVPictureInPictureControllerDelegate, AVPictureI
   }
 
   private func progress() -> CGFloat {
-    if lineEnd <= lineStart { return 1 }
     let now = basePos + (playing ? (CACurrentMediaTime() - baseAt) * speed : 0)
+    if !keys.isEmpty {
+      // 折线插值：和 App 内歌词染色同一套时间（逐字歌词按字走，词间停顿时停住）
+      if now <= keys[0] { return CGFloat(keys[1]) }
+      var i = 0
+      while i + 3 < keys.count {
+        let t0 = keys[i], f0 = keys[i + 1], t1 = keys[i + 2], f1 = keys[i + 3]
+        if now < t1 {
+          let f = t1 > t0 ? f0 + (f1 - f0) * (now - t0) / (t1 - t0) : f1
+          return CGFloat(max(0, min(1, f)))
+        }
+        i += 2
+      }
+      return CGFloat(max(0, min(1, keys[keys.count - 1])))
+    }
+    if lineEnd <= lineStart { return 1 }
     return CGFloat(max(0, min(1, (now - lineStart) / (lineEnd - lineStart))))
+  }
+
+  /// 染色到第 [p]（字符比例）时的宽度：按前缀实际排版宽度算（中英文混排时字宽不一样）。
+  private func fillWidth(_ s: String, _ font: UIFont, _ p: CGFloat, _ maxW: CGFloat) -> CGFloat {
+    let ns = s as NSString
+    let len = ns.length
+    if p <= 0 || len == 0 { return 0 }
+    if p >= 1 { return maxW }
+    let n = Double(p) * Double(len)
+    let i = Int(n.rounded(.down))
+    func w(_ k: Int) -> CGFloat {
+      if k <= 0 { return 0 }
+      let end = ns.rangeOfComposedCharacterSequence(at: min(k, len) - 1).upperBound
+      return (ns.substring(to: end) as NSString).size(withAttributes: [.font: font]).width
+    }
+    let a = w(i), b = w(i + 1)
+    return min(maxW, a + (b - a) * CGFloat(n - Double(i)))
   }
 
   private func render() {
@@ -251,19 +292,44 @@ final class LyricPiP: NSObject, AVPictureInPictureControllerDelegate, AVPictureI
       font = UIFont.systemFont(ofSize: max(font.pointSize * 0.7, font.pointSize * maxW / size.width), weight: .bold)
       size = (text as NSString).size(withAttributes: [.font: font])
     }
+    let hasNext = !next.isEmpty
+    let tw = min(size.width, maxW)
+    let p = progress()
+    if layout == 1 {
+      // 本句左上、下一句右下（同字号略小，错开两行，像 KTV 字幕）
+      let f2 = UIFont.systemFont(ofSize: font.pointSize * 0.82, weight: .semibold)
+      let left = NSMutableParagraphStyle()
+      left.alignment = .left
+      left.lineBreakMode = .byTruncatingTail
+      let right = NSMutableParagraphStyle()
+      right.alignment = .right
+      right.lineBreakMode = .byTruncatingTail
+      let topY = hasNext ? canvas.height * 0.16 : (canvas.height - size.height) / 2
+      let lineRect = CGRect(x: pad, y: topY, width: maxW, height: size.height + 4)
+      (text as NSString).draw(in: lineRect, withAttributes: [.font: font, .foregroundColor: UIColor.white, .paragraphStyle: left])
+      if p > 0 {
+        ctx.saveGState()
+        ctx.clip(to: CGRect(x: pad, y: 0, width: min(tw, fillWidth(text, font, p, tw)), height: canvas.height))
+        (text as NSString).draw(in: lineRect, withAttributes: [.font: font, .foregroundColor: played, .paragraphStyle: left])
+        ctx.restoreGState()
+      }
+      if hasNext {
+        let h2 = f2.lineHeight + 4
+        let r2 = CGRect(x: pad, y: canvas.height * 0.84 - h2, width: maxW, height: h2)
+        (next as NSString).draw(in: r2, withAttributes: [.font: f2, .foregroundColor: UIColor(white: 1, alpha: 0.6), .paragraphStyle: right])
+      }
+      return pb
+    }
     let para = NSMutableParagraphStyle()
     para.alignment = .center
     para.lineBreakMode = .byTruncatingTail
-    let hasNext = !next.isEmpty
     let lineY = hasNext ? canvas.height * 0.22 : (canvas.height - size.height) / 2
     let lineRect = CGRect(x: pad, y: lineY, width: maxW, height: size.height + 4)
     (text as NSString).draw(in: lineRect, withAttributes: [.font: font, .foregroundColor: UIColor.white, .paragraphStyle: para])
-    let p = progress()
     if p > 0 {
-      let tw = min(size.width, maxW)
       let x0 = pad + (maxW - tw) / 2
       ctx.saveGState()
-      ctx.clip(to: CGRect(x: x0, y: 0, width: tw * p, height: canvas.height))
+      ctx.clip(to: CGRect(x: x0, y: 0, width: min(tw, fillWidth(text, font, p, tw)), height: canvas.height))
       (text as NSString).draw(in: lineRect, withAttributes: [.font: font, .foregroundColor: played, .paragraphStyle: para])
       ctx.restoreGState()
     }
