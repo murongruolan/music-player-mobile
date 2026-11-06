@@ -43,6 +43,13 @@ class AudioEngine {
   Song? _current;
   bool _loaded = false;
   int _seq = 0;
+
+  /// 切歌时从开始停旧歌到新歌 setAudioSource 之前为 false：这段时间旧歌的进度 / 时长事件不转给 AppState
+  /// （AppState 已经把 cur 换成新歌，旧歌的时长会被当成新歌的，云盘歌曲还会被永久写进曲目时长）。
+  bool _accept = true;
+
+  /// iOS 上时长估算不准、要用精确时长加载的歌（按歌曲 key / 地址记，本次运行有效）。
+  final _precise = <String>{};
   bool _cacheOn = false; // 边听边缓存：LockCachingAudioSource 边播边落盘
   String? _cacheDir;
   bool _fade = false; // 暂停 / 恢复的音量淡入淡出
@@ -51,6 +58,9 @@ class AudioEngine {
 
   /// 是否已加载可播放音源（决定 AppState 用真实进度还是模拟时钟）。
   bool get loaded => _loaded;
+
+  /// 每次 [playSong] +1：AppState 用它判断加载收尾是不是最新一次点播的。
+  int get generation => _seq;
 
   /// 引擎此刻的真实播放态（加载期间的 UI 竞态以它为准对齐）。
   bool get playingNow => _player.playing;
@@ -102,11 +112,12 @@ class AudioEngine {
 
     _subs.addAll([
       _player.positionStream.listen((p) {
+        if (!_accept) return;
         onPosition?.call(p.inMicroseconds / 1e6);
         _watchPosition(p);
       }),
       _player.durationStream.listen((d) {
-        if (d != null) onDuration?.call(d.inMicroseconds / 1e6);
+        if (d != null && _accept) onDuration?.call(d.inMicroseconds / 1e6);
       }),
       // 切歌时 stop() 会先发一次 playing=false：那不是用户暂停，不转给 AppState，
       // 否则 AppState 以为暂停了，加载完又把刚开始播的歌暂停掉（「下一曲不自动播放 / 播几秒自己停」）
@@ -136,6 +147,7 @@ class AudioEngine {
   Future<void> playSong(Song song, {required bool autoplay, required bool loopOne, double? startAt}) async {
     // 解析要几百毫秒到几秒；期间用户可能已经切到别的歌，旧的结果直接丢掉
     final seq = ++_seq;
+    _accept = false;
     _posLogged = false;
     _playSince = null;
     _tried.clear();
@@ -159,6 +171,21 @@ class AudioEngine {
   /// 播放时长低于歌曲时长的这个比例，认为是试听片段。
   static const trialRatio = .85;
 
+  /// 时长不是试听那么短，但和歌曲时长差了 4 秒以上且超过 2.5%（多为 MP3 时长估算错）。
+  static bool _imprecise(Song song, Duration? d) {
+    if (d == null || song.dur < 30 || d.inMilliseconds <= 0) return false;
+    final diff = (d.inMilliseconds - song.dur * 1000).abs();
+    return d.inMilliseconds >= song.dur * 1000 * trialRatio && diff > 4000 && diff > song.dur * 1000 * .025;
+  }
+
+  /// 普通地址音源；[precise]：iOS 上要求精确时长与定位（AVURLAssetPreferPreciseDurationAndTimingKey）。
+  static UriAudioSource _uriSource(ResolvedPlay rp, {bool precise = false}) {
+    final s = AudioSource.uri(rp.uri, headers: rp.headers);
+    if (!precise || s is! ProgressiveAudioSource) return s;
+    return ProgressiveAudioSource(rp.uri,
+        headers: rp.headers, options: const ProgressiveAudioSourceOptions(darwinAssetOptions: DarwinAssetOptions(preferPreciseDurationAndTiming: true)));
+  }
+
   bool _shortOf(Song song, Duration? d) => d != null && song.dur >= 30 && d.inMilliseconds > 0 && d.inMilliseconds < song.dur * 1000 * trialRatio;
 
   Future<void> _load(Song song, int seq, {required bool autoplay, ResolveReason reason = ResolveReason.play, Duration? at, bool ended = false}) async {
@@ -168,17 +195,20 @@ class AudioEngine {
       rp = await _resolver.resolve(song, reason: reason);
     } catch (e) {
       if (seq != _seq) return;
+      _accept = true;
       if (reason == ResolveReason.trial) return _trialFallback(song, seq, autoplay: autoplay, ended: ended, why: _short(e));
       onError?.call('${song.title}：${_short(e)}');
       return;
     }
     if (seq != _seq) return;
     if (rp == null) {
+      _accept = true;
       if (reason == ResolveReason.trial) return _trialFallback(song, seq, autoplay: autoplay, ended: ended);
       onError?.call('无法解析播放地址：${song.title}');
       return;
     }
     if (!isLikelySupported(rp.uri)) {
+      _accept = true;
       onError?.call('暂不支持 ${formatLabel(formatOfUri(rp.uri))} 格式：${song.title}');
       return;
     }
@@ -197,13 +227,25 @@ class AudioEngine {
         // ignore: experimental_member_use
         source = LockCachingAudioSource(rp.uri, cacheFile: File('$_cacheDir/$key.audio'), headers: rp.headers);
       } else {
-        source = AudioSource.uri(rp.uri, headers: rp.headers);
+        source = _uriSource(rp, precise: _precise.contains(cacheKey));
       }
       final sw = Stopwatch()..start();
-      final d = await _player.setAudioSource(source, initialPosition: at);
+      _accept = true;
+      var d = await _player.setAudioSource(source, initialPosition: at);
       if (seq != _seq) return;
       _interruptRetried = false;
-      AppLog.instance.add('播放', '加载成功 ${sw.elapsedMilliseconds}ms · ${_describe(rp)}${d == null ? '' : ' · 时长 ${d.inSeconds}s'}');
+      AppLog.instance.add('播放', '加载成功 ${sw.elapsedMilliseconds}ms · ${_describe(rp)}${d == null ? '' : ' · 时长 ${d.inSeconds}s（歌曲 ${song.dur}s）'}');
+      if (_isIOS && source is ProgressiveAudioSource && source.options == null && _imprecise(song, d)) {
+        // iOS 的 AVPlayer 对没有索引的 VBR MP3 按开头码率估算时长、按字节比例跳转：
+        // 报的时长差几十秒，进度条走完了歌还在唱，拖进度也落不到对应的位置。
+        // 这种歌改用精确时长重新加载（要多读一些数据，只对对不上的歌这样做）。
+        AppLog.instance.add('播放', '时长对不上（引擎 ${d!.inSeconds}s / 歌曲 ${song.dur}s），按精确时长重新加载');
+        _precise.add(cacheKey);
+        final sw2 = Stopwatch()..start();
+        d = await _player.setAudioSource(_uriSource(rp, precise: true), initialPosition: at);
+        if (seq != _seq) return;
+        AppLog.instance.add('播放', '精确加载 ${sw2.elapsedMilliseconds}ms${d == null ? '' : ' · 时长 ${d.inSeconds}s'}');
+      }
       if (_shortOf(song, d) && !_tried.contains(ResolveReason.trial)) {
         // 时长明显不对：多半是试听片段，换音源
         _trialUri = rp;
@@ -410,6 +452,7 @@ class AudioEngine {
   Future<void> unload() async {
     _seq++;
     _loaded = false;
+    _accept = true;
     _current = null;
     await _player.stop();
     _handler?.clearNowPlaying();

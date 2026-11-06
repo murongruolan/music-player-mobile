@@ -898,7 +898,12 @@ class AppState extends ChangeNotifier {
     if (online) lyricStore.load(cur);
     _pushMediaCard(loading: true); // 先把卡片换成这首（加载中），加载失败也不会停在上一首
     // pos 不为 0 只在「恢复上次进度后按播放」时出现（点歌 / 切歌都会先把 pos 归零）
-    unawaited(engine!.playSong(songs[cur], autoplay: playing, loopOne: mode == 'one', startAt: pos.value).then((_) => _engineAfterLoad()));
+    final e = engine!;
+    final load = e.playSong(songs[cur], autoplay: playing, loopOne: mode == 'one', startAt: pos.value);
+    final gen = e.generation; // playSong 同步 +1：被更新的点播顶掉的旧加载不做收尾（不替新歌设播放态 / 通知）
+    unawaited(load.then((_) {
+      if (e.generation == gen) _engineAfterLoad();
+    }));
   }
 
   // ---------- 派生 ----------
