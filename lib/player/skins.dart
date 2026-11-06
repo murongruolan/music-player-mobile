@@ -16,7 +16,6 @@ import '../ui/kit.dart';
 import '../main.dart' show overlayStyle;
 import '../widgets/sheets.dart';
 import '../pages/settings.dart';
-import 'apple_music_lyric.dart';
 import 'lyrics.dart';
 import 'particles.dart';
 import 'player.dart';
@@ -171,39 +170,8 @@ class SpringSkin extends StatefulWidget {
 
 class _SpringSkinState extends State<SpringSkin> {
   String view = 'cover';
-  bool controlsVisible = true;
-  Timer? _hideTimer;
-  
-  @override
-  void dispose() {
-    _hideTimer?.cancel();
-    super.dispose();
-  }
-  
-  void _resetHideTimer() {
-    _hideTimer?.cancel();
-    if (view == 'lyrics') {
-      _hideTimer = Timer(const Duration(seconds: 3), () {
-        if (mounted && controlsVisible) {
-          setState(() => controlsVisible = false);
-        }
-      });
-    }
-  }
-  
-  void _onUserScroll() {
-    setState(() => controlsVisible = false);
-    _hideTimer?.cancel();
-  }
-  
-  void _onTapOutside() {
-    setState(() => controlsVisible = true);
-    _resetHideTimer();
-  }
-  
   @override
   Widget build(BuildContext context) {
-    _resetHideTimer();
     final app = context.app;
     final s = app.song;
     return LayoutBuilder(builder: (context, cs) {
@@ -254,29 +222,20 @@ class _SpringSkinState extends State<SpringSkin> {
           left: 0,
           right: 0,
           top: 28 + 58 + 14,
-          bottom: controlsVisible ? bottomH : 0,
+          bottom: bottomH,
           child: IgnorePointer(
             ignoring: !small,
             child: AnimatedOpacity(
               duration: const Duration(milliseconds: 360),
               opacity: small ? 1 : 0,
-              child: view == 'queue'
-                  ? _inlineQueue(context)
-                  : (small
-                      ? AppleMusicLyric(
-                          onUserScroll: _onUserScroll,
-                          onTapOutside: _onTapOutside,
-                        )
-                      : const SizedBox()),
+              child: view == 'queue' ? _inlineQueue(context) : (small ? LyricView(wave: app.amWave == 'wave', anchor: .3) : const SizedBox()),
             ),
           ),
         ),
-        AnimatedPositioned(
-          duration: const Duration(milliseconds: 400),
-          curve: Curves.easeInOut,
+        Positioned(
           left: 0,
           right: 0,
-          bottom: controlsVisible ? 0 : -bottomH,
+          bottom: 0,
           height: bottomH,
           child: Column(children: [
             const ProgressBar(track: 7, trackDrag: 12),
