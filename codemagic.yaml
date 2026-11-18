@@ -1,9 +1,11 @@
-# Codemagic CI：iOS 未签名 IPA 打包（macos-latest 抢占型 runner 取消率太高，迁到独占 M2 实例）。
+# Codemagic CI：iOS 未签名 IPA + Android APK。
 #
-# - 仅手动触发（codemagic.io 页面点 Start build；未写 triggering: 段即不会自动构建，省免费分钟数）；
-# - 产物 lyra-ios-unsigned.ipa 与 GH Actions ios-build.yml 的 ipa job 完全同构（Payload 打包，Sideloadly/AltStore 侧载重签）；
-# - Android APK、PR 编译验证等其余 CI 仍走 GitHub Actions，本文件不承接；
-# - 免费档每月 500 macOS M2 分钟，一个 IPA 实测 10-20 分钟（≈25-40 个包/月）。
+# - iOS：macos-latest 抢占型 runner 取消率太高，迁到独占 M2 实例；仅手动触发（未写 triggering: 段即不会自动构建，省免费分钟数）；
+#   产物 lyra-ios-unsigned.ipa 与 GH Actions ios-build.yml 的 ipa job 完全同构（Payload 打包，Sideloadly/AltStore 侧载重签）。
+# - Android：GitHub Actions 额度耗尽后，APK 打包改由这里承接（PR 的 analyze/test 仍在 GH Actions）；
+#   签名用仓库内提交的 android/app/lyra-test.jks（固定测试签名，新包可直接覆盖安装、不丢登录态），无需额外 secret。
+# - 免费档 500 分钟是 macOS M2 专属额度；Linux 实例按 $0.045/分钟计费，需要账号已开通计费（否则把 instance_type 换成 mac_mini_m2）。
+# - 模拟器截屏不在 CI 里跑（Linux 实例虽自带 AVD，但交互点击很笨）；APK 拉到本机 AVD 用 adb install + screencap 验证。
 workflows:
   ios_ipa:
     name: iOS 未签名 IPA
@@ -27,3 +29,27 @@ workflows:
           ls -lh lyra-ios-unsigned.ipa
     artifacts:
       - lyra-ios-unsigned.ipa
+
+  android_apk:
+    name: Android APK（测试签名）
+    instance_type: linux_x2
+    max_build_duration: 60
+    environment:
+      # 与 GH Actions 的 subosito/flutter-action channel: stable 对齐
+      flutter: stable
+      java: 17
+    cache:
+      cache_paths:
+        - $HOME/.gradle/caches
+        - $HOME/.gradle/wrapper
+        - $HOME/.pub-cache
+    scripts:
+      - name: 依赖
+        script: flutter pub get
+      - name: 构建 APK（release · 分 ABI）
+        script: |
+          set -e
+          flutter build apk --release --split-per-abi
+          ls -lh build/app/outputs/flutter-apk/
+    artifacts:
+      - build/app/outputs/flutter-apk/*.apk
