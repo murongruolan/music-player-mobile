@@ -220,9 +220,13 @@ class _SpringSkinState extends State<SpringSkin> {
   Widget build(BuildContext context) {
     final app = context.app;
     final s = app.song;
-    // iOS 的顶部安全区本身就比 Android 高（灵动岛），再叠加固定的 28/44 会让
-    // 封面和标题明显掉到岛下面一截。iOS 上把这段额外留白收掉 20。
-    final iosTopTrim = Theme.of(context).platform == TargetPlatform.iOS ? 20.0 : 0.0;
+    // 小封面按 Apple Music 的竖版比例（约 3:4）排，顶部从拖拽条下面留出
+    // 明显的呼吸区；之前用 58×58 方图且贴得太高，和 Apple Music 并排看会
+    // 显得整块「卡」在灵动岛下面。
+    const smallTop = 30.0;
+    const smallLeft = 42.0;
+    const smallW = 53.0;
+    const smallH = 70.0;
     return LayoutBuilder(builder: (context, cs) {
       final W = cs.maxWidth, H = cs.maxHeight;
       final big = math.min(334.0, W - 56);
@@ -253,10 +257,10 @@ class _SpringSkinState extends State<SpringSkin> {
         AnimatedPositioned(
           duration: dur,
           curve: curve,
-          left: small ? 24 : (W - big) / 2,
-          top: small ? 28 - iosTopTrim : 44 - iosTopTrim,
-          width: small ? 58 : big,
-          height: small ? 58 : big,
+          left: small ? smallLeft : (W - big) / 2,
+          top: small ? smallTop : 44,
+          width: small ? smallW : big,
+          height: small ? smallH : big,
           child: SwipeCover(
             child: AnimatedScale(
               scale: app.playing || small ? 1 : .82,
@@ -269,10 +273,10 @@ class _SpringSkinState extends State<SpringSkin> {
         AnimatedPositioned(
           duration: dur,
           curve: curve,
-          left: small ? 24 + 58 + 12 : 28,
+          left: small ? smallLeft + smallW + 20 : 28,
           right: 14,
-          top: small ? 28 - iosTopTrim : H - bottomH - 70,
-          height: 58,
+          top: small ? smallTop : H - bottomH - 70,
+          height: small ? smallH : 58,
           child: Row(children: [
             Expanded(
               child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -288,7 +292,7 @@ class _SpringSkinState extends State<SpringSkin> {
         Positioned(
           left: 0,
           right: 0,
-          top: 28 + 58 + 14,
+          top: smallTop + smallH + 12,
           bottom: 0,
           child: IgnorePointer(
             ignoring: !small,
@@ -343,26 +347,25 @@ class _SpringSkinState extends State<SpringSkin> {
             offset: Offset(0, _ctrl ? 0 : 1),
             duration: const Duration(milliseconds: 380),
             curve: Curves.easeInOutCubic,
-            child: ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
-              child: DecoratedBox(
-                decoration: const BoxDecoration(
-                  // 实底 + 极轻的顶部渐变。之前顶部用了 96% 透明度的颜色，
-                  // 收起动画边缘会透出底下的封面，在两侧看起来像一条白边。
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Color(0xFF11131B), Color(0xFF0B0C12)],
-                    stops: [0, .3],
-                  ),
+            child: DecoratedBox(
+              decoration: const BoxDecoration(
+                // 不再是一块带圆角的实底卡片：顶部透明过渡到背景，底部才压暗。
+                // 这样进度条、按钮像 Apple Music 一样浮在封面上，收起时也没有
+                // 一条硬边横在歌词和面板之间。
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0x0011131B), Color(0x9911131B), Color(0xF211131B)],
+                  stops: [0, .22, 1],
                 ),
-                // 面板空白处也吃掉点击，避免穿透到后面的歌词触发 seek。
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () {},
-                  child: Padding(
-                    padding: EdgeInsets.only(bottom: widget.bottomInset),
-                    child: Column(children: [
+              ),
+              // 面板空白处也吃掉点击，避免穿透到后面的歌词触发 seek。
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {},
+                child: Padding(
+                  padding: EdgeInsets.only(bottom: widget.bottomInset),
+                  child: Column(children: [
                     const ProgressBar(track: 7, trackDrag: 12),
                     const SizedBox(height: 8),
                     Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
@@ -394,7 +397,6 @@ class _SpringSkinState extends State<SpringSkin> {
               ),
             ),
           ),
-        ),
       ]);
     });
   }

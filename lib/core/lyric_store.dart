@@ -61,7 +61,8 @@ List<LyricLine> toLyricLines(Lyric l, int durationSec) {
   final words = l.words;
   if (words != null && words.isNotEmpty) {
     final lines = _fromWords(words, l.translation);
-    if (lines.isNotEmpty) return lines;
+    final clean = _dropLeadingCredits(lines);
+    if (clean.isNotEmpty) return clean;
   }
   final base = parseLrc(l.lrc).where((x) => x.text.trim().isNotEmpty).toList();
   if (base.isEmpty) return const [];
@@ -73,7 +74,29 @@ List<LyricLine> toLyricLines(Lyric l, int durationSec) {
     final d = (next - t).clamp(.3, 30.0).toDouble();
     out.add(LyricLine(t, d, base[i].text.trim(), (trans[i] ?? '').trim(), ''));
   }
-  return out;
+  return _dropLeadingCredits(out);
+}
+
+/// 平台歌词常在开头塞「歌名 - 歌手」「词：xxx」「曲：xxx」「编曲：xxx」等
+/// 制作信息。Apple Music 的歌词页不展示这些，它们还会把真正要唱的第一句
+/// 推到屏幕下半部分。只清掉开头连续的制作信息，后面正文里出现同样字样不动。
+final _creditPrefix = RegExp(
+  r'^\s*(作词|作曲|编曲|制作人|监制|混音|母带|录音|和声|出品|发行|版权|OP|SP|策划|统筹|吉他|贝斯|鼓手|键盘|弦乐|封面|视觉|文案|演唱|原唱|翻唱|词|曲)\s*[：:]',
+  caseSensitive: false,
+);
+final _titleArtist = RegExp(r'^\s*[^，。！？]{1,40}\s*[-–—]\s*[^，。！？]{1,40}\s*$');
+
+bool _isCredit(String text) {
+  final t = text.trim();
+  return _creditPrefix.hasMatch(t) || _titleArtist.hasMatch(t);
+}
+
+List<LyricLine> _dropLeadingCredits(List<LyricLine> lines) {
+  var i = 0;
+  while (i < lines.length && i < 10 && _isCredit(lines[i].text)) {
+    i++;
+  }
+  return i == 0 ? lines : lines.sublist(i);
 }
 
 List<LyricLine> _fromWords(List<LyricLineWords> src, String? translation) {
