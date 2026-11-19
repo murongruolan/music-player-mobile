@@ -221,11 +221,22 @@ class _SpringSkinState extends State<SpringSkin> {
       const dur = Duration(milliseconds: 620);
       const curve = Cubic(.3, 1.2, .5, 1);
       const bottomH = 262.0;
-      return Listener(
-        onPointerDown: (_) {
-          if (view == 'lyrics') _showControls();
-        },
-        child: Stack(children: [
+      return Stack(children: [
+        // 歌词页背景：封面放大 + 压暗。比流光色块更贴封面，也不会出现跟封面无关的怪色。
+        Positioned.fill(
+          child: IgnorePointer(
+            child: AnimatedOpacity(
+              opacity: small ? 1 : 0,
+              duration: const Duration(milliseconds: 520),
+              curve: Curves.easeOut,
+              child: Stack(fit: StackFit.expand, children: [
+                const ColoredBox(color: Color(0xFF0B0C12)),
+                Transform.scale(scale: 1.18, child: BlurCover.song(s, px: 26)),
+                Container(color: const Color(0xA3000000)),
+              ]),
+            ),
+          ),
+        ),
         Positioned(top: 6, left: 0, right: 0, child: Center(child: GestureDetector(onTap: () => Navigator.of(context).pop(), child: Container(width: 38, height: 5, decoration: BoxDecoration(color: const Color(0x66FFFFFF), borderRadius: BorderRadius.circular(3)))))),
         AnimatedPositioned(
           duration: dur,
@@ -262,13 +273,11 @@ class _SpringSkinState extends State<SpringSkin> {
             Container(width: 32, height: 32, decoration: const BoxDecoration(color: Color(0x26FFFFFF), shape: BoxShape.circle), child: IBtn('more', size: 32, iconSize: 18, color: Colors.white, onTap: () => openSongMore(context, app.cur, '', dark: true))),
           ]),
         ),
-        AnimatedPositioned(
-          duration: const Duration(milliseconds: 380),
-          curve: Curves.easeInOutCubic,
+        Positioned(
           left: 0,
           right: 0,
           top: 28 + 58 + 14,
-          bottom: _ctrl ? bottomH : 0,
+          bottom: 0,
           child: IgnorePointer(
             ignoring: !small,
             child: AnimatedOpacity(
@@ -280,6 +289,7 @@ class _SpringSkinState extends State<SpringSkin> {
                       ? AmLyricView(
                           anchor: .3,
                           wave: app.amWave == 'wave',
+                          bottomInset: _ctrl ? bottomH : 0,
                           onBlankTap: _showControls,
                           onScrollUp: (up) => up ? _showControls() : _hideControls(),
                         )
@@ -287,14 +297,40 @@ class _SpringSkinState extends State<SpringSkin> {
             ),
           ),
         ),
-        AnimatedPositioned(
-          duration: const Duration(milliseconds: 380),
-          curve: Curves.easeInOutCubic,
+        // 控制台收起时，底部的歌词还是会透出来，垫一层随控制台淡入淡出的压暗渐变。
+        Positioned(
           left: 0,
           right: 0,
-          bottom: _ctrl ? 0 : -bottomH,
+          bottom: 0,
+          height: bottomH + 30,
+          child: IgnorePointer(
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 380),
+              curve: Curves.easeInOutCubic,
+              opacity: _ctrl ? 1 : 0,
+              child: const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0x00000000), Color(0xB3000000), Color(0xE6000000)],
+                    stops: [0, .45, 1],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
           height: bottomH,
-          child: Column(children: [
+          child: AnimatedSlide(
+            offset: Offset(0, _ctrl ? 0 : 1),
+            duration: const Duration(milliseconds: 380),
+            curve: Curves.easeInOutCubic,
+            child: Column(children: [
             const ProgressBar(track: 7, trackDrag: 12),
             const SizedBox(height: 8),
             Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
@@ -321,8 +357,9 @@ class _SpringSkinState extends State<SpringSkin> {
               ]),
             ),
           ]),
+          ),
         ),
-      ]));
+      ]);
     });
   }
 

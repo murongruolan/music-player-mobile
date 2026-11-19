@@ -33,11 +33,15 @@ class AmLyricView extends StatefulWidget {
   /// 手滑方向：true = 往上看更早的词（向下拖），false = 往下看后面的词（向上拖）。
   final ValueChanged<bool>? onScrollUp;
 
+  /// 控制台展开时给它让出的高度，避免「回到当前」被面板压住。
+  final double bottomInset;
+
   const AmLyricView({
     super.key,
     this.anchor = .3,
     this.padding = const EdgeInsets.symmetric(horizontal: 26),
     this.wave = false,
+    this.bottomInset = 0,
     this.onBlankTap,
     this.onScrollUp,
   });
@@ -102,7 +106,8 @@ class _AmLyricViewState extends State<AmLyricView>
 
   double manual = 0, _off = 0, _flingFrom = 0, _flingTo = 0;
   bool manualMode = false;
-  bool? _lastUp;
+  double _pull = 0;
+  bool _woke = false, _hid = false;
   Timer? _blurTimer;
 
   int _tapBlock = -1;
@@ -295,7 +300,9 @@ class _AmLyricViewState extends State<AmLyricView>
   void _onDragStart(DragStartDetails _) {
     _blurTimer?.cancel();
     _fling.stop();
-    _lastUp = null;
+    _pull = 0;
+    _woke = false;
+    _hid = false;
     setState(() => manualMode = true);
     _blurC.animateTo(0,
         duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
@@ -304,11 +311,23 @@ class _AmLyricViewState extends State<AmLyricView>
   void _onDragUpdate(DragUpdateDetails d) {
     manual = _clampManual(manual + d.delta.dy);
     _repaint.ping();
-    if (d.delta.dy.abs() > 1) {
-      final up = d.delta.dy > 0;
-      if (up != _lastUp) {
-        _lastUp = up;
-        widget.onScrollUp?.call(up);
+    final dy = d.delta.dy;
+    if (dy.abs() > 1) {
+      _pull += dy;
+      // 往上看前面的词：要拉出 110 逻辑像素，或者单帧速度够快，才唤起控制台；
+      // 反向往回拉 30 才收起，避免手指抖动把面板一闪一闪。
+      if (_pull >= 110 || dy >= 24) {
+        if (!_woke) {
+          _woke = true;
+          _hid = false;
+          widget.onScrollUp?.call(true);
+        }
+      } else if (_pull <= -30) {
+        if (!_hid) {
+          _hid = true;
+          _woke = false;
+          widget.onScrollUp?.call(false);
+        }
       }
     }
   }
@@ -444,9 +463,11 @@ class _AmLyricViewState extends State<AmLyricView>
             ),
           ),
           if (manualMode)
-            Positioned(
+            AnimatedPositioned(
+              duration: const Duration(milliseconds: 380),
+              curve: Curves.easeInOutCubic,
               right: 16,
-              bottom: 10,
+              bottom: 10 + widget.bottomInset,
               child: Press(
                 onTap: _recenter,
                 child: Container(
