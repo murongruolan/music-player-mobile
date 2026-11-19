@@ -298,11 +298,12 @@ class _SpringSkinState extends State<SpringSkin> {
           ),
         ),
         // 控制台收起时，底部的歌词还是会透出来，垫一层随控制台淡入淡出的压暗渐变。
+        // 从上往下提前 96 开始压暗，面板里的进度条、按钮后面不再透出白字。
         Positioned(
           left: 0,
           right: 0,
           bottom: 0,
-          height: bottomH + 30,
+          height: bottomH + 96,
           child: IgnorePointer(
             child: AnimatedOpacity(
               duration: const Duration(milliseconds: 380),
@@ -313,8 +314,8 @@ class _SpringSkinState extends State<SpringSkin> {
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [Color(0x00000000), Color(0xB3000000), Color(0xE6000000)],
-                    stops: [0, .45, 1],
+                    colors: [Color(0x00000000), Color(0xB8000000), Color(0xF2000000)],
+                    stops: [0, .30, 1],
                   ),
                 ),
               ),
