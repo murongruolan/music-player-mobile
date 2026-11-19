@@ -285,7 +285,7 @@ class AppState extends ChangeNotifier {
       scriptOrder[p.id] = scripts.where((s) => s.platforms.contains(p.id)).map((s) => s.id).toList();
     }
     _clock = Timer.periodic(const Duration(milliseconds: 50), (_) => _tick());
-    pos.addListener(_posClock.reset); // 每次有新的进度上报，平滑位置从这里重新起算
+    pos.addListener(_onPositionReport); // 进度上报只校准单调时钟，不把歌词填充拽回去
     if (resolver != null) cast = CastController(); // 投放依赖 resolver 取流
     _bindEngine();
     _bindCast();
@@ -993,16 +993,59 @@ class AppState extends ChangeNotifier {
     return (name: s.name, ms: s.ms, ok: s.ok);
   }
 
-  /// 平滑的播放位置：引擎大约每 200ms 才报一次进度，逐帧动画（歌词填充）在两次上报之间
-  /// 按经过的时间 × 倍速往前推，最多推 0.6 秒（防止卡顿 / 缓冲时跑过头）。
+  /// 平滑的播放位置：引擎上报间隔在 iOS / Android 上并不稳定（iOS 的
+  /// just_audio 偶尔会隔接近 1 秒才给一个点）。如果每收到一次上报就把基准
+  /// 重置回 `pos.value`，歌词逐字填充会在两次上报之间「先停住、再跳一下」，
+  /// 最慢时正好差一个字。这里改成只向前的单调时钟：
+  /// - 每次上报只用来「校准」；小幅落后直接忽略，不让填充倒退；
+  /// - 上报明显跳变（seek / 切歌）才重新锚定；
+  /// - 最多外推 1.2 秒，缓冲时不会无限跑远。
   double get smoothPos {
     final p = pos.value;
-    if (!playing || (!hasSong && online)) return p;
-    final dt = math.min(_posClock.elapsedMicroseconds / 1e6, 0.6);
-    return p + dt * speed;
+    if (!playing || (!hasSong && online)) {
+      _smoothBase = p;
+      _smoothAnchorUs = _posClock.elapsedMicroseconds;
+      _smoothRunning = false;
+      return p;
+    }
+    if (!_smoothRunning) {
+      _smoothBase = p;
+      _smoothAnchorUs = _posClock.elapsedMicroseconds;
+      _smoothRunning = true;
+    }
+    final dt = math.min((_posClock.elapsedMicroseconds - _smoothAnchorUs) / 1e6, 1.2);
+    return _smoothBase + dt * speed;
   }
 
   final _posClock = Stopwatch()..start();
+  double _smoothBase = 0;
+  int _smoothAnchorUs = 0;
+  bool _smoothRunning = false;
+
+  /// 收到引擎进度：校准单调时钟。前进 / 大幅后退（seek）才重锚；小幅落后不倒退。
+  void _onPositionReport() {
+    final p = pos.value;
+    final now = _posClock.elapsedMicroseconds;
+    if (!playing) {
+      _smoothBase = p;
+      _smoothAnchorUs = now;
+      _smoothRunning = false;
+      return;
+    }
+    if (!_smoothRunning) {
+      _smoothBase = p;
+      _smoothAnchorUs = now;
+      _smoothRunning = true;
+      return;
+    }
+    final dt = math.min((now - _smoothAnchorUs) / 1e6, 1.2);
+    final projected = _smoothBase + dt * speed;
+    final err = p - projected;
+    // 前进：以上报为准；后退超过 0.8s：认为真的 seek 了；小幅落后：
+    // 保持当前时钟继续走，只把锚点挪到 projected，避免误差累积到下一次。
+    _smoothBase = err > 0 || err < -0.8 ? p : projected;
+    _smoothAnchorUs = now;
+  }
 
   int get lyricIndex => lyricIndexAt(smoothPos + set.loff);
 

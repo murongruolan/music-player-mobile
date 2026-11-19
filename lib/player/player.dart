@@ -132,16 +132,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final dpr = view.devicePixelRatio;
     final topInset = full ? 0.0 : math.max(mq.padding.top, view.viewPadding.top / dpr);
     final bottomInset = full ? 0.0 : math.max(mq.padding.bottom, view.viewPadding.bottom / dpr);
+    // 律动皮肤的控制台要铺到屏幕最底部（包括手势条区域）。其余皮肤仍把内容
+    // 收在安全区内，避免把按钮压进系统导航栏。
+    final bleedBottom = !full && app.skin == 'spring' && bottomInset > 0;
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      // 播放器内把系统栏刷成实黑：避免透明状态栏/手势条对后面的封面做采样或模糊，
-      // 出现「封面戳进通知栏」以及底部一条奇怪的色带。
-      value: const SystemUiOverlayStyle(
-        statusBarColor: Color(0xFF000000),
+      // 播放器内把状态栏刷成实黑；律动皮肤的手势条透明，让控制台实底一直铺到
+      // 屏幕底，而不是在导航条上方硬生生截断。
+      value: SystemUiOverlayStyle(
+        statusBarColor: const Color(0xFF000000),
         statusBarIconBrightness: Brightness.light,
         statusBarBrightness: Brightness.dark,
-        systemNavigationBarColor: Color(0xFF000000),
+        systemNavigationBarColor: bleedBottom ? Colors.transparent : const Color(0xFF000000),
         systemNavigationBarIconBrightness: Brightness.light,
-        systemNavigationBarDividerColor: Color(0xFF000000),
+        systemNavigationBarDividerColor: bleedBottom ? Colors.transparent : const Color(0xFF000000),
         systemNavigationBarContrastEnforced: false,
         systemStatusBarContrastEnforced: false,
       ),
@@ -166,9 +169,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
             // 兜底：即使背景层/ROM 的内边距计算有偏差，也用实黑盖住系统栏区域。
             if (topInset > 0)
               Positioned(top: 0, left: 0, right: 0, height: topInset, child: const ColoredBox(color: Colors.black)),
-            if (bottomInset > 0)
+            if (!bleedBottom && bottomInset > 0)
               Positioned(bottom: 0, left: 0, right: 0, height: bottomInset, child: const ColoredBox(color: Colors.black)),
-            Positioned.fill(child: Padding(padding: EdgeInsets.only(top: topInset, bottom: bottomInset), child: RepaintBoundary(child: SkinHost(skin: app.skin)))),
+            Positioned.fill(child: Padding(padding: EdgeInsets.only(top: topInset, bottom: bleedBottom ? 0 : bottomInset), child: RepaintBoundary(child: SkinHost(skin: app.skin, bottomInset: bleedBottom ? bottomInset : 0)))),
           ]),
         ),
       ),

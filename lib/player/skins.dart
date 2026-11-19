@@ -25,7 +25,11 @@ part 'landscape.dart';
 
 class SkinHost extends StatelessWidget {
   final String skin;
-  const SkinHost({super.key, required this.skin});
+
+  /// 底部系统手势条占位。只有律动皮肤会把控制台铺到屏幕底（包括导航条），
+  /// 其余皮肤仍按安全区留黑，避免内容压到系统栏。
+  final double bottomInset;
+  const SkinHost({super.key, required this.skin, this.bottomInset = 0});
   @override
   Widget build(BuildContext context) {
     final w = switch (skin) {
@@ -45,7 +49,7 @@ class SkinHost extends StatelessWidget {
       'magazine' => const MagazineSkin(),
       'dial' => const DialSkin(),
       'minimal' => const MinimalSkin(),
-      _ => const SpringSkin(),
+      _ => SpringSkin(bottomInset: bottomInset),
     };
     return AnimatedSwitcher(duration: const Duration(milliseconds: 400), child: KeyedSubtree(key: ValueKey(skin), child: w));
   }
@@ -164,7 +168,9 @@ class _SwipeCoverState extends State<SwipeCover> with SingleTickerProviderStateM
 
 // ============================ 律动（Apple Music 风格，默认） ============================
 class SpringSkin extends StatefulWidget {
-  const SpringSkin({super.key});
+  /// 底部手势条高度。控制台铺到屏幕底部时，用它把内容顶在手势条上方。
+  final double bottomInset;
+  const SpringSkin({super.key, this.bottomInset = 0});
   @override
   State<SpringSkin> createState() => _SpringSkinState();
 }
@@ -221,6 +227,9 @@ class _SpringSkinState extends State<SpringSkin> {
       const dur = Duration(milliseconds: 620);
       const curve = Cubic(.3, 1.2, .5, 1);
       const bottomH = 262.0;
+      // 律动皮肤的控制台要一直铺到屏幕底（含系统手势条区域），否则面板和
+      // 黑色导航条之间会多出一截，看起来像一块浮在底部的「分体卡片」。
+      final panelH = bottomH + widget.bottomInset;
       return Stack(children: [
         // 歌词页背景：封面放大 + 压暗。比流光色块更贴封面，也不会出现跟封面无关的怪色。
         Positioned.fill(
@@ -289,7 +298,7 @@ class _SpringSkinState extends State<SpringSkin> {
                       ? AmLyricView(
                           anchor: .3,
                           wave: app.amWave == 'wave',
-                          bottomInset: _ctrl ? bottomH : 0,
+                          bottomInset: _ctrl ? panelH : 0,
                           onBlankTap: _showControls,
                           onScrollUp: (up) => up ? _showControls() : _hideControls(),
                         )
@@ -303,7 +312,7 @@ class _SpringSkinState extends State<SpringSkin> {
           left: 0,
           right: 0,
           bottom: 0,
-          height: bottomH + 96,
+          height: panelH + 96,
           child: IgnorePointer(
             child: AnimatedOpacity(
               duration: const Duration(milliseconds: 380),
@@ -326,7 +335,7 @@ class _SpringSkinState extends State<SpringSkin> {
           left: 0,
           right: 0,
           bottom: 0,
-          height: bottomH,
+          height: panelH,
           child: AnimatedSlide(
             offset: Offset(0, _ctrl ? 0 : 1),
             duration: const Duration(milliseconds: 380),
@@ -335,19 +344,22 @@ class _SpringSkinState extends State<SpringSkin> {
               borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
               child: DecoratedBox(
                 decoration: const BoxDecoration(
+                  // 实底 + 极轻的顶部渐变。之前顶部用了 96% 透明度的颜色，
+                  // 收起动画边缘会透出底下的封面，在两侧看起来像一条白边。
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [Color(0xF50B0C12), Color(0xFF0B0C12)],
+                    colors: [Color(0xFF11131B), Color(0xFF0B0C12)],
                     stops: [0, .3],
                   ),
-                  border: Border(top: BorderSide(color: Color(0x1AFFFFFF))),
                 ),
                 // 面板空白处也吃掉点击，避免穿透到后面的歌词触发 seek。
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: () {},
-                  child: Column(children: [
+                  child: Padding(
+                    padding: EdgeInsets.only(bottom: widget.bottomInset),
+                    child: Column(children: [
                     const ProgressBar(track: 7, trackDrag: 12),
                     const SizedBox(height: 8),
                     Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
@@ -374,6 +386,7 @@ class _SpringSkinState extends State<SpringSkin> {
                       ]),
                     ),
                   ]),
+                  ),
                 ),
               ),
             ),
