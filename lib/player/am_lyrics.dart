@@ -312,22 +312,22 @@ class _AmLyricViewState extends State<AmLyricView>
     manual = _clampManual(manual + d.delta.dy);
     _repaint.ping();
     final dy = d.delta.dy;
-    if (dy.abs() > 1) {
-      _pull += dy;
-      // 往上看前面的词：要拉出 110 逻辑像素，或者单帧速度够快，才唤起控制台；
-      // 反向往回拉 30 才收起，避免手指抖动把面板一闪一闪。
-      if (_pull >= 110 || dy >= 24) {
-        if (!_woke) {
-          _woke = true;
-          _hid = false;
-          widget.onScrollUp?.call(true);
-        }
-      } else if (_pull <= -30) {
-        if (!_hid) {
-          _hid = true;
-          _woke = false;
-          widget.onScrollUp?.call(false);
-        }
+    // 真机上高采样率触屏每次 delta 可能不到 1 逻辑像素（240Hz + DPR 3 时约 0.6），
+    // 之前用 |dy|>1 过滤会把整段下拉全部丢掉，导致「怎么拉都唤不出控制台」。
+    _pull += dy;
+    // 往上看前面的词：要拉出 110 逻辑像素，或者单帧速度够快，才唤起控制台；
+    // 反向往回拉 30 才收起，避免手指抖动把面板一闪一闪。
+    if (_pull >= 110 || dy >= 24) {
+      if (!_woke) {
+        _woke = true;
+        _hid = false;
+        widget.onScrollUp?.call(true);
+      }
+    } else if (_pull <= -30) {
+      if (!_hid) {
+        _hid = true;
+        _woke = false;
+        widget.onScrollUp?.call(false);
       }
     }
   }
