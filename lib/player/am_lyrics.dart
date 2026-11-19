@@ -55,12 +55,14 @@ class _Block {
 /// 一行歌词的排版缓存：主句、翻译、以及三档模糊画笔。
 class _Line {
   final String text, trans;
-  final double top, height, mainH;
+  final double t, top, height, mainH;
   final Map<int, TextPainter> blurMain = {};
   final Map<int, TextPainter> blurTrans = {};
-  TextPainter? bright, dim, sharp, transCur;
+  TextPainter? bright, dim, transCur;
+  /// 同块里已唱完 / 还没唱到的相邻句，避免未唱句被当成高亮。
+  TextPainter? sung, unsung, transSung, transUnsung;
   List<ui.LineMetrics>? metrics;
-  _Line(this.text, this.trans, this.top, this.height, this.mainH);
+  _Line(this.text, this.trans, this.t, this.top, this.height, this.mainH);
 }
 
 class _AmLyricViewState extends State<AmLyricView>
@@ -105,6 +107,9 @@ class _AmLyricViewState extends State<AmLyricView>
 
   int _tapBlock = -1;
   double progress = 0;
+
+  /// 当前播放位置（秒，含 loff），绘制块内「已唱 / 未唱」两行时用。
+  double pos = 0;
 
   @visibleForTesting
   int get layoutLines => _lines.length;
@@ -175,6 +180,7 @@ class _AmLyricViewState extends State<AmLyricView>
       }
     }
     progress = lyrics[nk].progressAt(p);
+    pos = p;
     _repaint.ping();
   }
 
@@ -256,7 +262,7 @@ class _AmLyricViewState extends State<AmLyricView>
             ..layout(maxWidth: w);
           h += t2.height + 4;
         }
-        _lines.add(_Line(l.text, l.trans, y, h, tp.height));
+        _lines.add(_Line(l.text, l.trans, l.t, y, h, tp.height));
         _lineBlock.add(_blocks.length);
         y += h;
         if (j < last) y += gap; // 块内两句贴得近一点
@@ -571,18 +577,31 @@ class _AmPainter extends CustomPainter {
         if (i == cur) {
           _paintCurrent(canvas, l, o, w);
         } else if (inCurrentBlock) {
-          final tp = l.sharp ??= _mk(l.text,
-              main.copyWith(color: Colors.white.withValues(alpha: .86)), w);
+          // 同块相邻句：已唱完的保持亮，还没轮到的压暗——不能让它看起来像「当前句」。
+          final tp = l.t <= st.pos + .01
+              ? (l.sung ??= _mk(l.text,
+                  main.copyWith(color: Colors.white.withValues(alpha: .86)), w))
+              : (l.unsung ??= _mk(l.text,
+                  main.copyWith(color: Colors.white.withValues(alpha: .38)), w));
           tp.paint(canvas, o);
         } else {
           _variant(l, lvl, w).paint(canvas, o);
         }
 
         if (trans && l.trans.isNotEmpty) {
-          final tpv = inCurrentBlock
-              ? (l.transCur ??= _mk(l.trans,
-                  tr.copyWith(color: Colors.white.withValues(alpha: .72)), w))
-              : _variantTrans(l, lvl, w);
+          TextPainter tpv;
+          if (!inCurrentBlock) {
+            tpv = _variantTrans(l, lvl, w);
+          } else if (i == cur) {
+            tpv = l.transCur ??= _mk(l.trans,
+                tr.copyWith(color: Colors.white.withValues(alpha: .72)), w);
+          } else if (l.t <= st.pos + .01) {
+            tpv = l.transSung ??= _mk(l.trans,
+                tr.copyWith(color: Colors.white.withValues(alpha: .6)), w);
+          } else {
+            tpv = l.transUnsung ??= _mk(l.trans,
+                tr.copyWith(color: Colors.white.withValues(alpha: .3)), w);
+          }
           tpv.paint(canvas, Offset(x, y + l.mainH + 4));
         }
         canvas.restore();
