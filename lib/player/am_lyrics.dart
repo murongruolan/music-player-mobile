@@ -98,7 +98,7 @@ class _AmLyricViewState extends State<AmLyricView>
   final _lineBlock = <int>[];
   List<double> from = [], to = [];
 
-  double manual = 0, _flingFrom = 0, _flingTo = 0;
+  double manual = 0, _off = 0, _flingFrom = 0, _flingTo = 0;
   bool manualMode = false;
   bool? _lastUp;
   Timer? _blurTimer;
@@ -274,6 +274,7 @@ class _AmLyricViewState extends State<AmLyricView>
   void _retarget(int nk) {
     if (nk < 0 || nk >= _lines.length) return;
     final off = _h * widget.anchor - (_lines[nk].top + _lines[nk].height / 2);
+    _off = off;
     final n = _lines.length;
     from = [for (var i = 0; i < n; i++) to.isEmpty ? off : _visual(i)];
     to = List.filled(n, off);
@@ -325,7 +326,8 @@ class _AmLyricViewState extends State<AmLyricView>
     final contentH =
         _lines.isEmpty ? 0.0 : _lines.last.top + _lines.last.height;
     final min = math.min(0.0, _h - contentH - 40);
-    final max = math.max(0.0, _h * .5);
+    // 往上可以翻到第一句（Apple 允许回看整首），留一点回弹余量。
+    final max = math.max(0.0, -_off + 28);
     return v.clamp(min, max);
   }
 
@@ -468,8 +470,8 @@ class _AmPainter extends CustomPainter {
       : super(repaint: repaint);
 
   /// 三档：清晰 / 半糊 / 全糊。手滑时用 0，停手后回到 2。
-  static const _alpha = [.78, .5, .34];
-  static const _sigma = [0.0, .11, .2];
+  static const _alpha = [.82, .56, .42];
+  static const _sigma = [0.0, .10, .16];
 
   TextPainter _mk(String text, TextStyle style, double maxW, {Paint? fg}) =>
       TextPainter(
