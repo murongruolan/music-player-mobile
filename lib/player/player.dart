@@ -126,28 +126,51 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final sk = skinBy(app.skin);
     final mq = MediaQuery.of(context);
     final full = isLandscapeSkin(app.skin);
-    return GestureDetector(
-      onVerticalDragStart: _start,
-      onVerticalDragUpdate: _update,
-      onVerticalDragEnd: _end,
-      onVerticalDragCancel: () => _end(DragEndDetails()),
-      child: Material(
-        color: Colors.black,
-        child: Stack(children: [
-          // 背景只铺在应用内容区（状态栏 / 手势条留黑），避免封面模糊
-          // 从通知栏里透出来、和下面的内容之间多出一截。
-          if (sk.usesBg)
-            Positioned.fill(
-              child: Padding(
-                padding: EdgeInsets.only(
-                    top: full ? 0 : mq.padding.top,
-                    bottom: full ? 0 : mq.padding.bottom),
-                child: RepaintBoundary(
-                    child: PlayerBackground(song: app.song, mode: app.bg, tone: app.tone, dim: app.dim, beat: true)),
+    // MediaQuery.padding 在个别 ROM 的 edge-to-edge 下会是 0；viewPadding 是物理像素，
+    // 除以 DPR 后作为兜底，保证状态栏/手势条一定留出实底。
+    final view = View.of(context);
+    final dpr = view.devicePixelRatio;
+    final topInset = full ? 0.0 : math.max(mq.padding.top, view.viewPadding.top / dpr);
+    final bottomInset = full ? 0.0 : math.max(mq.padding.bottom, view.viewPadding.bottom / dpr);
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      // 播放器内把系统栏刷成实黑：避免透明状态栏/手势条对后面的封面做采样或模糊，
+      // 出现「封面戳进通知栏」以及底部一条奇怪的色带。
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Color(0xFF000000),
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+        systemNavigationBarColor: Color(0xFF000000),
+        systemNavigationBarIconBrightness: Brightness.light,
+        systemNavigationBarDividerColor: Color(0xFF000000),
+        systemNavigationBarContrastEnforced: false,
+        systemStatusBarContrastEnforced: false,
+      ),
+      child: GestureDetector(
+        onVerticalDragStart: _start,
+        onVerticalDragUpdate: _update,
+        onVerticalDragEnd: _end,
+        onVerticalDragCancel: () => _end(DragEndDetails()),
+        child: Material(
+          color: Colors.black,
+          child: Stack(children: [
+            // 背景只铺在应用内容区（状态栏 / 手势条留黑），避免封面模糊
+            // 从通知栏里透出来、和下面的内容之间多出一截。
+            if (sk.usesBg)
+              Positioned.fill(
+                child: Padding(
+                  padding: EdgeInsets.only(top: topInset, bottom: bottomInset),
+                  child: RepaintBoundary(
+                      child: PlayerBackground(song: app.song, mode: app.bg, tone: app.tone, dim: app.dim, beat: true)),
+                ),
               ),
-            ),
-          Positioned.fill(child: Padding(padding: EdgeInsets.only(top: full ? 0 : mq.padding.top, bottom: full ? 0 : mq.padding.bottom), child: RepaintBoundary(child: SkinHost(skin: app.skin)))),
-        ]),
+            // 兜底：即使背景层/ROM 的内边距计算有偏差，也用实黑盖住系统栏区域。
+            if (topInset > 0)
+              Positioned(top: 0, left: 0, right: 0, height: topInset, child: const ColoredBox(color: Colors.black)),
+            if (bottomInset > 0)
+              Positioned(bottom: 0, left: 0, right: 0, height: bottomInset, child: const ColoredBox(color: Colors.black)),
+            Positioned.fill(child: Padding(padding: EdgeInsets.only(top: topInset, bottom: bottomInset), child: RepaintBoundary(child: SkinHost(skin: app.skin)))),
+          ]),
+        ),
       ),
     );
   }
