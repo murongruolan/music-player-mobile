@@ -431,19 +431,28 @@ class _AmLyricViewState extends State<AmLyricView>
         child: Stack(children: [
           Positioned.fill(
             child: ClipRect(
-              child: ShaderMask(
-                shaderCallback: (r) => const LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.transparent,
-                    Colors.black,
-                    Colors.black,
-                    Colors.transparent
-                  ],
-                  stops: [0, .14, .8, 1],
-                ).createShader(r),
-                blendMode: BlendMode.dstIn,
+              // 底部渐隐的起点跟着控制台走：面板展开时提前淡出，避免歌词白字
+              // 从进度条/按钮后面透出来；收起时恢复，能多看两句。
+              child: TweenAnimationBuilder<double>(
+                tween: Tween<double>(
+                    begin: .8, end: widget.bottomInset > 0 ? .56 : .8),
+                duration: const Duration(milliseconds: 380),
+                curve: Curves.easeInOutCubic,
+                builder: (context, fade, child) => ShaderMask(
+                  shaderCallback: (r) => LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: const [
+                      Colors.transparent,
+                      Colors.black,
+                      Colors.black,
+                      Colors.transparent
+                    ],
+                    stops: [0, .14, fade, fade + .11],
+                  ).createShader(r),
+                  blendMode: BlendMode.dstIn,
+                  child: child,
+                ),
                 child: RepaintBoundary(
                   child: CustomPaint(
                     painter: _AmPainter(
