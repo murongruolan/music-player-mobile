@@ -112,6 +112,10 @@ class _AmLyricViewState extends State<AmLyricView>
   /// 手动滚完歌词后，隔几秒没有继续拖拽就自动回到当前句；
   /// 否则用户必须去点「回到当前」，播放往前走歌词也不跟上。
   Timer? _followTimer;
+  /// 点「回到当前」后，先让非当前块重新糊上，再退出 manualMode；
+  /// 否则在 fling / 控制台弹出的这半秒里，非当前块会按 lvl0 的 .82 画，
+  /// 看起来像剩下的歌词一起高亮了。
+  Timer? _manualExitTimer;
   /// 点歌词 seek 之后，等播放位置真的到目标附近再回正；否则 seek 还没生效，
   /// _recenter 会把画面按旧的当前行（往往在歌尾）拽回去，看起来像「跳到最下面」。
   double? _pendingTapSeek;
@@ -219,6 +223,7 @@ class _AmLyricViewState extends State<AmLyricView>
     _waveC.dispose();
     _blurTimer?.cancel();
     _followTimer?.cancel();
+    _manualExitTimer?.cancel();
     _pendingTapTimer?.cancel();
     _repaint.dispose();
     super.dispose();
@@ -320,6 +325,7 @@ class _AmLyricViewState extends State<AmLyricView>
   void _onDragStart(DragStartDetails _) {
     _blurTimer?.cancel();
     _followTimer?.cancel();
+    _manualExitTimer?.cancel();
     _pendingTapSeek = null;
     _pendingTapTimer?.cancel();
     _fling.stop();
@@ -416,6 +422,14 @@ class _AmLyricViewState extends State<AmLyricView>
   void _recenter({bool retarget = true}) {
     if (!mounted) return;
     _followTimer?.cancel();
+    _manualExitTimer?.cancel();
+    _blurTimer?.cancel();
+    // 手动浏览时非当前块是「清晰但压暗」；如果这里立刻把 manualMode 关掉，
+    // 而 _blurC 还停在 0，非当前块会走 _variant(lvl0) 的 .82 亮字，
+    // 在 fling 结束到模糊重新盖上的这段间隙里看起来像全部高亮。
+    // 先把模糊动画推上去，再退出 manualMode。
+    _blurC.animateTo(1,
+        duration: const Duration(milliseconds: 200), curve: Curves.easeIn);
     // 手动浏览期间 k 会随播放更新，但 _off 还停在开始滚动时的行；
     // 回正前必须按当前行重新算 _off，否则只是把手动位移清零、画面停在旧位置。
     if (retarget) {
@@ -425,7 +439,11 @@ class _AmLyricViewState extends State<AmLyricView>
     _flingFrom = manual;
     _flingTo = 0;
     _fling.forward(from: 0);
-    setState(() => manualMode = false);
+    if (manualMode) {
+      _manualExitTimer = Timer(const Duration(milliseconds: 230), () {
+        if (mounted) setState(() => manualMode = false);
+      });
+    }
   }
 
   // ---------------------------------------------------------------- 构建
