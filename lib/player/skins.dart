@@ -253,6 +253,19 @@ class _SpringSkinState extends State<SpringSkin> {
             ),
           ),
         ),
+        // 歌词铺满整个内容区，排在小封面/标题下面一层：Apple Music 的歌词
+        // 会从上方的封面后面透出来，当前句落在屏幕约 1/5 处，而不是从封面
+        // 下方才开始排、把当前句压到屏幕中间。
+        if (view == 'lyrics')
+          Positioned.fill(
+            child: AmLyricView(
+              anchor: .16,
+              wave: app.amWave == 'wave',
+              bottomInset: _ctrl ? panelH : 0,
+              onBlankTap: _showControls,
+              onScrollUp: (up) => up ? _showControls() : _hideControls(),
+            ),
+          ),
         Positioned(top: 6, left: 0, right: 0, child: Center(child: GestureDetector(onTap: () => Navigator.of(context).pop(), child: Container(width: 38, height: 5, decoration: BoxDecoration(color: const Color(0x66FFFFFF), borderRadius: BorderRadius.circular(3)))))),
         AnimatedPositioned(
           duration: dur,
@@ -277,17 +290,21 @@ class _SpringSkinState extends State<SpringSkin> {
           right: 14,
           top: small ? smallTop : H - bottomH - 70,
           height: small ? smallH : 58,
-          child: Row(children: [
-            Expanded(
-              child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Marquee(s.title, style: ts(small ? 17 : 20, w: FontWeight.w700, c: Colors.white)),
-                const SizedBox(height: 2),
-                Text(s.artist, maxLines: 1, style: ts(small ? 14 : 17, c: const Color(0xA6FFFFFF))),
-              ]),
-            ),
-            HeartBtn(app.cur, size: 24, offColor: const Color(0xB3FFFFFF)),
-            Container(width: 32, height: 32, decoration: const BoxDecoration(color: Color(0x26FFFFFF), shape: BoxShape.circle), child: IBtn('more', size: 32, iconSize: 18, color: Colors.white, onTap: () => openSongMore(context, app.cur, '', dark: true))),
-          ]),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {},
+            child: Row(children: [
+              Expanded(
+                child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Marquee(s.title, style: ts(small ? 17 : 20, w: FontWeight.w700, c: Colors.white)),
+                  const SizedBox(height: 2),
+                  Text(s.artist, maxLines: 1, style: ts(small ? 14 : 17, c: const Color(0xA6FFFFFF))),
+                ]),
+              ),
+              HeartBtn(app.cur, size: 24, offColor: const Color(0xB3FFFFFF)),
+              Container(width: 32, height: 32, decoration: const BoxDecoration(color: Color(0x26FFFFFF), shape: BoxShape.circle), child: IBtn('more', size: 32, iconSize: 18, color: Colors.white, onTap: () => openSongMore(context, app.cur, '', dark: true))),
+            ]),
+          ),
         ),
         Positioned(
           left: 0,
@@ -295,21 +312,11 @@ class _SpringSkinState extends State<SpringSkin> {
           top: smallTop + smallH + 12,
           bottom: 0,
           child: IgnorePointer(
-            ignoring: !small,
+            ignoring: view != 'queue',
             child: AnimatedOpacity(
               duration: const Duration(milliseconds: 360),
-              opacity: small ? 1 : 0,
-              child: view == 'queue'
-                  ? _inlineQueue(context)
-                  : (small
-                      ? AmLyricView(
-                          anchor: .3,
-                          wave: app.amWave == 'wave',
-                          bottomInset: _ctrl ? panelH : 0,
-                          onBlankTap: _showControls,
-                          onScrollUp: (up) => up ? _showControls() : _hideControls(),
-                        )
-                      : const SizedBox()),
+              opacity: view == 'queue' ? 1 : 0,
+              child: _inlineQueue(context),
             ),
           ),
         ),
