@@ -165,7 +165,15 @@ class _AmLyricViewState extends State<AmLyricView>
     final app = _app!;
     final p = app.smoothPos + app.set.loff;
     final nk = app.lyricIndexAt(p).clamp(0, _lines.length - 1);
-    if (nk != k) _retarget(nk);
+    if (nk != k) {
+      if (manualMode) {
+        // 用户正在自己翻歌词：只更新当前行（模糊/高亮），不把画面拽回去。
+        prevK = k;
+        k = nk;
+      } else {
+        _retarget(nk);
+      }
+    }
     progress = lyrics[nk].progressAt(p);
     _repaint.ping();
   }
