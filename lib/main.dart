@@ -35,7 +35,8 @@ Future<void> main() async {
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   final shot = shotFromUrl();
   // 截图模式不连后端，页面全部用 mock 数据
-  final net = shot != null ? null : await Net.create();
+  // QA（仅截图验证分支）：强制演示模式，免登录直接看 UI。
+  final Net? net = null;
   await AppLog.instance.attach(net?.prefs); // 读本机保存的崩溃记录
   net?.session.onEnd.where((r) => r == SessionEnd.expired).listen((_) => toast('登录已失效，请重新登录', 'lock'));
   // 音频引擎：截图模式不创建（无平台通道，保持模拟时钟），正式运行才有真实播放 + 通知栏
@@ -96,7 +97,10 @@ Future<void> main() async {
   await app.floatLyric.init(); // 悬浮歌词样式 + 原生回调
   unawaited(app.applyCacheToEngine()); // 边听边缓存开关联动引擎
   app.restoreSession();
-  if (app.authed) unawaited(app.autoplayLast()); // 「启动时自动播放」：音乐库和音源脚本已在 cloud.init 里读好
+  app.authed = true; // QA：跳过登录
+  app.pos.value = 34; // QA：定位到中段歌词
+  // QA：不自动播放，避免无音源时弹「去导入」挡住截图
+  // if (app.authed) unawaited(app.autoplayLast()); // 「启动时自动播放」：音乐库和音源脚本已在 cloud.init 里读好
   app.telemetry.track('app_launch', {'source': 'normal', 'loggedIn': app.authed});
   unawaited(app.checkUpdate());
   if (shot != null) applyShotState(app, shot);
