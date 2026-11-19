@@ -16,6 +16,7 @@ import '../ui/kit.dart';
 import '../main.dart' show overlayStyle;
 import '../widgets/sheets.dart';
 import '../pages/settings.dart';
+import 'am_lyrics.dart';
 import 'lyrics.dart';
 import 'particles.dart';
 import 'player.dart';
@@ -170,6 +171,45 @@ class SpringSkin extends StatefulWidget {
 
 class _SpringSkinState extends State<SpringSkin> {
   String view = 'cover';
+
+  /// 控制台是否展开：Apple Music 的歌词页在几秒不碰屏幕后会把进度条 / 主控 / 音量整块沉下去。
+  bool _ctrl = true;
+  Timer? _idle;
+
+  @override
+  void dispose() {
+    _idle?.cancel();
+    super.dispose();
+  }
+
+  /// 任何触摸都算「刚操作过」：展开控制台并重新计时。
+  void _showControls() {
+    if (!mounted) return;
+    if (!_ctrl) setState(() => _ctrl = true);
+    _armIdle();
+  }
+
+  void _armIdle() {
+    _idle?.cancel();
+    if (view != 'lyrics') return;
+    _idle = Timer(const Duration(milliseconds: 4500), () {
+      if (mounted && view == 'lyrics' && _ctrl) setState(() => _ctrl = false);
+    });
+  }
+
+  void _hideControls() {
+    _idle?.cancel();
+    if (_ctrl) setState(() => _ctrl = false);
+  }
+
+  void _setView(String v) {
+    setState(() {
+      view = v;
+      _ctrl = true;
+    });
+    _armIdle();
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = context.app;
@@ -181,7 +221,11 @@ class _SpringSkinState extends State<SpringSkin> {
       const dur = Duration(milliseconds: 620);
       const curve = Cubic(.3, 1.2, .5, 1);
       const bottomH = 262.0;
-      return Stack(children: [
+      return Listener(
+        onPointerDown: (_) {
+          if (view == 'lyrics') _showControls();
+        },
+        child: Stack(children: [
         Positioned(top: 6, left: 0, right: 0, child: Center(child: GestureDetector(onTap: () => Navigator.of(context).pop(), child: Container(width: 38, height: 5, decoration: BoxDecoration(color: const Color(0x66FFFFFF), borderRadius: BorderRadius.circular(3)))))),
         AnimatedPositioned(
           duration: dur,
@@ -218,24 +262,37 @@ class _SpringSkinState extends State<SpringSkin> {
             Container(width: 32, height: 32, decoration: const BoxDecoration(color: Color(0x26FFFFFF), shape: BoxShape.circle), child: IBtn('more', size: 32, iconSize: 18, color: Colors.white, onTap: () => openSongMore(context, app.cur, '', dark: true))),
           ]),
         ),
-        Positioned(
+        AnimatedPositioned(
+          duration: const Duration(milliseconds: 380),
+          curve: Curves.easeInOutCubic,
           left: 0,
           right: 0,
           top: 28 + 58 + 14,
-          bottom: bottomH,
+          bottom: _ctrl ? bottomH : 0,
           child: IgnorePointer(
             ignoring: !small,
             child: AnimatedOpacity(
               duration: const Duration(milliseconds: 360),
               opacity: small ? 1 : 0,
-              child: view == 'queue' ? _inlineQueue(context) : (small ? LyricView(wave: app.amWave == 'wave', anchor: .3) : const SizedBox()),
+              child: view == 'queue'
+                  ? _inlineQueue(context)
+                  : (small
+                      ? AmLyricView(
+                          anchor: .3,
+                          wave: app.amWave == 'wave',
+                          onBlankTap: _showControls,
+                          onScrollUp: (up) => up ? _showControls() : _hideControls(),
+                        )
+                      : const SizedBox()),
             ),
           ),
         ),
-        Positioned(
+        AnimatedPositioned(
+          duration: const Duration(milliseconds: 380),
+          curve: Curves.easeInOutCubic,
           left: 0,
           right: 0,
-          bottom: 0,
+          bottom: _ctrl ? 0 : -bottomH,
           height: bottomH,
           child: Column(children: [
             const ProgressBar(track: 7, trackDrag: 12),
@@ -258,14 +315,14 @@ class _SpringSkinState extends State<SpringSkin> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 40),
               child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                _tog('lyric', view == 'lyrics', () => setState(() => view = view == 'lyrics' ? 'cover' : 'lyrics')),
+                _tog('lyric', view == 'lyrics', () => _setView(view == 'lyrics' ? 'cover' : 'lyrics')),
                 IBtn('cast', color: app.castDev != null ? context.pal.acc : const Color(0xB3FFFFFF), onTap: () => openCast(context, dark: true)),
-                _tog('queue', view == 'queue', () => setState(() => view = view == 'queue' ? 'cover' : 'queue')),
+                _tog('queue', view == 'queue', () => _setView(view == 'queue' ? 'cover' : 'queue')),
               ]),
             ),
           ]),
         ),
-      ]);
+      ]));
     });
   }
 
