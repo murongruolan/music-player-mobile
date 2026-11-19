@@ -600,6 +600,11 @@ class _AmPainter extends CustomPainter {
     final left = st.widget.padding.left;
     final cur = st.k;
     final curBlock = st.blockOf(cur)?.index ?? -1;
+    // 判「已唱」不能用 pos：同一时间戳的相邻两行（比如歌词页开头的
+    // “Glimmer - 祈Inory / 词：沈病娇”）pos 一过 0 就全被判成已唱，
+    // 第二行会在还没轮到它时就变亮。改成以当前行的起始时间为界：
+    // 早于当前行 t 的才算唱过；同一 t 的兄弟行保持未唱，直到 k 走到它。
+    final curT = cur >= 0 && cur < lines.length ? lines[cur].t : st.pos;
     final wave = st.widget.wave && !st._app!.set.reduceMotion;
     final blurT = blurOn ? st._blurC.value : 0.0;
     final lvl = blurT < .25 ? 0 : (blurT < .7 ? 1 : 2);
@@ -654,20 +659,20 @@ class _AmPainter extends CustomPainter {
           _paintCurrent(canvas, l, o, w);
         } else if (inCurrentBlock) {
           // 同块相邻句：已唱完的保持亮，还没轮到的压暗——不能让它看起来像「当前句」。
-          final tp = l.t <= st.pos + .01
+          final tp = l.t < curT - .01
               ? (l.sung ??= _mk(l.text,
                   main.copyWith(color: Colors.white.withValues(alpha: .86)), w))
               : (l.unsung ??= _mk(l.text,
-                  main.copyWith(color: Colors.white.withValues(alpha: .38)), w));
+                  main.copyWith(color: Colors.white.withValues(alpha: .30)), w));
           tp.paint(canvas, o);
         } else if (st.manualMode) {
           // 手动浏览时歌词全部清晰，但不能全部当成高亮：
-          // 只有已经唱过的句子亮，还没唱到的保持浅色，等唱到再亮。
-          final tp = l.t <= st.pos + .01
+          // 只有当前行之前的句子亮，还没唱到（含同 t 的兄弟行）保持浅色。
+          final tp = l.t < curT - .01
               ? (l.sung ??= _mk(l.text,
                   main.copyWith(color: Colors.white.withValues(alpha: .86)), w))
               : (l.unsung ??= _mk(l.text,
-                  main.copyWith(color: Colors.white.withValues(alpha: .38)), w));
+                  main.copyWith(color: Colors.white.withValues(alpha: .30)), w));
           tp.paint(canvas, o);
         } else {
           _variant(l, lvl, w).paint(canvas, o);
@@ -677,23 +682,23 @@ class _AmPainter extends CustomPainter {
           TextPainter tpv;
           if (!inCurrentBlock) {
             if (st.manualMode) {
-              tpv = l.t <= st.pos + .01
+              tpv = l.t < curT - .01
                   ? (l.transSung ??= _mk(l.trans,
                       tr.copyWith(color: Colors.white.withValues(alpha: .6)), w))
                   : (l.transUnsung ??= _mk(l.trans,
-                      tr.copyWith(color: Colors.white.withValues(alpha: .3)), w));
+                      tr.copyWith(color: Colors.white.withValues(alpha: .22)), w));
             } else {
               tpv = _variantTrans(l, lvl, w);
             }
           } else if (i == cur) {
             tpv = l.transCur ??= _mk(l.trans,
                 tr.copyWith(color: Colors.white.withValues(alpha: .72)), w);
-          } else if (l.t <= st.pos + .01) {
+          } else if (l.t < curT - .01) {
             tpv = l.transSung ??= _mk(l.trans,
                 tr.copyWith(color: Colors.white.withValues(alpha: .6)), w);
           } else {
             tpv = l.transUnsung ??= _mk(l.trans,
-                tr.copyWith(color: Colors.white.withValues(alpha: .3)), w);
+                tr.copyWith(color: Colors.white.withValues(alpha: .22)), w);
           }
           tpv.paint(canvas, Offset(x, y + l.mainH + 4));
         }
