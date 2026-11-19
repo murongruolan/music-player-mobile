@@ -331,33 +331,52 @@ class _SpringSkinState extends State<SpringSkin> {
             offset: Offset(0, _ctrl ? 0 : 1),
             duration: const Duration(milliseconds: 380),
             curve: Curves.easeInOutCubic,
-            child: Column(children: [
-            const ProgressBar(track: 7, trackDrag: 12),
-            const SizedBox(height: 8),
-            Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-              IBtn('prev', color: Colors.white, size: 64, iconSize: 44, onTap: app.prev),
-              const PlayButton(size: 84, bg: Colors.transparent, fg: Colors.white),
-              IBtn('next', color: Colors.white, size: 64, iconSize: 44, onTap: app.next),
-            ]),
-            const SizedBox(height: 10),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 28),
-              child: Row(children: [
-                const Icon(Icons.volume_mute_rounded, color: Color(0x99FFFFFF), size: 18),
-                Expanded(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: LSlider(value: app.outputVolume, min: 0, max: 1, color: Colors.white, onChanged: app.setVolume))),
-                const Icon(Icons.volume_up_rounded, color: Color(0x99FFFFFF), size: 18),
-              ]),
+            child: ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+              child: DecoratedBox(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0xF50B0C12), Color(0xFF0B0C12)],
+                    stops: [0, .3],
+                  ),
+                  border: Border(top: BorderSide(color: Color(0x1AFFFFFF))),
+                ),
+                // 面板空白处也吃掉点击，避免穿透到后面的歌词触发 seek。
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {},
+                  child: Column(children: [
+                    const ProgressBar(track: 7, trackDrag: 12),
+                    const SizedBox(height: 8),
+                    Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+                      IBtn('prev', color: Colors.white, size: 64, iconSize: 44, onTap: app.prev),
+                      const PlayButton(size: 84, bg: Colors.transparent, fg: Colors.white),
+                      IBtn('next', color: Colors.white, size: 64, iconSize: 44, onTap: app.next),
+                    ]),
+                    const SizedBox(height: 10),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 28),
+                      child: Row(children: [
+                        const Icon(Icons.volume_mute_rounded, color: Color(0x99FFFFFF), size: 18),
+                        Expanded(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: LSlider(value: app.outputVolume, min: 0, max: 1, color: Colors.white, onChanged: app.setVolume))),
+                        const Icon(Icons.volume_up_rounded, color: Color(0x99FFFFFF), size: 18),
+                      ]),
+                    ),
+                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 40),
+                      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                        _tog('lyric', view == 'lyrics', () => _setView(view == 'lyrics' ? 'cover' : 'lyrics')),
+                        IBtn('cast', color: app.castDev != null ? context.pal.acc : const Color(0xB3FFFFFF), onTap: () => openCast(context, dark: true)),
+                        _tog('queue', view == 'queue', () => _setView(view == 'queue' ? 'cover' : 'queue')),
+                      ]),
+                    ),
+                  ]),
+                ),
+              ),
             ),
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 40),
-              child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                _tog('lyric', view == 'lyrics', () => _setView(view == 'lyrics' ? 'cover' : 'lyrics')),
-                IBtn('cast', color: app.castDev != null ? context.pal.acc : const Color(0xB3FFFFFF), onTap: () => openCast(context, dark: true)),
-                _tog('queue', view == 'queue', () => _setView(view == 'queue' ? 'cover' : 'queue')),
-              ]),
-            ),
-          ]),
           ),
         ),
       ]);

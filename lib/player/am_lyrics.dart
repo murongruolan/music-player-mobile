@@ -109,6 +109,10 @@ class _AmLyricViewState extends State<AmLyricView>
   double _pull = 0;
   bool _woke = false, _hid = false;
   Timer? _blurTimer;
+  /// 点歌词 seek 之后，等播放位置真的到目标附近再回正；否则 seek 还没生效，
+  /// _recenter 会把画面按旧的当前行（往往在歌尾）拽回去，看起来像「跳到最下面」。
+  double? _pendingTapSeek;
+  Timer? _pendingTapTimer;
 
   int _tapBlock = -1;
   double progress = 0;
@@ -186,6 +190,17 @@ class _AmLyricViewState extends State<AmLyricView>
     }
     progress = lyrics[nk].progressAt(p);
     pos = p;
+    final pend = _pendingTapSeek;
+    if (pend != null && (p - pend).abs() <= 1.0) {
+      _pendingTapSeek = null;
+      _pendingTapTimer?.cancel();
+      // seek 生效后再回正：manualMode 期间只更新了 k，没重排 _off；
+      // 先按新 k 重排，再把手动位移弹回 0，避免先闪到旧的当前行。
+      if (manualMode) {
+        _retarget(nk);
+        _recenter();
+      }
+    }
     _repaint.ping();
   }
 
@@ -200,6 +215,7 @@ class _AmLyricViewState extends State<AmLyricView>
     _fling.dispose();
     _waveC.dispose();
     _blurTimer?.cancel();
+    _pendingTapTimer?.cancel();
     _repaint.dispose();
     super.dispose();
   }
@@ -299,6 +315,8 @@ class _AmLyricViewState extends State<AmLyricView>
 
   void _onDragStart(DragStartDetails _) {
     _blurTimer?.cancel();
+    _pendingTapSeek = null;
+    _pendingTapTimer?.cancel();
     _fling.stop();
     _pull = 0;
     _woke = false;
@@ -341,9 +359,10 @@ class _AmLyricViewState extends State<AmLyricView>
     }
     _blurTimer?.cancel();
     _blurTimer = Timer(const Duration(milliseconds: 1300), () {
-      if (mounted)
+      if (mounted) {
         _blurC.animateTo(1,
             duration: const Duration(milliseconds: 300), curve: Curves.easeIn);
+      }
     });
   }
 
@@ -367,9 +386,15 @@ class _AmLyricViewState extends State<AmLyricView>
         Timer(const Duration(milliseconds: 360), () {
           if (mounted) setState(() => _tapBlock = -1);
         });
+        _pendingTapSeek = b.start + .05;
+        _pendingTapTimer?.cancel();
+        _pendingTapTimer = Timer(const Duration(milliseconds: 2000), () {
+          _pendingTapSeek = null;
+        });
         _app!.seek(b.start + .05);
         toast('跳转到 ${fmtTime(b.start)}', 'lyric');
-        _recenter();
+        // 不立刻 _recenter：等 _frame 看到播放位置真的到目标附近再回正，
+        // 否则 seek 还没生效会把画面拽回旧的当前行（歌尾），像跳到了最下面。
         return;
       }
     }
@@ -526,8 +551,9 @@ class _AmPainter extends CustomPainter {
       final paint = Paint()
         ..color = Colors.white.withValues(alpha: _alpha[level]);
       final sigma = _sigma[level] * fs;
-      if (sigma > 0.1)
+      if (sigma > 0.1) {
         paint.maskFilter = MaskFilter.blur(BlurStyle.normal, sigma);
+      }
       return _mk(l.text, main, w, fg: paint);
     });
   }
@@ -538,8 +564,9 @@ class _AmPainter extends CustomPainter {
       final paint = Paint()
         ..color = Colors.white.withValues(alpha: _alpha[level] * .86);
       final sigma = _sigma[level] * fs * .7;
-      if (sigma > 0.1)
+      if (sigma > 0.1) {
         paint.maskFilter = MaskFilter.blur(BlurStyle.normal, sigma);
+      }
       return _mk(l.trans, tr, w, fg: paint);
     });
   }

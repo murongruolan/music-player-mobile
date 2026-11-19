@@ -134,7 +134,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
       child: Material(
         color: Colors.black,
         child: Stack(children: [
-          if (sk.usesBg) Positioned.fill(child: RepaintBoundary(child: PlayerBackground(song: app.song, mode: app.bg, tone: app.tone, dim: app.dim, beat: true))),
+          // 背景只铺在应用内容区（状态栏 / 手势条留黑），避免封面模糊
+          // 从通知栏里透出来、和下面的内容之间多出一截。
+          if (sk.usesBg)
+            Positioned.fill(
+              child: Padding(
+                padding: EdgeInsets.only(
+                    top: full ? 0 : mq.padding.top,
+                    bottom: full ? 0 : mq.padding.bottom),
+                child: RepaintBoundary(
+                    child: PlayerBackground(song: app.song, mode: app.bg, tone: app.tone, dim: app.dim, beat: true)),
+              ),
+            ),
           Positioned.fill(child: Padding(padding: EdgeInsets.only(top: full ? 0 : mq.padding.top, bottom: full ? 0 : mq.padding.bottom), child: RepaintBoundary(child: SkinHost(skin: app.skin)))),
         ]),
       ),
