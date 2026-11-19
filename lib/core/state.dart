@@ -1063,7 +1063,8 @@ class AppState extends ChangeNotifier {
     final p = smoothPos + set.loff;
     final k = lyricIndexAt(p);
     if (k >= lyrics.length) return 0;
-    return lyrics[k].progressAt(p);
+    final nextT = k + 1 < lyrics.length ? lyrics[k + 1].t : null;
+    return lyrics[k].progressAt(p, end: nextT);
   }
 
   /// 模拟节拍包络 0..1（112 BPM）。

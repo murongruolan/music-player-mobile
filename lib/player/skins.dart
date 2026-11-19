@@ -220,6 +220,9 @@ class _SpringSkinState extends State<SpringSkin> {
   Widget build(BuildContext context) {
     final app = context.app;
     final s = app.song;
+    // iOS 的顶部安全区本身就比 Android 高（灵动岛），再叠加固定的 28/44 会让
+    // 封面和标题明显掉到岛下面一截。iOS 上把这段额外留白收掉 20。
+    final iosTopTrim = Theme.of(context).platform == TargetPlatform.iOS ? 20.0 : 0.0;
     return LayoutBuilder(builder: (context, cs) {
       final W = cs.maxWidth, H = cs.maxHeight;
       final big = math.min(334.0, W - 56);
@@ -251,7 +254,7 @@ class _SpringSkinState extends State<SpringSkin> {
           duration: dur,
           curve: curve,
           left: small ? 24 : (W - big) / 2,
-          top: small ? 28 : 44,
+          top: small ? 28 - iosTopTrim : 44 - iosTopTrim,
           width: small ? 58 : big,
           height: small ? 58 : big,
           child: SwipeCover(
@@ -268,7 +271,7 @@ class _SpringSkinState extends State<SpringSkin> {
           curve: curve,
           left: small ? 24 + 58 + 12 : 28,
           right: 14,
-          top: small ? 28 : H - bottomH - 70,
+          top: small ? 28 - iosTopTrim : H - bottomH - 70,
           height: 58,
           child: Row(children: [
             Expanded(

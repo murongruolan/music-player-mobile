@@ -195,7 +195,8 @@ class _AmLyricViewState extends State<AmLyricView>
         _retarget(nk);
       }
     }
-    progress = lyrics[nk].progressAt(p);
+    final nextT = nk + 1 < lyrics.length ? lyrics[nk + 1].t : null;
+    progress = lyrics[nk].progressAt(p, end: nextT);
     pos = p;
     final pend = _pendingTapSeek;
     if (pend != null && (p - pend).abs() <= 1.0) {
@@ -476,7 +477,8 @@ class _AmLyricViewState extends State<AmLyricView>
           k = -1;
           _retarget(app.lyricIndexAt(p).clamp(0, _lines.length - 1));
           _spring.value = 1;
-          progress = lyrics.isEmpty ? 0 : lyrics[k].progressAt(p);
+          final nextT = k + 1 < lyrics.length ? lyrics[k + 1].t : null;
+          progress = lyrics.isEmpty ? 0 : lyrics[k].progressAt(p, end: nextT);
         }
       }
       if (_lines.isEmpty) {

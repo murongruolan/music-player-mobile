@@ -111,7 +111,8 @@ class _LyricViewState extends State<LyricView> with TickerProviderStateMixin {
     final p = app.smoothPos + app.set.loff;
     final nk = app.lyricIndexAt(p).clamp(0, lays.length - 1);
     if (nk != k) _retarget(nk);
-    progress = nk < lyrics.length ? lyrics[nk].progressAt(p) : 0;
+    final nextT = nk + 1 < lyrics.length ? lyrics[nk + 1].t : null;
+    progress = nk < lyrics.length ? lyrics[nk].progressAt(p, end: nextT) : 0;
     _repaint.ping();
   }
 
@@ -192,7 +193,8 @@ class _LyricViewState extends State<LyricView> with TickerProviderStateMixin {
           k = -1;
           _retarget(app.lyricIndexAt(p).clamp(0, lays.length - 1));
           c.value = 1;
-          progress = lyrics.isEmpty ? 0 : lyrics[k].progressAt(p);
+          final nextT = k + 1 < lyrics.length ? lyrics[k + 1].t : null;
+          progress = lyrics.isEmpty ? 0 : lyrics[k].progressAt(p, end: nextT);
         }
       }
       return GestureDetector(

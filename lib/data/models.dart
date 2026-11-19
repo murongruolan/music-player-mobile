@@ -71,11 +71,17 @@ class LyricLine {
   }
 
   /// 在时间 [p]（秒）时这一行已唱到的位置，0..1（按字符比例；逐字时间精确到字内插值）。
-  double progressAt(double p) {
+  /// [end] 是下一次切行的硬截止（通常是下一句的 t）；不传时用本行 [d] 估算。
+  double progressAt(double p, {double? end}) {
     final w = words;
     final len = text.length;
     if (w == null || w.isEmpty || len == 0) return ((p - t) / _sungDur).clamp(0.0, 1.0);
     if (p <= w.first.start) return w.first.from / len;
+    // 切行保护：下一句的 t 一到，AmLyricView 就会把这一行换成新行；如果最后一个
+    // 字的 dur 刚好压到下一句开头，进度永远差最后几帧，最后一字就永远不亮。
+    // 在行尾前 120ms 强制收满，保证「最后一个字」至少完整显示过一次。
+    final hardEnd = end ?? (t + d);
+    if (p >= w.last.start && p >= hardEnd - .12) return 1.0;
     for (final x in w) {
       if (p < x.start) return x.from / len; // 词与词之间的停顿：停在下一个词开头
       if (p < x.start + x.dur) {
