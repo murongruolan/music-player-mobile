@@ -109,6 +109,9 @@ class _AmLyricViewState extends State<AmLyricView>
   double _pull = 0;
   bool _woke = false, _hid = false;
   Timer? _blurTimer;
+  /// 手动滚完歌词后，隔几秒没有继续拖拽就自动回到当前句；
+  /// 否则用户必须去点「回到当前」，播放往前走歌词也不跟上。
+  Timer? _followTimer;
   /// 点歌词 seek 之后，等播放位置真的到目标附近再回正；否则 seek 还没生效，
   /// _recenter 会把画面按旧的当前行（往往在歌尾）拽回去，看起来像「跳到最下面」。
   double? _pendingTapSeek;
@@ -198,7 +201,7 @@ class _AmLyricViewState extends State<AmLyricView>
       // 先按新 k 重排，再把手动位移弹回 0，避免先闪到旧的当前行。
       if (manualMode) {
         _retarget(nk);
-        _recenter();
+        _recenter(retarget: false);
       }
     }
     _repaint.ping();
@@ -215,6 +218,7 @@ class _AmLyricViewState extends State<AmLyricView>
     _fling.dispose();
     _waveC.dispose();
     _blurTimer?.cancel();
+    _followTimer?.cancel();
     _pendingTapTimer?.cancel();
     _repaint.dispose();
     super.dispose();
@@ -315,6 +319,7 @@ class _AmLyricViewState extends State<AmLyricView>
 
   void _onDragStart(DragStartDetails _) {
     _blurTimer?.cancel();
+    _followTimer?.cancel();
     _pendingTapSeek = null;
     _pendingTapTimer?.cancel();
     _fling.stop();
@@ -364,6 +369,12 @@ class _AmLyricViewState extends State<AmLyricView>
             duration: const Duration(milliseconds: 300), curve: Curves.easeIn);
       }
     });
+    _followTimer?.cancel();
+    if (manualMode) {
+      _followTimer = Timer(const Duration(milliseconds: 4000), () {
+        if (mounted && manualMode) _recenter();
+      });
+    }
   }
 
   double _clampManual(double v) {
@@ -388,6 +399,7 @@ class _AmLyricViewState extends State<AmLyricView>
         });
         _pendingTapSeek = b.start + .05;
         _pendingTapTimer?.cancel();
+        _followTimer?.cancel();
         _pendingTapTimer = Timer(const Duration(milliseconds: 2000), () {
           _pendingTapSeek = null;
         });
@@ -401,8 +413,15 @@ class _AmLyricViewState extends State<AmLyricView>
     widget.onBlankTap?.call();
   }
 
-  void _recenter() {
+  void _recenter({bool retarget = true}) {
     if (!mounted) return;
+    _followTimer?.cancel();
+    // 手动浏览期间 k 会随播放更新，但 _off 还停在开始滚动时的行；
+    // 回正前必须按当前行重新算 _off，否则只是把手动位移清零、画面停在旧位置。
+    if (retarget) {
+      final nk = _app?.lyricIndexAt(pos) ?? k;
+      if (nk >= 0 && nk < _lines.length) _retarget(nk);
+    }
     _flingFrom = manual;
     _flingTo = 0;
     _fling.forward(from: 0);
@@ -641,6 +660,15 @@ class _AmPainter extends CustomPainter {
               : (l.unsung ??= _mk(l.text,
                   main.copyWith(color: Colors.white.withValues(alpha: .38)), w));
           tp.paint(canvas, o);
+        } else if (st.manualMode) {
+          // 手动浏览时歌词全部清晰，但不能全部当成高亮：
+          // 只有已经唱过的句子亮，还没唱到的保持浅色，等唱到再亮。
+          final tp = l.t <= st.pos + .01
+              ? (l.sung ??= _mk(l.text,
+                  main.copyWith(color: Colors.white.withValues(alpha: .86)), w))
+              : (l.unsung ??= _mk(l.text,
+                  main.copyWith(color: Colors.white.withValues(alpha: .38)), w));
+          tp.paint(canvas, o);
         } else {
           _variant(l, lvl, w).paint(canvas, o);
         }
@@ -648,7 +676,15 @@ class _AmPainter extends CustomPainter {
         if (trans && l.trans.isNotEmpty) {
           TextPainter tpv;
           if (!inCurrentBlock) {
-            tpv = _variantTrans(l, lvl, w);
+            if (st.manualMode) {
+              tpv = l.t <= st.pos + .01
+                  ? (l.transSung ??= _mk(l.trans,
+                      tr.copyWith(color: Colors.white.withValues(alpha: .6)), w))
+                  : (l.transUnsung ??= _mk(l.trans,
+                      tr.copyWith(color: Colors.white.withValues(alpha: .3)), w));
+            } else {
+              tpv = _variantTrans(l, lvl, w);
+            }
           } else if (i == cur) {
             tpv = l.transCur ??= _mk(l.trans,
                 tr.copyWith(color: Colors.white.withValues(alpha: .72)), w);
